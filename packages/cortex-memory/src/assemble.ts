@@ -81,10 +81,17 @@ import { CortexMemory } from './memory.js';
 import { REGISTERED_ARM } from './registered-arm.js';
 import type { SearchIndexOptions } from './retrieval/search-index.js';
 import type { SupersededRendering } from './superseded.js';
-import type { GateOptions, ReplyRepair, ReviewPass, TurnCapRoute } from './types.js';
-import type { EvidenceAsk, PromptContract, TurnCutMarker } from './prompt.js';
+import type {
+  GateOptions,
+  ReplyRepair,
+  ReviewPass,
+  TurnCapRoute,
+  WindowOrdering,
+} from './types.js';
+import type { EvidenceAsk, PromptContract, RelevanceUnits, TurnCutMarker } from './prompt.js';
 import type { TurnWindow } from './excerpt.js';
 import type { ResolutionMode } from './resolution.js';
+import type { WidthPlanOptions } from './width.js';
 
 /** How much of the product one call wires up. See the table in the module comment. */
 export type AssemblyProfile = 'minimal' | 'reader' | 'full';
@@ -126,6 +133,73 @@ export type AssembleOptions = {
    * map omits calls {@link llm}.
    */
   readonly readerByRoute?: Partial<Record<TurnCapRoute, LLM>> | undefined;
+  /**
+   * What the evidence room buys: the unit a relevance score is spent in, and the radius of the one unit
+   * that has a neighbourhood.
+   *
+   * These two travel together and were both unreachable from here. `relevanceUnits` is the knob that lets
+   * the **multi-session** route complete a session instead of scattering it, which is the mechanism
+   * `§13.26` measured as the difference between 14.3% and 66.7% across the coverage bands; `windowRadius`
+   * is `'anchor-window'`'s diameter, defaulting to the reference implementation's frozen ±2 so that naming
+   * the unit without naming the radius reproduces the published configuration rather than an untested
+   * default.
+   *
+   * Both are inert without an index: a unit is what a **score** buys, and with no embedder and no signal
+   * there are no scores to spend. That is why the fields were easy to leave out and are still wrong to
+   * leave out -- a caller who installs an index and reads `DESIGN-SESSION-TEXT-UNIT.md` has the whole
+   * mechanism in front of them and no way to name it.
+   *
+   * The one guard the class keeps on this pair is deliberate: `'session-text'` on a route that carries no
+   * session boundary **throws** rather than falling back to the turn unit, because an artifact labelled
+   * `session-text` whose numbers are turn-unit numbers is worse than a failed run. Forwarding the field
+   * forwards the guard with it, and `assemble-forwarding.test.ts` asserts both halves.
+   */
+  readonly relevanceUnits?: RelevanceUnits | undefined;
+  /** Same-session turns bought on each side of an anchor for `'anchor-window'`. Rejected, not clamped. */
+  readonly windowRadius?: number | undefined;
+  /**
+   * The per-question evidence budget: how much of the question's relevance mass the delivered evidence must
+   * explain.
+   *
+   * This is the one option here that exists to **spend less**, not to score more, and requirement seventeen
+   * is why it cannot stay harness-only. `§14.126` priced the fixed room at 9,168 prompt tokens per question
+   * with 67.3% of it in two routes at full width; at twice the gold evidence the same five hundred questions
+   * bill 3,703. The mechanism is per question because a room cannot say "this question needs less".
+   *
+   * Absent reproduces every archived artifact: no plan, no cut, the route's room is the only bound. Naming
+   * it is a cost decision a caller makes, and its registered negative form (`C6`, below 90.40% accuracy)
+   * closes the family rather than promoting it, so a caller who names it is running an experiment and the
+   * artifact says so through `lastWidth()`.
+   */
+  readonly widthPlan?: WidthPlanOptions | undefined;
+  /**
+   * Two injections that reorder the window the way the reference pipeline does: the date a delivered turn
+   * carries, and the window the question names.
+   *
+   * Forwarded for the same reason as the rest: it is a **replicated competitor mechanism**, it is off unless
+   * named, and until this line a customer reading its measurement could not turn it on. The two functions
+   * are the caller's because this package owns no date parser and no calendar.
+   */
+  readonly windowOrdering?: WindowOrdering | undefined;
+  /**
+   * Give a decline that named nothing one question back, without offering the answer.
+   *
+   * `reviewPass` is forwarded already; this is the sub-case of it that decides whether a *bare* decline is
+   * worth one more call. A reply of `None` names no token, so there is nothing to audit -- the question is
+   * whether the reader declined because the evidence was absent or because it did not look. Off by default,
+   * because a second call costs a second prompt and the mechanism has no adopted reading.
+   */
+  readonly reviewBareDecline?: boolean | undefined;
+  /**
+   * Consultations per question, reduced by majority vote.
+   *
+   * The one option here that trades money for stability rather than for accuracy: three consultations cost
+   * three prompts and can only move a question the reader answers inconsistently. Absent means one, which is
+   * every archived artifact; a non-integer or a value below one is **rejected** by the class rather than
+   * clamped, and `selfConsistency > 1` with `reviewPass: 'audit'` is refused as well, because two second
+   * passes on one question would make the census count outcomes that no single reader produced.
+   */
+  readonly selfConsistency?: number | undefined;
   /** Epoch milliseconds for every time-stamped decision. A constant pins a run; nothing here reads the clock. */
   readonly now: number;
   /**
@@ -712,6 +786,14 @@ export function assembleMemory(options: AssembleOptions): Installation {
   const memory = new CortexMemory({
     llm: options.llm,
     ...(options.readerByRoute === undefined ? {} : { readerByRoute: options.readerByRoute }),
+    ...(options.relevanceUnits === undefined ? {} : { relevanceUnits: options.relevanceUnits }),
+    ...(options.windowRadius === undefined ? {} : { windowRadius: options.windowRadius }),
+    ...(options.widthPlan === undefined ? {} : { widthPlan: options.widthPlan }),
+    ...(options.windowOrdering === undefined ? {} : { windowOrdering: options.windowOrdering }),
+    ...(options.reviewBareDecline === undefined
+      ? {}
+      : { reviewBareDecline: options.reviewBareDecline }),
+    ...(options.selfConsistency === undefined ? {} : { selfConsistency: options.selfConsistency }),
     now: options.now,
     gate,
     corpus,

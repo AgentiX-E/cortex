@@ -185,6 +185,43 @@ The live mutation is the evidence that the pipeline is real rather than the pred
 `readerByRoute` forwarding line turns exactly one `unclaimed-field` red and exits 1, and restoring it
 returns `33 / 26 / 1 / 6`. That is the same pair of readings the two earlier fields never had.
 
+### 1.7 The six that were left, cleared in one round — and the fixture that lied first
+
+The ratchet from §1.6 named six open fields. All six are forwarded now, and the table is empty:
+
+| field | why it matters to a **customer**, not to an experiment | how its arrival is asserted |
+| --- | --- | --- |
+| `relevanceUnits` | `'session'` completes a session instead of scattering it; `§13.26` measured 14.3% → 66.7% across coverage bands | the unit changes **which** turns arrive in a room the evidence does not fit, with `'turn'` as the control |
+| `windowRadius` | the diameter of `'anchor-window'` — the reference pipeline's `±2`, so naming the unit alone reproduces it | an invalid radius is **rejected** where the unit is spent |
+| `widthPlan` | the only option that exists to **spend less**: `§14.126` priced 9,168 tokens per question against 3,703 at twice the gold evidence | the prompt gets strictly shorter, and absence leaves the room as the only bound |
+| `windowOrdering` | a replicated competitor mechanism (the reference pipeline's time-window reorder) | a resolving window changes the prompt; a resolver naming none reproduces it **byte for byte** |
+| `reviewBareDecline` | a decline that named nothing is worth one more call on every route whose gold is never a decline | two calls on a bare decline, one without it |
+| `selfConsistency` | three consultations and a majority vote, for a caller who would rather pay than flap | three calls, and one without it |
+
+Reading: `33 field(s), 32 forwarded, 1 explained, 0/0 open`. Deleting all six forwarding lines turns **7 of
+8** assertions red; the one that stays green is the assertion that `'session-text'` **succeeds** when
+boundaries arrive, which is the correct shape — a mutation should not move the controls.
+
+#### The fixture that lied first, and why the first version of this test proved nothing
+
+The `windowRadius` case was written against a **7,000-character** room, and failed: an invalid radius did not
+throw. The conclusion available at that moment was "the mechanism is unreachable", and it was wrong. The
+evidence:
+
+| room | `turn` | `session` | `anchor-window`, radius 1.5 |
+| --- | --- | --- | --- |
+| 3,000 characters | 2,885 | 2,885 (same hash) | resolved, no throw |
+| 2,600 characters | 2,600 | 2,548 (**different hash**) | **rejected** |
+
+At 3,000 the five turns fit whole, so `fitToBudget` returns before `chooseEvidence` is called and the unit
+never gets a vote; at 2,600 the evidence binds, and the same three calls separate. **A test of a selection
+mechanism in a room the selection does not bind measures the renderer.** This is the second time this
+campaign has read a control that was not controlling — §183 read a cross-commit comparison as a same-commit
+one — and it is the same failure: the instrument was fine and the fixture was not.
+
+That is why the assertion now names the room in a comment and why the `relevanceUnits` case carries a
+`'turn'` control in the same room: the contrast is the measurement, not either side alone.
+
 ## 2. The same defect on the dispatch side
 
 Three documents agreed with each other and disagreed with the run:

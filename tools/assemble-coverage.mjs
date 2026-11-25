@@ -62,17 +62,10 @@ const EXPLAINED = {
  * composition-level test, the way `assemble-conflict-reach.test.ts` and `assemble-reader-by-route.test.ts`
  * do) or writing it into `EXPLAINED` with the reason it must stay out.
  */
-const OPEN = {
-  widthPlan: 'a per-question budget function -- suspected harness instrument rather than product feature',
-  relevanceUnits: 'which unit the relevance signal buys; the product has `session-text` but the root has no field',
-  windowRadius: 'the anchor-neighbourhood radius, paired with `relevanceUnits`',
-  reviewBareDecline: 'one of the three second-consultation knobs',
-  selfConsistency: 'consultations per question and majority reduction',
-  windowOrdering: 'the reference pipeline time-window reorder, as two injections',
-};
+const OPEN = {};
 
 /** The most open entries this check will tolerate. Lower it when one is resolved; never raise it. */
-const CEILING = 6;
+const CEILING = 0;
 
 /** Parse the field names of one `export type <name> = { ... };` block. */
 export function typeFields(source, name) {
@@ -91,7 +84,7 @@ export function typeFields(source, name) {
  *
  * Pure over its two sources, so the self-test can drive it without touching the repository.
  */
-export function classify(fields, assembleSource, explained, open) {
+export function classify(fields, assembleSource, explained, open, ceiling = CEILING) {
   const findings = [];
   const forwarded = [];
   for (const field of fields) {
@@ -126,10 +119,10 @@ export function classify(fields, assembleSource, explained, open) {
   }
 
   const openCount = Object.keys(open).filter((field) => fields.includes(field) && !forwarded.includes(field)).length;
-  if (openCount > CEILING) {
+  if (openCount > ceiling) {
     findings.push({
       code: 'ratchet-raised',
-      detail: `${openCount} open fields against a ceiling of ${CEILING} -- a field was added without a decision`,
+      detail: `${openCount} open fields against a ceiling of ${ceiling} -- a field was added without a decision`,
     });
   }
 
@@ -141,11 +134,11 @@ function read(path) {
 }
 
 function report(reading) {
-  const { findings, forwarded, openCount, total } = reading;
+  const { findings, forwarded, openCount, total, ceiling } = reading;
   for (const finding of findings) process.stdout.write(`FAIL [${finding.code}] ${finding.detail}\n`);
   process.stdout.write(
     `assemble-coverage: ${total} field(s), ${forwarded.length} forwarded, ` +
-      `${Object.keys(EXPLAINED).length} explained, ${openCount}/${CEILING} open\n`,
+      `${Object.keys(EXPLAINED).length} explained, ${openCount}/${ceiling} open\n`,
   );
   if (findings.length === 0) process.stdout.write('ok -- the composition root can express every field, or says why not\n');
   return findings.length === 0 ? 0 : 1;
@@ -160,6 +153,7 @@ function main() {
   }
   const reading = classify(fields, read(ASSEMBLE), EXPLAINED, OPEN);
   reading.total = fields.length;
+  reading.ceiling = CEILING;
   if (process.argv.includes('--json')) {
     process.stdout.write(`${JSON.stringify({
       total: reading.total,
@@ -194,7 +188,7 @@ function selfTest() {
 
   // 1. The baseline passes and counts one open field.
   {
-    const reading = classify(fields, assemble, explained, open);
+    const reading = classify(fields, assemble, explained, open, 6);
     assert(reading.findings.length === 0, 'baseline must pass');
     assert(reading.openCount === 1, 'baseline must count one open field');
     assert(reading.forwarded.length === 3, 'baseline must count three forwarded fields');
@@ -202,14 +196,14 @@ function selfTest() {
 
   // 2. A declared field nobody claimed.
   {
-    const reading = classify([...fields, 'mystery'], assemble, explained, open);
+    const reading = classify([...fields, 'mystery'], assemble, explained, open, 6);
     assert(reading.findings.length === 1, 'unclaimed field must produce exactly one finding');
     assert(reading.findings[0]?.code === 'unclaimed-field', 'unclaimed field must use its own code');
   }
 
   // 3. An entry that was resolved but left in the table.
   {
-    const reading = classify(fields, assemble, explained, { ...open, readerByRoute: 'now forwarded' });
+    const reading = classify(fields, assemble, explained, { ...open, readerByRoute: 'now forwarded' }, 6);
     assert(reading.findings.length === 1, 'stale entry must produce exactly one finding');
     assert(reading.findings[0]?.code === 'stale-entry', 'stale entry must use its own code');
     assert(reading.findings[0]?.detail.includes('readerByRoute'), 'stale entry must name the field');
@@ -218,7 +212,7 @@ function selfTest() {
   // 4. An entry for a field the type no longer declares. `explained` is emptied here so that the only
   //    orphan is the one this fixture is about: a fixture with two defects proves neither.
   {
-    const reading = classify(['llm', 'now', 'readerByRoute'], assemble, {}, open);
+    const reading = classify(['llm', 'now', 'readerByRoute'], assemble, {}, open, 6);
     assert(reading.findings.length === 1, 'orphaned entry must produce exactly one finding');
     assert(reading.findings[0]?.code === 'stale-entry', 'orphaned entry must use the stale code');
   }
@@ -226,7 +220,7 @@ function selfTest() {
   // 5. The ratchet: open work above the ceiling.
   {
     const many = Object.fromEntries(['a', 'b', 'c', 'd', 'e', 'f', 'g'].map((key) => [key, 'undecided']));
-    const reading = classify(['llm', 'now', 'readerByRoute', ...Object.keys(many)], assemble, {}, many);
+    const reading = classify(['llm', 'now', 'readerByRoute', ...Object.keys(many)], assemble, {}, many, 6);
     assert(reading.findings.length === 1, 'ceiling breach must produce exactly one finding');
     assert(reading.findings[0]?.code === 'ratchet-raised', 'ceiling breach must use its own code');
   }
