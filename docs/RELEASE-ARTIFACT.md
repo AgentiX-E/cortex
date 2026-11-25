@@ -1,7 +1,7 @@
 # The release artifact: what a stranger downloads, and the three things nobody had installed
 
 **Status:** shipped. Five `tsconfig.build.json` files, one new guard (`tools/install-smoke.mjs`,
-`guard:install`, **19 self-test assertions**), and one packaging defect removed: **821 compiled test
+`guard:install`, **21 self-test assertions**), and one packaging defect removed: **821 compiled test
 files**, which were 70% of the `cortex-memory` tarball and 45% of everything this repository publishes.
 
 ## 0. One paragraph
@@ -122,7 +122,7 @@ red check and a person decides whether it is an adoption or a regression, which 
 
 ## 5. The mutations that prove the guard can fail
 
-`--self-test` is hermetic (five fixtures, no network, no tarball) and asserts **19** things. Each
+`--self-test` is hermetic (six fixtures, no network, no tarball) and asserts **21** things. Each
 mutation has to turn **exactly one** rule red — a check that fires for the wrong reason is a failure,
 not a pass with noise:
 

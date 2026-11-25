@@ -53,7 +53,7 @@
  *     node tools/install-smoke.mjs                  # pack, install, ask -- the whole check
  *     node tools/install-smoke.mjs --json           # machine-readable findings
  *     node tools/install-smoke.mjs --keep           # keep the temporary project, print its path
- *     node tools/install-smoke.mjs --self-test      # hermetic: five fixtures, four mutations
+ *     node tools/install-smoke.mjs --self-test      # hermetic: six fixtures, five mutations, one table check
  *
  * Exit status is 1 when any check fails.
  */
@@ -253,14 +253,25 @@ function read(tarball, path) {
   return execFileSync('tar', ['-xzOf', tarball, `package/${path}`], { encoding: 'utf8' });
 }
 
-/** Inspect one packed tarball end to end. */
+/**
+ * Inspect one packed tarball end to end.
+ *
+ * One return shape rather than two: a manifest that cannot be parsed is a **finding**, not a different
+ * kind of answer, because the caller's job is the same either way -- print what is wrong and exit 1. The
+ * first draft returned an array in that case and an object otherwise, which made the caller ask
+ * `Array.isArray`, and a caller that has to ask what shape it got is a caller that will one day guess
+ * wrong.
+ */
 export function inspectTarball(tarball, name) {
   const paths = entries(tarball);
   let manifest;
   try {
     manifest = JSON.parse(read(tarball, 'package.json'));
   } catch (error) {
-    return [{ package: name, code: 'manifest-unreadable', detail: `package.json: ${String(error)}` }];
+    return {
+      paths,
+      findings: [{ package: name, code: 'manifest-unreadable', detail: `package.json: ${String(error)}` }],
+    };
   }
   const maps = {};
   for (const path of paths) {
@@ -268,10 +279,12 @@ export function inspectTarball(tarball, name) {
     try {
       maps[path] = JSON.parse(read(tarball, path));
     } catch {
-      maps[path] = { sources: ['unreadable'], sourcesContent: [] };
+      // A map that will not parse is reported by the self-contained rule below rather than here: one
+      // defect, one code, so a mutation still has to turn exactly one rule red.
+      maps[path] = { sources: [path], sourcesContent: [] };
     }
   }
-  return { manifest, paths, findings: inspect({ name, manifest, entries: paths, maps }) };
+  return { paths, findings: inspect({ name, manifest, entries: paths, maps }) };
 }
 
 /** Write the temporary project and install the tarballs into it. */
@@ -408,6 +421,21 @@ function selfTest() {
   }
   assert(CODES.length === new Set(CODES).size, 'CODES holds a duplicate');
 
+  // Every code the file can emit is in `CODES`, and every entry in `CODES` is emitted somewhere. Read
+  // from this file's own text, because that is the only copy that cannot drift: a code added to `add()`
+  // and forgotten in the table would make the summary lie about what it counted, and a code left in the
+  // table after its check was deleted would make a reader look for a rule that no longer runs.
+  const source = readFileSync(fileURLToPath(import.meta.url), 'utf8');
+  const emitted = new Set([
+    ...[...source.matchAll(/code: '([a-z-]+)'/g)].map((match) => match[1]),
+    ...[...source.matchAll(/add\('([a-z-]+)'/g)].map((match) => match[1]),
+  ]);
+  const declared = new Set(CODES);
+  const undeclared = [...emitted].filter((code) => !declared.has(code));
+  const unused = [...declared].filter((code) => !emitted.has(code));
+  assert(undeclared.length === 0, `codes emitted but not declared: ${undeclared.join(', ')}`);
+  assert(unused.length === 0, `codes declared but never emitted: ${unused.join(', ')}`);
+
   process.stdout.write(
     `install-smoke --self-test: ${assertions} assertions\n${lines.join('\n')}\n  every mutation turned exactly one rule red\n`,
   );
@@ -431,10 +459,6 @@ function main(argv) {
 
     for (const name of PACKAGES) {
       const inspected = inspectTarball(tarballs[name], name);
-      if (Array.isArray(inspected)) {
-        findings.push(...inspected);
-        continue;
-      }
       findings.push(...inspected.findings);
       inventory.push({
         package: name,
