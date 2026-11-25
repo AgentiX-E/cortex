@@ -19,9 +19,8 @@
 # ## Why it is not wired to `push`
 #
 # The standing instruction is that model measurements are dispatched on demand and recorded, never
-# fired by a commit. This one bills about 950 prompt tokens and eight completion tokens per call, 4,700 over the
-whole run:
-# the whole run is a rounding error, and it is still dispatch-only, because the rule is about who asked
+# fired by a commit. This one bills about 950 prompt tokens and eight completion tokens per call -- 4,700
+# over the whole run: a rounding error, and it is still dispatch-only, because the rule is about who asked
 # for a number rather than about what the number cost.
 name: Cache-credit probe
 

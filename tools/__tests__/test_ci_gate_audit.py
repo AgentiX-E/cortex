@@ -356,5 +356,55 @@ class TestEveryWorkflowThatRunsTheSuiteInstallsItsPrerequisites(unittest.TestCas
         self.assertIn('check-prerequisites', err.getvalue())
 
 
+
+class TestTheSchemaGitHubValidates(unittest.TestCase):
+    """The gate's own blind spot, which cost a push in the round it was found.
+
+    A comment block lost one `#`, a line of prose became a top-level key, PyYAML accepted it and every
+    requirement here passed -- while `gh workflow run` answered `failed to parse workflow`. These tests
+    pin the rule that would have refused it: a key outside GitHub's schema is a document nobody can
+    dispatch, whatever YAML thinks of it.
+    """
+
+    def test_a_workflow_with_a_stray_top_level_key_is_refused(self) -> None:
+        workflow = load()
+        workflow['whole run'] = None
+        self.assertEqual(
+            audit.schema_problems(workflow), ["unexpected top-level key ['whole run']"]
+        )
+
+    def test_the_on_key_arrives_as_a_boolean_and_is_accepted(self) -> None:
+        # PyYAML's YAML 1.1 loader reads `on` as the yes-word, so a naive `'on' in workflow` would call
+        # every workflow in this repository broken.
+        workflow = load()
+        self.assertIn(True, workflow, 'the loader no longer folds `on` to True; this test is stale')
+        self.assertEqual(audit.schema_problems(workflow), [])
+
+    def test_missing_jobs_is_refused(self) -> None:
+        self.assertEqual(audit.schema_problems({'on': None}), ["missing top-level key 'jobs'"])
+
+    def test_a_non_mapping_is_refused_rather_than_crashing(self) -> None:
+        self.assertEqual(audit.schema_problems(['name: x']), ['not a mapping'])
+
+    def test_the_cli_fails_on_a_sibling_with_a_stray_key(self) -> None:
+        import tempfile
+
+        import yaml
+
+        with tempfile.TemporaryDirectory() as directory:
+            (Path(directory) / 'verify.yml').write_text(
+                WORKFLOW.read_text(encoding='utf-8'), encoding='utf-8'
+            )
+            broken = load()
+            broken['whole run'] = None
+            (Path(directory) / 'sibling.yml').write_text(
+                yaml.safe_dump(broken), encoding='utf-8'
+            )
+            out, err = io.StringIO(), io.StringIO()
+            with contextlib.redirect_stdout(out), contextlib.redirect_stderr(err):
+                code = audit.main(['--workflow', str(Path(directory) / 'verify.yml')])
+        self.assertEqual(code, 1)
+        self.assertIn('workflow-schema', out.getvalue())
+
 if __name__ == '__main__':
     unittest.main()

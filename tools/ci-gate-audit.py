@@ -311,6 +311,40 @@ def evaluate_prerequisites(workflow: dict) -> list[tuple[Requirement, bool, str]
     return results
 
 
+# What GitHub accepts as a top-level key of a workflow file.
+#
+# ## Why the gate needs this and `yaml.safe_load` does not give it
+#
+# A workflow was pushed in this round whose comment block lost one `#`, so a line of prose became a
+# top-level key `whole run:`. PyYAML parsed it -- a plain scalar followed by a colon is a mapping key --
+# and every gate here was green, because `evaluate` reads `jobs` and `on` and never asks what else is in
+# the document. GitHub refused the *dispatch* with `failed to parse workflow: (Line: 23, Col: 1):
+# Unexpected value 'whole run'`, which is a failure of the only step a person can take with a
+# dispatch-only workflow: it cannot be dispatched.
+#
+# So the check is against the schema GitHub validates, not against the one YAML permits. The list is
+# the whole of it as of 2026-11: a key outside this set is a document GitHub will not run, and a gate
+# that reports it green is a gate measuring its own file rather than the platform's.
+WORKFLOW_TOP_LEVEL = frozenset(
+    {'name', 'on', 'permissions', 'env', 'defaults', 'concurrency', 'jobs', 'run-name'}
+)
+
+
+def schema_problems(workflow: object) -> list[str]:
+    """What GitHub would refuse, in the order a person can act on it."""
+    if not isinstance(workflow, dict):
+        return ['not a mapping']
+    # `on` is a yes-word to PyYAML's YAML 1.1 loader, so the key arrives as `True`. Normalised here
+    # rather than at each reader: a second reader is how the two spellings become two rules.
+    keys = {('on' if key is True else key) for key in workflow}
+    unknown = sorted(key for key in keys if key not in WORKFLOW_TOP_LEVEL)
+    problems = [] if not unknown else [f'unexpected top-level key {unknown}']
+    for required in ('on', 'jobs'):
+        if required not in keys:
+            problems.append(f'missing top-level key {required!r}')
+    return problems
+
+
 def audit_directory(directory: Path) -> int:
     """The prerequisite rule over every workflow in `directory`, not just the audited one.
 
@@ -330,6 +364,11 @@ def audit_directory(directory: Path) -> int:
             print(f'FAIL  {PREREQUISITE.name:<18} {path.name}: not a mapping')
             failures += 1
             continue
+        problems = schema_problems(workflow)
+        if problems:
+            for problem in problems:
+                print(f'FAIL  {"workflow-schema":<18} {path.name}: {problem}')
+            failures += len(problems)
         for requirement, ok, detail in evaluate_prerequisites(workflow):
             print(f'{"PASS" if ok else "FAIL"}  {requirement.name:<18} {path.name}: {detail}')
             if not ok:
