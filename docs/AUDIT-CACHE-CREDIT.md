@@ -1,8 +1,11 @@
 # The price that refused the mechanism is a counter the prompts cannot produce
 
-**Status:** the arithmetic is closed; the probe that decides what the counter measures is dispatched on
-demand (`probe-cache-credit.yml`). Until it reports, `resolution: 'layered'` stays at `raw` **and** the
-1.55x price ratio of run `45543010618` is recorded as an unexplained field rather than as a bill.
+**Status:** measured. Run `45574814660` answered the model question — the counter is a **prefix cache**,
+mean residual 0.035 — and left the magnitude question open in a sharper form: a byte-identical repeat is
+credited **82.7%**, not 100%, and the benchmark's 96.4% still exceeds the bound its own two repetitions
+impose by 1.93x. `resolution: 'layered'` stays at `raw`, and the next step is the structural one: a turn's
+rendering that does not read the question.
+
 
 ## 0. One paragraph
 
@@ -101,3 +104,59 @@ models and the verdict rule are `packages/cortex-eval/src/cache-credit.ts`, test
 **100 / 100 / 100 / 100** over 35 cases, including the two refusals a wrong dispatch would otherwise
 produce a verdict from: a sample for a prompt that was never sent, and a credit larger than the prompt
 it describes.
+
+## 7. The probe's reading (run `45574814660`)
+
+Five prompts, sent in order, one call at a time. `promptTokens` and the credit are the provider's own
+fields, read through the product's adapter:
+
+| variant | prompt tokens | credited | position model says | content model says |
+| --- | ---: | ---: | ---: | ---: |
+| `reference` | 1,393 | 0 (0.0%) | 0% | 0% |
+| `repeat` | 1,393 | 1,152 (**82.7%**) | 100% | 100% |
+| `head-changed` | 1,392 | 0 (0.0%) | 0% | 94.2% |
+| `paragraphs-swapped` | 1,393 | 0 (0.0%) | 0% | 100% |
+| `unrelated` | 1,483 | 0 (0.0%) | 0% | 0.8% |
+
+**Verdict `position`**, mean absolute residual **0.035**, worst 0.173 — the worst row being `repeat`,
+which is the row that matters.
+
+### 7.1 What the probe settled
+
+The counter is a prefix cache. Reordering the paragraphs of a prompt, which keeps every sentence and
+destroys every run from the start, is credited **nothing**; the content model predicted 100% there and
+was wrong by a whole prompt. So the credit is not a content measure and the repository's intuition about
+what a `resolution` change does to a bill has a real object: a turn whose rendering depends on the
+question breaks the prefix for every question after it.
+
+### 7.2 What the probe did **not** settle, and made worse
+
+A byte-identical second send was credited **82.7%**, not 100%. Two readings are compatible with that
+number and they are not the same finding:
+
+- the provider writes its cache asynchronously, so the tail of the first prompt was not yet available
+  241 tokens later;
+- the credit excludes a fixed tail by construction.
+
+Either way the consequence is the same and it is the one that matters for a bill: **the credit depends on
+when the second call arrived**, which is a property of the dispatch rather than of the mechanism. A
+counter whose control reading is 82.7% cannot price a 96.4%-against-70.6% difference at 1.55x.
+
+And the 96.4% is still 1.93x the ceiling §2 proves. The probe says the *model* is `position`; nothing in
+it explains how a prompt that was sent twice was served from cache more than once.
+
+### 7.3 The rule's branch, and the step it names
+
+§4 branches on the model, and the model came back `position`: the credit is a reuse measure, a fallen
+credit is a real cost, and the lever is to make the rendering of a turn **independent of the question**.
+That is the next dispatch's mechanism, not this round's conclusion:
+
+| step | what it changes | cost | why it can be measured |
+| --- | --- | --- | --- |
+| `layered` v2 | `resolveTurn` reads `(content, cap)` only; the form is chosen by the turn's own operand content instead of by whether it shares a term with the question | one engineering change, ¥0 to build and test | the invariant is a unit test: two questions over the same turns must produce byte-identical evidence |
+| the replication | `raw` against `layered` v2 over the registered 500 | ≈¥8 | the same pairing, the same four criteria, re-registered before it runs |
+
+`R5` cannot be registered on the price ratio until §7.2 has an answer, and that answer is not something a
+probe of five prompts can give: it needs the dispatch's own call ledger to account for every prompt it
+billed. Until then the criterion that decides is `R3` -- prompt tokens per answer, +0.07% -- which is the
+one quantity in the artifact that does not depend on when a call arrived.
