@@ -479,6 +479,16 @@ describe('the forward from the arm options into the product constructor', () => 
     new URL('../../../cortex-memory/bench/run-ablation.ts', import.meta.url),
     'utf8',
   );
+  /**
+   * The four pairings' refusals, which live beside the pairing rather than beside the harness.
+   *
+   * They were four `if (...) throw` blocks in `main` until §197, and `main` opens a dataset and a worker pool
+   * before it can be called -- so the tests below could only ever read the source, and three rounds passed
+   * with the conditions untested. They are now `pairingViolation`'s switch, which `arm-pairing.test.ts`
+   * exercises over a 4 x 16 Cartesian product. What the assertions below still have to prove is the part a
+   * unit test of that function cannot: that `main` ASKS it.
+   */
+  const PAIRING = readFileSync(new URL('../arm-pairing.ts', import.meta.url), 'utf8');
 
   it('spreads the switch into the constructor, so the treatment has an on-switch at all', () => {
     // The spread reads the construction's own argument rather than the parsed option, because under
@@ -514,7 +524,9 @@ describe('the forward from the arm options into the product constructor', () => 
     // accuracy number is read. A pair with `raw` on both sides reads `F1` as zero, and the consequence
     // table's first row is "the run is void, fix the implementation" -- which is the wrong diagnosis for
     // what is actually a dispatch error. Refused before the first call, like the other two.
-    expect(ARM).toContain("pairing === 'resolution' && armOptions.resolution !== 'layered'");
+    expect(PAIRING).toContain("case 'resolution':");
+    expect(PAIRING).toContain("treatment.resolution === 'layered'");
+    expect(ARM).toContain('pairingViolation(pairing, armTreatment)');
   });
 
   it('names the resolution from the treatment, unconditionally', () => {
@@ -539,7 +551,9 @@ describe('the forward from the arm options into the product constructor', () => 
     // Two sides of one system with the carry off on both is the one run this round exists to make
     // impossible: `delta = 0` with a census of `0`, read as "the layer carried nothing" when the truth
     // is "the layer was never asked". Refused before the first call, so it costs nothing.
-    expect(ARM).toContain("pairing === 'carry' && armOptions.semanticCarry !== true");
+    expect(PAIRING).toContain("case 'carry':");
+    expect(PAIRING).toContain('if (treatment.carry) return null;');
+    expect(ARM).toContain('pairingViolation(pairing, armTreatment)');
   });
 
   it('refuses a clock pair whose treatment side was left off, for the same reason one flag over', () => {
@@ -547,7 +561,9 @@ describe('the forward from the arm options into the product constructor', () => 
     // sides lands on `C1`'s null branch -- which the pre-registration reads as "the effect is below the
     // floor or points the other way". A run that never administered the treatment must not be able to
     // occupy that branch.
-    expect(ARM).toContain("pairing === 'clock' && armOptions.sessionClock !== 'on'");
+    expect(PAIRING).toContain("case 'clock':");
+    expect(PAIRING).toContain('if (treatment.clock) return null;');
+    expect(ARM).toContain('pairingViolation(pairing, armTreatment)');
   });
 
   it('spreads the clock from the construction’s argument rather than from the parsed option', () => {

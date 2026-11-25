@@ -305,12 +305,27 @@ def test_the_paired_workflow_derives_the_rendering_form_from_the_pairing() -> No
     *is* the pairing, and a second channel would let `pairing=resolution` ship with the treatment off.
     """
     workflow = read(PAIRED)
-    forward = "CORTEX_MEMORY_RESOLUTION: ${{ inputs.pairing == 'resolution' && 'layered' || 'raw' }}"
-    assert forward in workflow, (
-        f'{PAIRED.name} does not derive CORTEX_MEMORY_RESOLUTION from `pairing`. Without it the arm '
-        'renders the registered form on both sides, F3 reads a density ratio of 1.0, and the consequence '
-        'table blames the implementation for a dispatch that never named the treatment.'
+    # Asserted by the CLAUSES the line has to carry rather than by the whole expression. The expression
+    # gained a second pairing in §197 -- `ask` renders `layered` too, because pricing an instruction block
+    # at a rendering the product does not ship is the defect `RETRACTIONS.md` 28 withdraws -- and an
+    # equality against the old string would have made the guard about a spelling rather than about the
+    # property. The property is: every pairing whose delta is a rendering form's renders the layered form
+    # on the side that administers it, and `raw` is what everything else gets.
+    forward = next(
+        (line.strip() for line in workflow.splitlines() if line.strip().startswith('CORTEX_MEMORY_RESOLUTION:')),
+        None,
     )
+    assert forward is not None, (
+        f'{PAIRED.name} has no CORTEX_MEMORY_RESOLUTION line. Without it the arm renders the registered '
+        'form on both sides, F3 reads a density ratio of 1.0, and the consequence table blames the '
+        'implementation for a dispatch that never named the treatment.'
+    )
+    for clause in ("inputs.pairing == 'resolution'", "inputs.pairing == 'ask'", "'layered'", "'raw'"):
+        assert clause in forward, (
+            f'{PAIRED.name} derives CORTEX_MEMORY_RESOLUTION from `pairing` without naming {clause!r}: '
+            f'the line reads {forward!r}. A pairing left off it administers the rendering form on both '
+            'sides, so the pair produces no delta and the reading is about nothing.'
+        )
     assert 'CORTEX_MEMORY_RESOLUTION: ${{ vars.' not in workflow, (
         'the paired workflow also reads a repository variable for the same form: two sources for one '
         'field, and the artifact cannot say which one won'

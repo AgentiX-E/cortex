@@ -80,9 +80,14 @@ on:
         default: '2'
         type: string
       pairing:
-        description: 'Which two systems the sides are. `carry` puts the same cognitive system twice with `semanticCarry` off against on -- S12''s instrument. `clock` puts the same cognitive system twice with `sessionClock` off against on -- the boundary clock''s instrument, and the same shape one flag over. `resolution` puts the same cognitive system twice with `resolution` at the registered `raw` against `layered` -- C7''s instrument, and the one pair whose delta is a rendering form''s rather than a switch''s. `reference` is the arm''s registered pair (the reference pipeline against the cognitive one), which is what S10 needs: its two sides are two dispatches of one configuration differing by the turn window, so neither side is a carry arm'
+        description: 'Which two systems the sides are. `carry` puts the same cognitive system twice with `semanticCarry` off against on -- S12''s instrument. `clock` puts the same cognitive system twice with `sessionClock` off against on -- the boundary clock''s instrument, and the same shape one flag over. `resolution` puts the same cognitive system twice with `resolution` at the registered `raw` against `layered` -- C7''s instrument, and the one pair whose delta is a rendering form''s rather than a switch''s. `reference` is the arm''s registered pair (the reference pipeline against the cognitive one), which is what S10 needs: its two sides are two dispatches of one configuration differing by the turn window, so neither side is a carry arm. `ask` puts the same cognitive system twice with each route''s reference instruction block on the control side and the block named in the `ask` input on the feature side -- the pair `13.291`''s adoption should have been priced with, and the one `PREREG-CLOCK-AXIS.md` 7 asked for after run 45636994046 charged an ask with a rendering. It renders `layered` on both sides, because pricing an ask at a rendering the product does not ship is the defect that reading was withdrawn for'
         required: false
         default: carry
+        type: string
+      ask:
+        description: 'Which instruction block the reader is asked with, for `pairing=ask`. `verbatim-acts` is the block `13.291` adopted and therefore the default, which makes a bare `pairing=ask` dispatch the re-pricing of the shipped ask against each route''s reference block -- the reading the register has never had, because every ask number in it compares two artifacts and the one attempt to compare two asks (45636994046) moved the rendering as well. `route` is refused: it IS the control side, so naming it would produce a pair with the reference block on both. The value is also honoured by every other pairing, because it is the arm''s own variable rather than this workflow''s -- the default reproduces the literal it replaces byte for byte, and a dispatch that changes it is changing the prompt under a pairing that was not designed to measure it'
+        required: false
+        default: verbatim-acts
         type: string
       turn_rendering:
         description: 'How a capped turn is rendered. `head` is the registered rendering: the first 400 characters, cut silently (the default, and what every archived artifact used). `ellipsis` is the same cut with the omission printed -- it moves no characters, only the mark. `match` is the anchored window around the query match, and the product forces `ellipsis` for it, so a window that cut silently cannot be dispatched at all. The three are one input rather than two because `<window> + <marker>` admits a fourth combination the parser refuses, and an input that can only name the three legal renderings cannot produce it'
@@ -389,7 +394,10 @@ jobs:
           # pairing, so a second channel would let a dispatch say `pairing=resolution` while its treatment
           # rendered whole turns. `raw` is what the product does when the key is absent, which is why the
           # control side of this pairing and a run that names nothing are the same rendering.
-          CORTEX_MEMORY_RESOLUTION: ${{ inputs.pairing == 'resolution' && 'layered' || 'raw' }}
+          # `ask` joins `resolution` on the layered side: the ask has never been priced on the
+          # rendering that ships, and a pair that measured it on `raw` would be the mistake
+          # `RETRACTIONS.md` 28 withdraws, made again with an instrument that cannot be blamed.
+          CORTEX_MEMORY_RESOLUTION: ${{ (inputs.pairing == 'resolution' || inputs.pairing == 'ask') && 'layered' || 'raw' }}
           CORTEX_WINDOWS: ${{ inputs.windows }}
           CORTEX_CAPABILITY: ${{ inputs.capability }}
           CORTEX_MEMORY_WORKERS: ${{ inputs.workers }}
@@ -408,7 +416,7 @@ jobs:
           CORTEX_MEMORY_SOURCE_TRUST: '0.5'
           CORTEX_MEMORY_CONFIDENCE: none
           CORTEX_MEMORY_PROMPT_CONTRACT: evidence-blocks-unsourced
-          CORTEX_MEMORY_ASK: verbatim-acts
+          CORTEX_MEMORY_ASK: ${{ inputs.ask }}
           # arm-config: CORTEX_MEMORY_REVIEW_PASS departs — the carry has nothing to carry without the
           # pass that absorbs, so this file's treatment *is* `supersede`. The claim it tests is that the
           # carry adds nothing on top; the control is this file with `semantic_carry` off.

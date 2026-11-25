@@ -204,3 +204,27 @@ setting that repository variable to `layered` makes the next A/B dispatch render
 records the value it rendered. One `MR` dispatch of `verbatim-acts` against the reference block, both at
 `layered`, re-prices the shipped ask at **¥5.87**. It is a settings change rather than a commit, which is why the
 round that makes it has to say so in its report: git cannot see it, and the artifact is the only record.
+
+### 7.1 Two paragraphs above were superseded one round later, and the replacements are better
+
+Kept as written rather than edited, because both are the readings of their round and a document that quietly
+improved would hide which of its sentences were wrong.
+
+**Item 3 is now a positive assertion.** It read _"no workflow prices an ask at the rendering that ships"_, asserted
+as an absence with the note that the day an input exists the test is red and the sentence has to be rewritten. It
+went red in `§197`. The replacement asserts three facts: `semantic-carry.yml` takes the ask from `${{ inputs.ask }}`,
+its `CORTEX_MEMORY_RESOLUTION` branch names both `resolution` and `ask` on the `layered` side, and the declared
+default is `verbatim-acts` — so a bare `pairing=ask` dispatch prices **the shipped block** against the reference
+block.
+
+**The last paragraph's route is not the route taken.** Setting `vars.CORTEX_MEMORY_RESOLUTION=layered` would have
+made the next A/B dispatch render the shipped arm — but as a **settings change**, invisible to git, with the
+artifact as the only record, and it would still have compared two dispatches rather than two sides of one pass. The
+`pairing=ask` value added in `§197` does the same reading with neither drawback: one job, one corpus, one
+instruction block between the sides, both rendering `layered`. It costs no dispatch input because
+`semantic-carry.yml`'s `pairing` is an enumerable axis selector and that workflow is at 13 of GitHub's 25 inputs,
+where the ask's own workflow is at 24.
+
+The reason the better route was not obvious from here is worth recording: this round's diagnosis was _"the field
+cannot be named"_, and `§197`'s was _"the field does not need to be named — the axis selector already exists one
+workflow over."_

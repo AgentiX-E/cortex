@@ -597,9 +597,12 @@ export { readWindowCount, withWindows, WINDOW_MARKER } from './two-window.js';
 // count above -- the harness applies this first and multiplies the slice afterwards.
 export { readShardPartition, shardDataset } from './shard.js';
 
-// Which two systems a dispatch puts on its two sides. One reader, one call site: the harness builds
-// the pair differently when this says `carry`, and the artifact records which pairing it built.
-export { readArmPairing } from './arm-pairing.js';
+// Which two systems a dispatch puts on its two sides, and whether a treatment can be that pairing. One
+// reader, one call site: the harness builds the pair differently when this says `carry`, and the artifact
+// records which pairing it built. `pairingViolation` is exported beside it because the check it answers is
+// about the pairing rather than about the harness -- it lived in `run-ablation.ts`'s `main` for three
+// rounds, where a function that opens a dataset before it can be called kept all four rungs untested.
+export { pairingViolation, readArmPairing, type PairingTreatment } from './arm-pairing.js';
 
 // `withTemperature` stays module-private: `llm-factory` is its only consumer, and an exported
 // decorator with one in-package caller is an export the census reports as an orphan. The reader

@@ -442,22 +442,84 @@ describe('an arm variable is nameable from a dispatch or its gap is written down
     expect(missing).toEqual([]);
   });
 
-  it('records that no workflow prices an ask at the rendering that ships', () => {
-    // THE GAP THIS ROUND MEASURED. The arm that ships is `resolution=layered` with `ask=verbatim-acts`; the
-    // workflow that can move the ask falls back to `raw`, and the workflow that renders `layered` hardcodes
-    // `CORTEX_MEMORY_ASK: verbatim-acts` on one line. So every ask reading in the register is a reading of a
-    // configuration the product does not ship, and closing it needs an input the ceiling does not allow.
-    // Asserted as an ABSENCE on purpose: when the input exists this test is red, and the sentence above has to
-    // be rewritten rather than left standing.
-    const both = WORKFLOWS.filter(
-      (file) =>
-        wiring('CORTEX_MEMORY_ASK').some(
-          (row) =>
-            row.file === file &&
-            /^\$\{\{\s*(?:github\.event\.inputs|inputs)\.[a-z0-9_]+\s*\}\}$/.test(row.value),
-        ) && classify('CORTEX_MEMORY_RESOLUTION').kind === 'input',
+  /**
+   * The absence this block used to assert, and the sentence it promised to rewrite.
+   *
+   * It read: *"the workflow that can move the ask falls back to `raw`, the workflow that renders `layered`
+   * hardcodes `CORTEX_MEMORY_ASK: verbatim-acts` on one line, so every ask reading in the register is a
+   * reading of a configuration the product does not ship"* — asserted as an ABSENCE, with the note that
+   * "when the input exists this test is red, and the sentence above has to be rewritten rather than left
+   * standing". It went red, and this is the rewrite.
+   *
+   * The input did not come from the arm's workflow, which is at 24 of GitHub's 25 dispatch inputs. It came
+   * from the **pairing** workflow, which was at 13 and whose `pairing` input is an enumerable axis
+   * selector: adding `ask` to that enum costs no slot, and the shape it produces is the one the register
+   * has been missing — one pass, one corpus, one instruction block between the two sides, both rendering
+   * `layered`.
+   *
+   * Three facts make it true and all three are asserted: the ask is a dispatch value in that workflow, the
+   * rendering branch puts `ask` on the layered side, and the declared default is the block the product
+   * ships — so a bare `pairing=ask` dispatch prices **the shipped ask** against the reference block, which
+   * is exactly the reading `13.291`'s adoption was never given.
+   */
+  it('prices an ask at the rendering that ships, in the pairing workflow', () => {
+    const ask = wiring('CORTEX_MEMORY_ASK').filter((row) => row.file === 'semantic-carry.yml');
+    expect(ask.map((row) => row.value)).toEqual(['${{ inputs.ask }}']);
+
+    const resolution = wiring('CORTEX_MEMORY_RESOLUTION').filter(
+      (row) => row.file === 'semantic-carry.yml',
     );
-    expect(both).toEqual([]);
-    expect(wiring('CORTEX_MEMORY_ASK').map((row) => row.value)).toContain('verbatim-acts');
+    // The branch is asserted by its two names rather than by equality with a whole expression: a workflow
+    // that grew a third pairing on the layered side would still pass, and one that dropped `ask` from it
+    // would not. The rendering is what the pairing is for, so the guard has to name it.
+    expect(resolution).toHaveLength(1);
+    expect(resolution[0]?.value).toContain("inputs.pairing == 'ask'");
+    expect(resolution[0]?.value).toContain("'layered'");
+
+    // The declared default, read off the `ask` input block rather than from anywhere in the file: a
+    // `default: verbatim-acts` under another input would satisfy a whole-file search.
+    const text = readFileSync(resolve(REPO_ROOT, '.github/workflows/semantic-carry.yml'), 'utf8');
+    const block = /\n {6}ask:\n([\s\S]*?)(?=\n {6}[a-z_]+:\n)/.exec(text);
+    expect(block).not.toBeNull();
+    expect(block?.[1]).toContain('default: verbatim-acts');
+    expect(block?.[1]).toContain('required: false');
+  });
+});
+
+/**
+ * A copy of a constant is a claim that it still agrees with the original.
+ *
+ * `tools/room-census.mjs` prints its rows in the product's route order, which means it holds a second copy
+ * of `TURN_CAP_ROUTES`. That is the right trade -- the census is a diagnostic script and importing the
+ * product to read six strings would make the tool depend on a build -- and it is only right while a gate
+ * re-reads both. `assemble-rooms.test.ts` is the same shape one constant over: `REGISTERED_ROOMS` duplicates
+ * the arm's recorded table and a gate compares them, because the alternative is a tool that reports a
+ * route order the product no longer has, under a heading that claims it is the product's.
+ *
+ * Equality rather than set equality on purpose: the order is the whole claim being made. A route added to
+ * the product and appended by this tool would pass a set comparison and print a table in an order no
+ * product file states.
+ */
+describe('the room census prints the product route order', () => {
+  it('lists TURN_CAP_ROUTES in the order the product declares them', () => {
+    const types = readFileSync(resolve(REPO_ROOT, 'packages/cortex-memory/src/types.ts'), 'utf8');
+    const declared = /export const TURN_CAP_ROUTES = \[([\s\S]*?)\] as const;/.exec(types);
+    expect(declared).not.toBeNull();
+    const productOrder = [...(declared?.[1] ?? '').matchAll(/'([a-z-]+)'/g)].map(
+      (match) => match[1] as string,
+    );
+    // The regex is this gate's only assumption about the declaration. An emptied match passes every
+    // assertion below, so the count is asserted first.
+    expect(productOrder.length).toBe(6);
+    expect(productOrder).toContain('multi-session');
+
+    const tool = readFileSync(resolve(REPO_ROOT, 'tools/room-census.mjs'), 'utf8');
+    const printed = /const ROUTES = \[([\s\S]*?)\];/.exec(tool);
+    expect(printed).not.toBeNull();
+    const toolOrder = [...(printed?.[1] ?? '').matchAll(/'([a-z-]+)'/g)].map(
+      (match) => match[1] as string,
+    );
+
+    expect(toolOrder).toEqual(productOrder);
   });
 });

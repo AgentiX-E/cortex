@@ -142,8 +142,12 @@ import {
   readShardPartition,
   shardDataset,
   // §E6's pair. `carry` puts one system on both sides with one flag between them; `reference` is the
-  // registered pair and what an unset variable means.
+  // registered pair and what an unset variable means. `pairingViolation` is the same module's answer to
+  // "can this treatment be this pairing", moved there so each rung is a value a test can assert rather
+  // than a throw inside a function that cannot be called without a dataset.
+  pairingViolation,
   readArmPairing,
+  type PairingTreatment,
   // §13.378's instrument. `createReadersFromEnv` and `createJudgeFromEnv` answer from constants when
   // the variable is set, so these four calls are the whole of this entry point's part: refuse the
   // configuration the reading cannot be taken under, say on the run's own line what answered, check
@@ -365,6 +369,17 @@ const RESOLUTION_FORWARDING: Record<ResolutionMode, ResolutionMode | undefined> 
 };
 
 /**
+ * The ask one side is asked with, or the sentinel that renders the reference block.
+ *
+ * `'route'` is not a fourth instruction block: it is the **absence** of the key, which is what every route
+ * renders when a run names no ask (`ASK_ROUTES`' own reference block). It is spelled in the treatment rather
+ * than left as `undefined` because `ArmTreatment` is a statement about what a side is, and "asked with
+ * nothing named" is a state of the side rather than a hole in the record -- the same reason `resolution`
+ * spells `raw` rather than omitting the key.
+ */
+type TreatmentAsk = EvidenceAsk | 'route';
+
+/**
  * The keys of the constructor a one-flag pairing is allowed to put between its two sides.
  *
  * `CORTEX_MEMORY_AB` names which key; this type is what the baseline branch is built from, and it exists
@@ -378,10 +393,9 @@ const RESOLUTION_FORWARDING: Record<ResolutionMode, ResolutionMode | undefined> 
  * property that keeps a fourth pairing from silently falling through to the reference baseline -- a
  * two-system delta published under a one-flag artifact.
  */
-type ArmTreatment = {
-  readonly carry: boolean;
-  readonly clock: boolean;
+type ArmTreatment = PairingTreatment & {
   readonly resolution: ResolutionMode;
+  readonly ask: TreatmentAsk;
 };
 
 /**
@@ -992,6 +1006,10 @@ async function main(): Promise<void> {
     carry: armOptions.semanticCarry === true,
     clock: armOptions.sessionClock === 'on',
     resolution: forwardedResolution ?? 'raw',
+    // `'route'` is the arm's own spelling for "no ask was named", and it arrives here as a string because
+    // `cortex-eval` carries the ask as `string` (the dependency runs the other way) and validates it against
+    // the product's list at parse time. The cast states what that validation already established.
+    ask: armOptions.ask as TreatmentAsk,
   };
 
   // The two readers the product asks for. Absent unless the run named it, so a dispatch of any other
@@ -1078,11 +1096,16 @@ async function main(): Promise<void> {
       // is harmless today and is exactly the kind of harmless-until-it-is-not that the
       // conditional spreads above exist to avoid.
       //
-      // The cast is at this boundary for the same reason as `promptContract`: `cortex-eval`
-      // carries the ask as `string` because the dependency runs the other way, and
-      // `readAsk` validates it against the product's own list at parse time, throwing on
-      // anything unrecognised. So the value IS one of the union's members here.
-      ...(armOptions.ask === 'route' ? {} : { ask: armOptions.ask as EvidenceAsk }),
+      // `treatment.ask` rather than `armOptions.ask`, for the reason `treatment.clock` gives one
+      // spread down: under `CORTEX_MEMORY_AB=ask` this same construction is asked for twice with one
+      // block between the two sides, and a read of the parsed option here would ask the control with
+      // the treatment's block -- which is a zero delta reported for a comparison that never had a
+      // control.
+      //
+      // The cast is unnecessary now that the treatment is typed: `TreatmentAsk` is `EvidenceAsk |
+      // 'route'` and the spread has already excluded `'route'`, so the value IS one of the union's
+      // members by construction rather than by assertion.
+      ...(treatment.ask === 'route' ? {} : { ask: treatment.ask }),
       // §13.352. The related-statements block. Spread conditionally for the reason every option above
       // is: `false` IS the shipped behaviour and is expressed by NOT passing the key, so a run that
       // does not name it reproduces the previous prompt byte for byte -- which `conflict-reach.test.ts`
@@ -1307,51 +1330,20 @@ async function main(): Promise<void> {
         'a treatment that never executed.',
     );
   }
-  if (pairing === 'carry' && armOptions.semanticCarry !== true) {
-    // Refused before the first call, because the run this would produce is the one the whole round exists
-    // to make impossible: two sides of one system with the treatment off on both, a delta of zero, and a
-    // census of zero that reads as "the layer carried nothing" when it is "the layer was never asked".
-    throw new Error(
-      'CORTEX_MEMORY_AB=carry pairs the cognitive system against itself with `semanticCarry` off, so the ' +
-        'feature side must be the side that carries: set CORTEX_MEMORY_SEMANTIC_CARRY=1. Without it both ' +
-        'sides are the control, and the artifact would publish a null result for a comparison that never ' +
-        'administered the treatment.',
-    );
-  }
-  if (pairing === 'clock' && armOptions.sessionClock !== 'on') {
-    // The same refusal, one flag over, and it is not symmetry for its own sake: the boundary clock's
-    // criterion (pre-registration §3, `C1`) reads a **paired** movement on `MR`, so a dispatch whose two
-    // sides both render without the clock produces the null result that criterion was written to prevent --
-    // and a null on `C1` is the branch that says "the effect is below the floor or points the other way".
-    // A run that never administered the treatment must not be able to land there.
-    throw new Error(
-      'CORTEX_MEMORY_AB=clock pairs the cognitive system against itself with `sessionClock` off, so the ' +
-        'feature side must be the side with the clock: set CORTEX_MEMORY_SESSION_CLOCK=on. Without it both ' +
-        'sides are the control, and the paired criterion would read zero for a comparison that never ' +
-        'administered the treatment.',
-    );
-  }
-  if (pairing === 'resolution' && armOptions.resolution !== 'layered') {
-    // The third refusal, and it is the one `C7` needs: `F1` asks the run to show the mechanism executing
-    // (≥90/500 digests changed) before any accuracy number is read, and a pair with `raw` on both sides
-    // reads `F1` as zero. The consequence table's first row then says "the run is void, fix the
-    // implementation" -- a diagnosis about code for what would actually be a dispatch that never named the
-    // treatment. Refused before the first call, so the wrong branch costs nothing to avoid.
-    throw new Error(
-      'CORTEX_MEMORY_AB=resolution pairs the cognitive system against itself with `resolution` at its ' +
-        'registered `raw`, so the feature side must be the side that layers: set ' +
-        'CORTEX_MEMORY_RESOLUTION=layered. Without it both sides render whole turns, F1 reads zero, and ' +
-        "C7's consequence table would blame the implementation for a dispatch error.",
-    );
-  }
+  // The four pairing refusals are `arm-pairing.ts`'s `pairingViolation`, and the move is not cosmetic.
+  // They were four `if (...) throw` blocks here for three rounds, in a function that opens a dataset and a
+  // worker pool before it can be called -- so **not one of them had a test**, and the ladder of identical
+  // refusals was carried by prose. Returning the message makes each rung a value a test asserts.
+  const violation = pairingViolation(pairing, armTreatment);
+  if (violation !== null) throw new Error(violation);
   const buildFeature = (): CortexMemory => buildCortex(armTreatment);
   // The control side, as a function of which key this pairing splits. Each branch spreads the feature's
   // treatment and rewrites EXACTLY one key, which is the property that makes the delta attributable: under
   // `carry` both sides carry the clock and the form the dispatch asked for, under `clock` both carry the
-  // same `semanticCarry`, and under `resolution` both carry the same two switches. Written as a switch over
-  // the pairing rather than as a chain of ternaries so that adding a fourth pairing is a compile error here
-  // rather than a silent fall-through to the reference baseline -- which would publish a two-system delta
-  // under a one-flag artifact.
+  // same `semanticCarry`, under `resolution` both carry the same two switches, and under `ask` both carry
+  // the same rendering. Written as a switch over the pairing rather than as a chain of ternaries so that
+  // adding a pairing is a compile error here rather than a silent fall-through to the reference baseline --
+  // which would publish a two-system delta under a one-flag artifact.
   const buildPairBaseline = (): MemorySystem => {
     switch (pairing) {
       case 'carry':
@@ -1360,6 +1352,14 @@ async function main(): Promise<void> {
         return buildCortex({ ...armTreatment, clock: false });
       case 'resolution':
         return buildCortex({ ...armTreatment, resolution: 'raw' });
+      case 'ask':
+        // `'route'`, not `REGISTERED_ARM.ask`: the control of this instrument is the **reference block**,
+        // which is the configuration every artifact published before `§13.291` was produced under and the
+        // one the adoption was priced against (93.50% against 91.70%). Reading the shipped arm here would
+        // make the pairing's control move whenever the product adopted a new ask, so a reading taken today
+        // and one taken after the next adoption would be deltas against two different controls -- and the
+        // register would have no way to say so.
+        return buildCortex({ ...armTreatment, ask: 'route' });
       case 'reference':
         return buildBaseline();
     }
@@ -1578,6 +1578,11 @@ async function main(): Promise<void> {
       // two `roleCensus` medians on ONE population, so an artifact that recorded the form without the pair
       // would let a reader believe the two medians came from two runs of two systems.
       resolutionPair: pairing === 'resolution',
+      // The fourth one-flag pair. `ask=verbatim-acts` says a block was named; this says the baseline rendered
+      // each route's REFERENCE block in the same job, which is what makes the delta the block's rather than a
+      // difference between two runs. Recorded for the reason `resolutionPair` is: the register's every ask
+      // reading compares two artifacts, and this field is what tells a later reader that one did not.
+      askPair: pairing === 'ask',
     },
     datasetFingerprint,
     // §E6's population, when the run multiplied it or answered one part of a split dispatch. Absent

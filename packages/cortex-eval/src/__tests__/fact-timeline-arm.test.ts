@@ -160,11 +160,18 @@ describe('link 4: the options reach the product constructor', () => {
     // One message naming both variables, because the alternative is two dispatch-fix-rerun cycles: the
     // pairing rule would let this through (its condition is about `pairing`, not about this switch) and the
     // run would publish `delta = 0` with `factTimeline: true` on the artifact.
+    //
+    // The ordering is asserted against the **pairing check's call site** rather than against one of its
+    // conditions. The four pairing refusals moved to `arm-pairing.ts`'s `pairingViolation` in §197 --
+    // because four `if (...) throw` blocks inside a function that opens a dataset had none of them tested --
+    // and an assertion that named a condition would have gone green for the wrong reason: the string it
+    // searched for is no longer in this file at all, so `indexOf` returned -1 and the round-1 reading of
+    // this test was a comparison of two absences.
     expect(ARM).toContain('armOptions.factTimeline === true && armOptions.semanticCarry !== true');
     const refusal = ARM.indexOf(
       'armOptions.factTimeline === true && armOptions.semanticCarry !== true',
     );
-    const pairing = ARM.indexOf("pairing === 'carry' && armOptions.semanticCarry !== true");
+    const pairing = ARM.indexOf('pairingViolation(pairing, armTreatment)');
     expect(refusal).toBeGreaterThan(-1);
     expect(pairing).toBeGreaterThan(-1);
     // Ordered: the more specific refusal first, so a dispatch missing both variables is told about both.
