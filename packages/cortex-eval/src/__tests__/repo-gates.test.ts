@@ -523,3 +523,37 @@ describe('the room census prints the product route order', () => {
     expect(toolOrder).toEqual(productOrder);
   });
 });
+
+/**
+ * The failure census holds two copies of product vocabularies, and each one is a claim that it agrees.
+ *
+ * `tools/failure-classes.mjs` prints its rows in `TURN_CAP_ROUTES`' order and classifies a decline by
+ * `parse.ts`'s abstain token. Both are copies rather than imports for `room-census.mjs`'s reason -- a
+ * diagnostic script that imported the product would need a build -- and both fail in the same silent way:
+ * a moved spelling makes `declined` never fire, so an entire cascade is reported as `empty`, and a moved
+ * route order prints a table under a heading that claims it is the product's.
+ */
+describe('the failure census reads the vocabularies it copies', () => {
+  const routeOrder = (text: string, pattern: RegExp): string[] => {
+    const block = pattern.exec(text);
+    expect(block).not.toBeNull();
+    return [...(block?.[1] ?? '').matchAll(/'([a-z-]+)'/g)].map((match) => match[1] as string);
+  };
+
+  it('lists TURN_CAP_ROUTES in the order the product declares them', () => {
+    const types = readFileSync(resolve(REPO_ROOT, 'packages/cortex-memory/src/types.ts'), 'utf8');
+    const tool = readFileSync(resolve(REPO_ROOT, 'tools/failure-classes.mjs'), 'utf8');
+    expect(routeOrder(tool, /const ROUTES = \[([\s\S]*?)\];/)).toEqual(
+      routeOrder(types, /export const TURN_CAP_ROUTES = \[([\s\S]*?)\] as const;/),
+    );
+  });
+
+  it('copies the abstain token from the parser rather than from memory', () => {
+    const parse = readFileSync(resolve(REPO_ROOT, 'packages/cortex-memory/src/parse.ts'), 'utf8');
+    const declared = /export const ABSTAIN_TOKEN = '([A-Z_]+)';/.exec(parse);
+    expect(declared).not.toBeNull();
+    const tool = readFileSync(resolve(REPO_ROOT, 'tools/failure-classes.mjs'), 'utf8');
+    const copied = /const ABSTAIN_TOKEN = '([A-Z_]+)';/.exec(tool);
+    expect(copied?.[1]).toBe(declared?.[1]);
+  });
+});
