@@ -77,7 +77,10 @@ const STOPWORDS = new Set(
 );
 
 function askedTerms(text) {
-  const words = String(text).toLowerCase().match(/[a-z0-9][a-z0-9'-]*/g) ?? [];
+  const words =
+    String(text)
+      .toLowerCase()
+      .match(/[a-z0-9][a-z0-9'-]*/g) ?? [];
   return new Set(words.filter((word) => word.length > 1 && !STOPWORDS.has(word)));
 }
 
@@ -113,11 +116,29 @@ function uninstantiatedHeading(question, raw) {
 
 const DISCRIMINANTS = { 'heading-instantiation': uninstantiatedHeading };
 
-function index(report, label) {
-  const records = Array.isArray(report.questions) ? report.questions : [];
+/**
+ * One artifact, indexed by question id, optionally narrowed to one capability.
+ *
+ * ## Why a capability is a population and not a filter applied late
+ *
+ * A scoped dispatch answers one route's questions and its artifact carries only those, so pairing it against a
+ * 500-question control used to be refused on `questionCount` -- correctly, because an intersection of 121 against
+ * 500 would print a table neither artifact produced. But the *control* for a scoped run is the same arm at the same
+ * load on the same questions, and those questions are a well-defined subset of the control's roster. Narrowing
+ * both sides before the population rule runs keeps the rule's meaning (equal populations, no intersection) while
+ * letting a 121-question artifact be read against a 500-question one.
+ *
+ * The scope is carried on the index rather than passed to `pair`, so every refusal message can name the basis it
+ * refused on: a reader of *"questionCount differs"* cannot tell whether the two artifacts disagree about a
+ * dispatch or about a filter.
+ */
+function index(report, label, capability) {
+  const all = Array.isArray(report.questions) ? report.questions : [];
+  const records =
+    capability === undefined ? all : all.filter((record) => record.capability === capability);
   const byId = new Map();
   for (const record of records) byId.set(record.questionId, record);
-  return { label, report, records, byId };
+  return { label, report, records, byId, scope: capability };
 }
 
 /**
@@ -129,32 +150,56 @@ function index(report, label) {
  */
 class Refusal extends Error {}
 
+/** The basis every refusal names, so a scoped refusal cannot read as a dispatch disagreement. */
+function basis(left, right) {
+  if (left.scope === undefined && right.scope === undefined) return '';
+  return ` (capability ${left.scope ?? right.scope})`;
+}
+
 function pair(control, treatment) {
   if (control.report.dataset !== treatment.report.dataset) {
-    throw new Refusal(`dataset differs: ${control.report.dataset} against ${treatment.report.dataset}`);
+    throw new Refusal(
+      `dataset differs: ${control.report.dataset} against ${treatment.report.dataset}`,
+    );
+  }
+  for (const side of [control, treatment]) {
+    if (side.records.length === 0) {
+      throw new Refusal(`${side.label} artifact carries no question for capability ${side.scope}`);
+    }
   }
   if (control.records.length !== treatment.records.length) {
     throw new Refusal(
-      `questionCount differs: ${control.records.length} against ${treatment.records.length}; an intersection ` +
-        'would print a table neither artifact produced',
+      `questionCount differs${basis(control, treatment)}: ${control.records.length} against ` +
+        `${treatment.records.length}; an intersection would print a table neither artifact produced`,
     );
   }
   const ids = [...control.byId.keys()].filter((id) => treatment.byId.has(id));
   if (ids.length !== control.records.length) {
-    throw new Refusal(`${control.records.length - ids.length} control question(s) are absent from the treatment artifact`);
+    throw new Refusal(
+      `${control.records.length - ids.length} control question(s) are absent from the treatment artifact`,
+    );
   }
   return ids.sort();
 }
 
 /** The 2x2, per capability and in total. */
 function census(control, treatment, ids) {
-  const rows = new Map(CAPABILITIES.map((capability) => [capability, { n: 0, lost: 0, gained: 0, both: 0, neither: 0 }]));
+  const rows = new Map(
+    CAPABILITIES.map((capability) => [
+      capability,
+      { n: 0, lost: 0, gained: 0, both: 0, neither: 0 },
+    ]),
+  );
   const lost = [];
   const gained = [];
   for (const id of ids) {
     const left = control.byId.get(id);
     const right = treatment.byId.get(id);
-    const row = rows.get(left.capability) ?? rows.set(left.capability, { n: 0, lost: 0, gained: 0, both: 0, neither: 0 }).get(left.capability);
+    const row =
+      rows.get(left.capability) ??
+      rows
+        .set(left.capability, { n: 0, lost: 0, gained: 0, both: 0, neither: 0 })
+        .get(left.capability);
     row.n += 1;
     const a = left.correct === true;
     const b = right.correct === true;
@@ -233,7 +278,9 @@ function render(control, treatment, ids, censusResult, options) {
   const lostShapes = shapeSplit(treatment, censusResult.lost);
   const gainedShapes = shapeSplit(treatment, censusResult.gained);
   for (const shape of SHAPES) {
-    lines.push(`| ${shape} | ${pad(lostShapes.get(shape) ?? 0, 4)} | ${pad(gainedShapes.get(shape) ?? 0, 6)} |`);
+    lines.push(
+      `| ${shape} | ${pad(lostShapes.get(shape) ?? 0, 4)} | ${pad(gainedShapes.get(shape) ?? 0, 6)} |`,
+    );
   }
   if (options.discriminant !== undefined) {
     const groups = discriminantSplit(options.discriminant, control, treatment, ids);
@@ -254,8 +301,8 @@ function render(control, treatment, ids, censusResult, options) {
   return lines.join('\n');
 }
 
-function load(path, label) {
-  return index(JSON.parse(readFileSync(path, 'utf8')), label);
+function load(path, label, capability) {
+  return index(JSON.parse(readFileSync(path, 'utf8')), label, capability);
 }
 
 function main(argv) {
@@ -265,10 +312,15 @@ function main(argv) {
   }
   const positional = [];
   let discriminant;
+  let capability;
   for (let index = 0; index < argv.length; index += 1) {
     const argument = argv[index];
     if (argument === '--discriminant') {
       discriminant = argv[(index += 1)];
+      continue;
+    }
+    if (argument === '--capability') {
+      capability = argv[(index += 1)];
       continue;
     }
     if (argument.startsWith('--')) continue;
@@ -279,11 +331,14 @@ function main(argv) {
     return 1;
   }
   if (positional.length !== 2) {
-    process.stderr.write('usage: paired-delta-census.mjs <control.json> <treatment.json> [--discriminant <name>] [--json]\n');
+    process.stderr.write(
+      'usage: paired-delta-census.mjs <control.json> <treatment.json> [--capability <NAME>] ' +
+        '[--discriminant <name>] [--json]\n',
+    );
     return 1;
   }
-  const control = load(positional[0], 'control');
-  const treatment = load(positional[1], 'treatment');
+  const control = load(positional[0], 'control', capability);
+  const treatment = load(positional[1], 'treatment', capability);
   let ids;
   try {
     ids = pair(control, treatment);
@@ -307,10 +362,14 @@ function main(argv) {
             discriminant: {
               name: discriminant,
               treatment: Object.fromEntries(
-                [...discriminantSplit(discriminant, control, treatment, ids)].map(([key, value]) => [String(key), value]),
+                [...discriminantSplit(discriminant, control, treatment, ids)].map(
+                  ([key, value]) => [String(key), value],
+                ),
               ),
               control: Object.fromEntries(
-                [...discriminantSplit(discriminant, treatment, control, ids)].map(([key, value]) => [String(key), value]),
+                [...discriminantSplit(discriminant, treatment, control, ids)].map(
+                  ([key, value]) => [String(key), value],
+                ),
               ),
             },
           }),
@@ -362,7 +421,12 @@ function selfTest() {
         record('q2', 'MR', true, '4'),
         record('q3', 'TR', true, '2023/05/20'),
         record('q4', 'ABS', true, 'INSUFFICIENT_EVIDENCE'),
-        record('q5', 'KU', false, 'Step 1 - list every item in the evidence that matches the question'),
+        record(
+          'q5',
+          'KU',
+          false,
+          'Step 1 - list every item in the evidence that matches the question',
+        ),
         record('q6', 'IE', false, 'I am not sure'),
         record('q7', 'IE', true, '4'),
       ],
@@ -375,11 +439,19 @@ function selfTest() {
   assertEqual(counted.rows.get('MR').lost, 1, 'MR loses one');
   assertEqual(counted.rows.get('MR').gained, 1, 'MR gains one');
   assertEqual(counted.rows.get('ABS').lost, 0, 'ABS loses none');
-  assertEqual(counted.gained.length - counted.lost.length, 0, 'the net is zero and the movement is not');
+  assertEqual(
+    counted.gained.length - counted.lost.length,
+    0,
+    'the net is zero and the movement is not',
+  );
   assertEqual(counted.gained.length, 2, 'two questions moved up');
   const lostShapes = shapeSplit(treatment, counted.lost);
   assertEqual(lostShapes.get('declined'), 1, 'one loss is a decline');
-  assertEqual(lostShapes.get('committed'), 1, 'the other loss is a well-formed reply that answers the wrong thing');
+  assertEqual(
+    lostShapes.get('committed'),
+    1,
+    'the other loss is a well-formed reply that answers the wrong thing',
+  );
   assertEqual(lostShapes.get('shape-failed'), 0, 'and neither loss is a contract violation');
   assertEqual(
     uninstantiatedHeading('how many items did I buy', treatment.byId.get('q5').rawOutput),
@@ -398,20 +470,88 @@ function selfTest() {
 
   let refusal = null;
   try {
-    pair(control, index({ dataset: 'fixture', questionCount: 3, questions: treatment.records.slice(0, 3) }, 'short'));
+    pair(
+      control,
+      index(
+        { dataset: 'fixture', questionCount: 3, questions: treatment.records.slice(0, 3) },
+        'short',
+      ),
+    );
   } catch (error) {
     refusal = error;
   }
   assertEqual(refusal instanceof Refusal, true, 'a population mismatch is refused');
-  assertEqual(/questionCount differs/.test(refusal.message), true, 'and the refusal names the population');
+  assertEqual(
+    /questionCount differs/.test(refusal.message),
+    true,
+    'and the refusal names the population',
+  );
 
   let datasetRefusal = null;
   try {
-    pair(control, index({ dataset: 'other', questionCount: 7, questions: treatment.records }, 'other'));
+    pair(
+      control,
+      index({ dataset: 'other', questionCount: 7, questions: treatment.records }, 'other'),
+    );
   } catch (error) {
     datasetRefusal = error;
   }
   assertEqual(datasetRefusal instanceof Refusal, true, 'a dataset mismatch is refused');
+
+  // A scoped pair: the control is the whole file, the treatment is one route's questions, and the two must be
+  // equal *after* the scope is applied. This is the shape every capability-scoped dispatch produces.
+  const scopedControl = index(
+    { dataset: 'fixture', questionCount: 7, questions: control.records },
+    'control',
+    'MR',
+  );
+  const scopedTreatment = index(
+    { dataset: 'fixture', questionCount: 7, questions: treatment.records },
+    'treatment',
+    'MR',
+  );
+  const scopedIds = pair(scopedControl, scopedTreatment);
+  assertEqual(scopedIds.length, 2, 'the scope narrows both sides to the same two questions');
+  const scopedCounted = census(scopedControl, scopedTreatment, scopedIds);
+  assertEqual(scopedCounted.rows.get('MR').lost, 1, 'and the 2x2 is over those two');
+  let scopedRefusal = null;
+  try {
+    pair(
+      scopedControl,
+      index(
+        { dataset: 'fixture', questionCount: 7, questions: [treatment.records[0]] },
+        'treatment',
+        'MR',
+      ),
+    );
+  } catch (error) {
+    scopedRefusal = error;
+  }
+  assertEqual(scopedRefusal instanceof Refusal, true, 'a scoped population mismatch is refused');
+  assertEqual(
+    /questionCount differs \(capability MR\)/.test(scopedRefusal.message),
+    true,
+    'and the refusal names the capability, so it cannot read as a dispatch disagreement',
+  );
+  let emptyRefusal = null;
+  try {
+    pair(
+      index({ dataset: 'fixture', questionCount: 7, questions: control.records }, 'control', 'ZZ'),
+      scopedTreatment,
+    );
+  } catch (error) {
+    emptyRefusal = error;
+  }
+  assertEqual(
+    emptyRefusal instanceof Refusal,
+    true,
+    'a capability the artifact does not carry is refused',
+  );
+  assertEqual(
+    /carries no question for capability ZZ/.test(emptyRefusal.message),
+    true,
+    'and says which side',
+  );
 
   process.stdout.write('paired-delta-census: self-test ok\n');
 }
