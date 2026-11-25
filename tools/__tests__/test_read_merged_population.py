@@ -593,3 +593,160 @@ def test_g2_names_a_magnitude_failure_apart_from_a_direction_failure(tmp_path):
     assert result.returncode == 0, result.stderr
     assert "G2 fail on magnitude" in result.stdout
     assert "the direction appeared (chars -2.5% with turns +10.0%)" in result.stdout
+
+
+# ---------------------------------------------------------------------------------------------------
+# `G3` and `G5`: the two criteria the script left to whoever wrote the evidence file
+# ---------------------------------------------------------------------------------------------------
+
+
+def criteria_fixture(gainers=4, population=10, record_turns=8, forms=True, tokens=None):
+    """A `resolution` population whose five criteria can each be checked by hand.
+
+    `gainers` of `population` answer on the feature side and never on the baseline, so the delta is
+    `+gainers`, `c` is `gainers` and `b` is zero -- the smallest shape in which `G3`'s two clauses can
+    disagree (`+40 points` with an up-down of `+4` fails the second one).
+
+    `record_turns` decides the form split: a question with at least one `record` turn reports a share,
+    and `G4` divides the gainers' median share by the population's. Every question here reports the
+    same share, so `G4` reads a ratio of 1.0 and fails on concentration -- which is the honest answer
+    for a population where the mechanism reached everyone equally.
+    """
+    ids = [f'q{index}#w2' for index in range(population)]
+    rows = []
+    for index in range(population):
+        row = {
+            'questionId': ids[index],
+            'roleCensus': {'counts': {'user': 11}, 'unclassified': 0, 'total': 11},
+            'promptChars': 38000,
+        }
+        if forms:
+            row['turnWindowCensus'] = census(record=record_turns if index < 6 else 0, raw=3)
+        rows.append(row)
+    payload = {
+        'questionCount': population,
+        'runs': 1,
+        'population': {'corpora': population, 'windows': 2, 'marker': '#w'},
+        'merged': {'shards': 4},
+        'questions': rows,
+        'ablation': {
+            'baselineCorrectByRun': ['0' * population],
+            'featureCorrectByRun': ['1' * gainers + '0' * (population - gainers)],
+            'baselineRoleCensuses': [
+                {'counts': {'user': 10}, 'unclassified': 0, 'total': 10}
+            ] * population,
+            'baselinePromptChars': [40000] * population,
+        },
+        'featureConfig': {'resolutionPair': True},
+    }
+    if tokens is not None:
+        payload['tokens'] = {'prompt_per_answer': {'delta_pct': tokens}}
+    return payload
+
+
+def test_g3_is_decided_by_the_script_rather_than_by_the_evidence_file(tmp_path):
+    """`G3` is `>= +1.5 points AND up-down >= +5`, and both clauses can fail independently.
+
+    Until this round the script printed the delta line and stopped, and `44915923906`'s `criteria` block
+    carries a `G3: pass` that no code produced. The two cases below are the clause pair: ten questions
+    with four net gains is `+40.00 points` and an up-down of `+4`, so the point clause clears by a factor
+    of twenty-six and the discordant clause does not clear at all.
+    """
+    payload = criteria_fixture(gainers=4, population=10)
+    result = run(tmp_path, payload, '--pairing', 'resolution')
+    assert result.returncode == 0, result.stderr
+    assert 'G3 fail: the delta line above gives +40.00 points and up-down +4, against +1.5 and +5' in (
+        result.stdout
+    )
+
+    payload = criteria_fixture(gainers=6, population=10)
+    result = run(tmp_path, payload, '--pairing', 'resolution')
+    assert result.returncode == 0, result.stderr
+    assert 'G3 pass  the delta line above clears +1.5 points and the +5 up-down floor (up-down +6)' in (
+        result.stdout
+    )
+
+
+def test_g5_reads_the_paired_ratio_and_refuses_to_invent_one(tmp_path):
+    """Three states, and the third is the one a defaulting implementation would have hidden.
+
+    The absolute `7,416` threshold belongs to the arm whose two sides are the reference pipeline and this
+    one; a `resolution` pair runs this system on both sides, so the clause is the paired ratio. An
+    artifact with no token block is `unread` and not `pass` -- both hand-written verdicts in `cortex-docs`
+    read `fail`, so a script that defaulted to `pass` would have agreed with the wrong one by accident.
+    """
+    payload = criteria_fixture(tokens=-2.0)
+    result = run(tmp_path, payload, '--pairing', 'resolution')
+    assert result.returncode == 0, result.stderr
+    # `fell 2.00%`, not `fell -2.00%`: the verb already carries the sign, and a double negative is what a
+    # skimming reader takes as an increase.
+    assert 'G5 pass  the paired bill fell 2.00%' in result.stdout
+
+    payload = criteria_fixture(tokens=0.18)
+    result = run(tmp_path, payload, '--pairing', 'resolution')
+    assert result.returncode == 0, result.stderr
+    assert (
+        'G5 fail: the paired bill rose 0.18%; the absolute threshold belongs to the reference arm'
+        in result.stdout
+    )
+
+    payload = criteria_fixture(tokens=None)
+    result = run(tmp_path, payload, '--pairing', 'resolution')
+    assert result.returncode == 0, result.stderr
+    assert 'G5 unread: the artifact carries no paired prompt-token ratio' in result.stdout
+
+
+def test_the_five_criteria_print_in_id_order(tmp_path):
+    """`G1 G2 G3 G4 G5`, with the two informational lines still above the criterion each belongs to.
+
+    `G3` between `G2` and `G4` rather than appended last: the evidence tables in `cortex-docs` read
+    `G1`-`G5` in that order, and a script that printed `G1 G2 G4 G5 G3` would make every reader renumber
+    the table before comparing it with the document.
+    """
+    result = run(tmp_path, criteria_fixture(), '--pairing', 'resolution')
+    assert result.returncode == 0, result.stderr
+    order = [
+        line.split(' ')[0]
+        for line in result.stdout.splitlines()
+        if line[:2] in {'G1', 'G2', 'G3', 'G4', 'G5'}
+    ]
+    assert order == ['G1', 'G2', 'G3', 'G4', 'G5'], result.stdout
+    assert result.stdout.index('forms:') < result.stdout.index('G1 ')
+
+
+def test_the_json_block_and_the_printed_block_are_one_verdict(tmp_path):
+    """The `--criteria-json` block is the printed block as data, not a second judgement.
+
+    This is the assertion that makes the change worth making. Two representations of one reading are
+    safe only while they are the same expression formatted twice; the moment the JSON were computed
+    separately, an evidence file could contradict the log it was written from and nothing would fail.
+    Every `reason` below is required to appear **verbatim** in the printed line carrying its id.
+    """
+    result = run(tmp_path, criteria_fixture(tokens=0.18), '--pairing', 'resolution', '--criteria-json', '1')
+    assert result.returncode == 0, result.stderr
+    start = result.stdout.index('{\n "criteria"')
+    payload = json.loads(result.stdout[start:])
+    report = payload['criteria']
+    assert sorted(report) == ['G1', 'G2', 'G3', 'G4', 'G5']
+
+    printed = {}
+    for line in result.stdout[:start].splitlines():
+        head = line.split(' ')[0]
+        if head in report:
+            # Strip `<id> <verdict><separator>` back to the sentence, which must be the JSON's `reason`.
+            rest = line[len(head) + 1 :]
+            for separator in (': ', '  '):
+                at = rest.find(separator)
+                if at != -1:
+                    printed[head] = rest[at + len(separator) :]
+                    break
+    for ident, entry in report.items():
+        assert printed[ident] == entry['reason'], (ident, printed[ident], entry['reason'])
+
+    # The canonical three-state, with the magnitude qualifier folded into `fail` rather than into a fourth
+    # value: a consumer filtering on `fail` has to see a magnitude miss, because the mechanism worked.
+    assert report['G5'] == {
+        'verdict': 'fail',
+        'reason': 'the paired bill rose 0.18%; the absolute threshold belongs to the reference arm',
+    }
+    assert report['G3']['verdict'] == 'fail'

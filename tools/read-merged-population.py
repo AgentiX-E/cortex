@@ -95,6 +95,18 @@ G2_CHAR_DROP_PCT = 3.0
 G2_TURN_RISE_PCT = 1.0
 G4_RECORD_RATIO = 1.5
 
+# `G3`, the accuracy clause: `>= +1.5 points AND up-down >= +5`. Both halves are restated here for the
+# reason every other criterion is, and the pair is why the criterion cannot be read from the point
+# estimate alone -- `+1.5 points` on a population where forty questions moved both ways is a different
+# claim from the same delta with six.
+#
+# Until this constant existed, `G3` was decided **by hand**. `44915923906`'s evidence file carries
+# `{"G3": {"verdict": "pass", "reason": "+2.40 points >= +1.5 and up-down +12 >= +5"}}`, and so does
+# the document that quotes it; the script that produced every other number in that table printed the
+# delta line and stopped. Two criteria were reproducible and two were testimony, inside one table.
+G3_POINT_FLOOR = 1.5
+G3_UP_DOWN_FLOOR = 5
+
 
 def _median(values: list[float]) -> float:
     """The median of a non-empty list, as a float so an even count's midpoint is not truncated."""
@@ -276,30 +288,47 @@ def record_shares(rows: list[dict]) -> dict[int, float]:
     return shares
 
 
-def print_forms(document: dict, control: dict[int, float], treated: dict[int, float]) -> None:
-    """`C8`'s three form-shaped criteria: `G1`, `G2` and `G4`.
+def criterion_verdicts(
+    document: dict,
+    control: dict[int, float],
+    treated: dict[int, float],
+    delta: float,
+    population: int,
+    discordant: tuple[int, int],
+) -> list[dict[str, str]]:
+    """`C8`'s five criteria, each as a verdict and the sentence that decided it.
 
-    ## Why these three and not the accuracy one
+    ## Why one list rather than five print calls
 
-    `G3` is the accuracy claim and the delta line above is its reading -- printing it again here would be a
-    second number that could drift from the first. `G5` is priced in tokens, which is a conversion this
-    artifact does not carry (it carries characters); the token reader does that division. What is left is
-    the part that only the **form split per question** can answer, and that is what this function reads.
+    The block this replaced printed `G1`, `G2` and `G4` and left `G3` and `G5` to whoever wrote the
+    evidence file. That split was invisible until two artifacts were compared: `44915923906`'s
+    `criteria` block carries a hand-written `G3: pass` and a hand-written `G5: fail`, and nothing in
+    this repository could have caught either one being wrong. The two machine-judged criteria were
+    reproducible and the two hand-judged ones were testimony, in one table that reads as one kind of
+    thing.
 
-    ## What each criterion is for, in one line
+    `G3` and `G5` are both decidable from the artifact: `G3` from the delta line this script already
+    computes and `G5` from the paired token ratio the artifact already carries. So they are decided
+    here, beside the three that were, and the printed block and the `--criteria-json` block are the
+    **same** verdicts formatted twice rather than two implementations that agree until one is edited.
 
-    | # | claim | failure means |
-    | --- | --- | --- |
-    | `G1` | the mechanism ran: a form rendered at least one turn on >= 30% of questions | nothing to read, the run is void |
-    | `G2` | the reallocation signature: characters DOWN >= 3% while turns UP >= 1% | the direction `C7` predicted did not appear |
-    | `G4` | the gain is concentrated where records dominate: median record share among gainers >= 1.5x the population's | the mechanism helps, but not for this reason |
+    ## Why the sentences are returned rather than printed
 
-    `G4` divides the gainers' median share by the whole population's, and the denominator is over the
-    questions that **reported a split** rather than over all of them: a question the cap never touched has
-    no share, and counting it as zero would make any gainer look concentrated.
+    Every message below is byte-identical to what this script printed before the change, including the
+    two-space separator after `pass` and the colon after every other verdict. Keeping them as data lets
+    the JSON reader emit the same words under `reason:` without a second expression of them; a caller
+    that printed from here and serialized from somewhere else would be the defect this function exists
+    to remove.
+
+    ## The two informational lines
+
+    `forms:` and `record share median:` are not criteria -- they are the counts the criteria divide,
+    printed so a failing verdict can be read without a second command. They travel in the same list
+    with an empty `ident`, which is what tells the printer to emit them as they are.
     """
     rows = document.get('questions', []) or []
     shares = record_shares(rows)
+    verdicts: list[dict[str, str]] = []
     formed = sum(
         1
         for row in rows
@@ -316,17 +345,38 @@ def print_forms(document: dict, control: dict[int, float], treated: dict[int, fl
         > 0
     )
     floor = G1_FORMED_SHARE * len(rows)
-    print(
-        f'forms: {formed}/{len(rows)} questions rendered by a form '
-        f'(record or excerpt on {compressed})  -- G1 floor {floor:.0f}'
+    verdicts.append(
+        {
+            'ident': '',
+            'verdict': '',
+            'canonical': '',
+            'text': (
+                f'forms: {formed}/{len(rows)} questions rendered by a form '
+                f'(record or excerpt on {compressed})  -- G1 floor {floor:.0f}'
+            ),
+        }
     )
     if compressed >= floor and floor > 0:
-        print(f'G1 pass  {compressed} >= {floor:.0f} (the forms reached the population)')
+        verdicts.append(
+            {
+                'ident': 'G1',
+                'verdict': 'pass',
+                'canonical': 'pass',
+                'text': f'{compressed} >= {floor:.0f} (the forms reached the population)',
+            }
+        )
     else:
-        print(
-            f'G1 fail: {compressed} of {len(rows)} questions had a compressed or widened turn, below the '
-            f'{G1_FORMED_SHARE:.0%} floor. Either `resolution` never reached the renderer or it rendered '
-            'every long turn as raw -- and neither is a reading of the mechanism'
+        verdicts.append(
+            {
+                'ident': 'G1',
+                'verdict': 'fail',
+                'canonical': 'fail',
+                'text': (
+                    f'{compressed} of {len(rows)} questions had a compressed or widened turn, below '
+                    f'the {G1_FORMED_SHARE:.0%} floor. Either `resolution` never reached the renderer '
+                    'or it rendered every long turn as raw -- and neither is a reading of the mechanism'
+                ),
+            }
         )
 
     # Totals, because `G2` is registered on the bill: "characters leave while turns stay or rise" is a claim
@@ -335,73 +385,287 @@ def print_forms(document: dict, control: dict[int, float], treated: dict[int, fl
     char_change = (chars_after - chars_before) / chars_before * 100 if chars_before else 0.0
     turn_change = (turns_after - turns_before) / turns_before * 100 if turns_before else 0.0
     if char_change <= -G2_CHAR_DROP_PCT and turn_change >= G2_TURN_RISE_PCT:
-        print(
-            f'G2 pass  chars {char_change:+.1f}% <= -{G2_CHAR_DROP_PCT:.0f}% with turns '
-            f'{turn_change:+.1f}% >= +{G2_TURN_RISE_PCT:.0f}% (the reallocation signature)'
+        verdicts.append(
+            {
+                'ident': 'G2',
+                'verdict': 'pass',
+                'canonical': 'pass',
+                'text': (
+                    f'chars {char_change:+.1f}% <= -{G2_CHAR_DROP_PCT:.0f}% with turns '
+                    f'{turn_change:+.1f}% >= +{G2_TURN_RISE_PCT:.0f}% (the reallocation signature)'
+                ),
+            }
         )
     elif turn_change >= G2_TURN_RISE_PCT and char_change < 0:
         # The direction without the magnitude, which is a different finding from "the hypothesis is wrong"
         # and run `44915923906` produced it: characters fell 2.8% while turns rose 3.7%. A message that said
         # "the direction did not appear" over that would send the next round after the mechanism when the
         # mechanism did exactly what it claimed -- it just did 0.2 points less of it than the floor asked.
-        print(
-            f'G2 fail on magnitude: the direction appeared (chars {char_change:+.1f}% with turns '
-            f'{turn_change:+.1f}%), but characters fell less than the {G2_CHAR_DROP_PCT:.0f}% floor. The '
-            'clause is the floor, not the direction, so what closes is the size of the saving'
+        verdicts.append(
+            {
+                'ident': 'G2',
+                'verdict': 'fail on magnitude',
+                'canonical': 'fail',
+                'text': (
+                    f'the direction appeared (chars {char_change:+.1f}% with turns '
+                    f'{turn_change:+.1f}%), but characters fell less than the '
+                    f'{G2_CHAR_DROP_PCT:.0f}% floor. The clause is the floor, not the direction, so '
+                    'what closes is the size of the saving'
+                ),
+            }
         )
     else:
-        print(
-            f'G2 fail: chars {char_change:+.1f}% and turns {turn_change:+.1f}% do not show characters '
-            f'leaving while turns stay or rise (needs <= -{G2_CHAR_DROP_PCT:.0f}% and >= '
-            f'+{G2_TURN_RISE_PCT:.0f}%), so the direction C8 predicts did not appear'
+        verdicts.append(
+            {
+                'ident': 'G2',
+                'verdict': 'fail',
+                'canonical': 'fail',
+                'text': (
+                    f'chars {char_change:+.1f}% and turns {turn_change:+.1f}% do not show characters '
+                    f'leaving while turns stay or rise (needs <= -{G2_CHAR_DROP_PCT:.0f}% and >= '
+                    f'+{G2_TURN_RISE_PCT:.0f}%), so the direction C8 predicts did not appear'
+                ),
+            }
         )
+
+    verdicts.append(_g3_verdict(delta, population, discordant))
 
     # The two empty states are different findings and were printed as one until run `44915923906` produced
     # the first of them: that run's mechanism shortened 3,710 turns, the product's accessor dropped the split,
     # and the reader said "no question improved" over a population where 27 had. A message that names the
     # wrong absence sends the next round after the mechanism instead of after the instrument.
     if not shares:
-        print(
-            'G4 unread: no question carries a form split, so there is no share to compare -- G1 already '
-            'says why, and the repair is the instrument rather than the mechanism'
-        )
-        return
-    gainers = [at for at in shares if treated.get(at, 0.0) > control.get(at, 0.0)]
-    if not gainers:
-        print(
-            'G4 not taken: no question improved on this population, so there is no gainer set to '
-            'compare a form share against -- and a ratio over an empty numerator is not a reading'
-        )
-        return
-    gainer_median = _median([shares[at] for at in gainers])
-    population_median = _median(list(shares.values()))
-    # A zero denominator is not an infinite ratio. Before this guard the script printed `ratio inf` and
-    # `G4 pass  gainers 0.000 are >= 1.5x the population 0.000` on a population where no question compressed
-    # anything -- the criterion passing itself, which is the one failure mode a criterion must not have. A
-    # median of zero means there is no share to compare, and `G1` has already said why.
-    if population_median <= 0:
-        print(
-            'G4 unread: the population median record share is 0.000, so no question compressed a turn and '
-            'there is no ratio to take -- G1 already says why, and a zero denominator is not an infinite '
-            'effect'
-        )
-        return
-    ratio = gainer_median / population_median
-    print(
-        f'record share median: gainers {gainer_median:.3f} (n={len(gainers)}) vs population '
-        f'{population_median:.3f} (n={len(shares)})  ratio {ratio:.2f}'
-    )
-    if ratio >= G4_RECORD_RATIO:
-        print(
-            f'G4 pass  gainers {gainer_median:.3f} are >= {G4_RECORD_RATIO:.1f}x the population '
-            f'{population_median:.3f} (the gain is concentrated where records dominate)'
+        verdicts.append(
+            {
+                'ident': 'G4',
+                'verdict': 'unread',
+                'canonical': 'unread',
+                'text': (
+                    'no question carries a form split, so there is no share to compare -- G1 already '
+                    'says why, and the repair is the instrument rather than the mechanism'
+                ),
+            }
         )
     else:
-        print(
-            f'G4 fail: gainers {gainer_median:.3f} are only {ratio:.2f}x the population '
-            f'{population_median:.3f}, below {G4_RECORD_RATIO:.1f}x -- the mechanism helps, but not for '
-            'the reason C8 claims'
-        )
+        gainers = [at for at in shares if treated.get(at, 0.0) > control.get(at, 0.0)]
+        if not gainers:
+            verdicts.append(
+                {
+                    'ident': 'G4',
+                    'verdict': 'not taken',
+                    'canonical': 'not-taken',
+                    'text': (
+                        'no question improved on this population, so there is no gainer set to '
+                        'compare a form share against -- and a ratio over an empty numerator is not '
+                        'a reading'
+                    ),
+                }
+            )
+        else:
+            gainer_median = _median([shares[at] for at in gainers])
+            population_median = _median(list(shares.values()))
+            # A zero denominator is not an infinite ratio. Before this guard the script printed `ratio inf`
+            # and `G4 pass  gainers 0.000 are >= 1.5x the population 0.000` on a population where no question
+            # compressed anything -- the criterion passing itself, which is the one failure mode a criterion
+            # must not have. A median of zero means there is no share to compare, and `G1` has already said
+            # why.
+            if population_median <= 0:
+                verdicts.append(
+                    {
+                        'ident': 'G4',
+                        'verdict': 'unread',
+                        'canonical': 'unread',
+                        'text': (
+                            'the population median record share is 0.000, so no question compressed a '
+                            'turn and there is no ratio to take -- G1 already says why, and a zero '
+                            'denominator is not an infinite effect'
+                        ),
+                    }
+                )
+            else:
+                ratio = gainer_median / population_median
+                verdicts.append(
+                    {
+                        'ident': '',
+                        'verdict': '',
+                        'canonical': '',
+                        'text': (
+                            f'record share median: gainers {gainer_median:.3f} (n={len(gainers)}) vs '
+                            f'population {population_median:.3f} (n={len(shares)})  ratio {ratio:.2f}'
+                        ),
+                    }
+                )
+                if ratio >= G4_RECORD_RATIO:
+                    verdicts.append(
+                        {
+                            'ident': 'G4',
+                            'verdict': 'pass',
+                            'canonical': 'pass',
+                            'text': (
+                                f'gainers {gainer_median:.3f} are >= {G4_RECORD_RATIO:.1f}x the '
+                                f'population {population_median:.3f} (the gain is concentrated where '
+                                'records dominate)'
+                            ),
+                        }
+                    )
+                else:
+                    verdicts.append(
+                        {
+                            'ident': 'G4',
+                            'verdict': 'fail',
+                            'canonical': 'fail',
+                            'text': (
+                                f'gainers {gainer_median:.3f} are only {ratio:.2f}x the population '
+                                f'{population_median:.3f}, below {G4_RECORD_RATIO:.1f}x -- the '
+                                'mechanism helps, but not for the reason C8 claims'
+                            ),
+                        }
+                    )
+
+    verdicts.append(_g5_verdict(document))
+    return verdicts
+
+
+def _g3_verdict(delta: float, population: int, discordant: tuple[int, int]) -> dict[str, str]:
+    """The accuracy clause, decided from the delta line the caller already printed.
+
+    `G3` is `>= +1.5 points AND up-down >= +5`, and both halves come from the same two numbers the
+    delta line states: the point estimate and the discordant pair. The verdict names no absolute count
+    of correct answers, because that number is a property of the population and the criterion is not.
+
+    ## Why this is not a second reading of the delta
+
+    The point estimate appears once more below, and that is deliberate rather than tolerated: a pass
+    or fail with no number beside it cannot be checked, and the alternative -- printing only
+    `G3 pass` -- is the shape that let a hand-written verdict stand for four months. What is *not*
+    duplicated is the arithmetic; `delta / population` is computed here from the same arguments the
+    delta line was computed from, so the two cannot disagree about the input.
+    """
+    up = discordant[1]
+    down = discordant[0]
+    points = delta / population * 100 if population else 0.0
+    if points >= G3_POINT_FLOOR and up - down >= G3_UP_DOWN_FLOOR:
+        return {
+            'ident': 'G3',
+            'verdict': 'pass',
+            'canonical': 'pass',
+            'text': (
+                f'the delta line above clears {G3_POINT_FLOOR:+.1f} points and the '
+                f'{G3_UP_DOWN_FLOOR:+d} up-down floor (up-down {up - down:+d})'
+            ),
+        }
+    return {
+        'ident': 'G3',
+        'verdict': 'fail',
+        'canonical': 'fail',
+        'text': (
+            f'the delta line above gives {points:+.2f} points and up-down {up - down:+d}, against '
+            f'{G3_POINT_FLOOR:+.1f} and {G3_UP_DOWN_FLOOR:+d}'
+        ),
+    }
+
+
+def _g5_verdict(document: dict) -> dict[str, str]:
+    """The bill clause, read off the paired prompt-token ratio the artifact carries.
+
+    ## Why the ratio and not the absolute number
+
+    `G5` is registered as `<= 7,416 prompt tokens per question`, and that number was written for a
+    dispatch whose two sides were the reference pipeline and this one. A `resolution` pair runs **this
+    system on both sides**, so the absolute value describes neither side's claim; what the clause is
+    about -- "a mechanism whose other half is a cost has lost its reason when the bill rises" -- is the
+    paired ratio, and that is what is read.
+
+    An artifact with no paired token block is `unread`, not `pass`. The distinction matters here more
+    than elsewhere: the two hand-written `G5` verdicts in `cortex-docs` both read `fail`, and a script
+    that defaulted a missing block to `pass` would have agreed with them by accident.
+    """
+    tokens = document.get('tokens') or {}
+    paired = tokens.get('prompt_per_answer') or {}
+    delta_pct = paired.get('delta_pct')
+    if not isinstance(delta_pct, (int, float)):
+        return {
+            'ident': 'G5',
+            'verdict': 'unread',
+            'canonical': 'unread',
+            'text': (
+                'the artifact carries no paired prompt-token ratio, so the bill half of the clause '
+                'has no reading -- and the absolute threshold belongs to the reference arm'
+            ),
+        }
+    if delta_pct <= 0:
+        return {
+            'ident': 'G5',
+            'verdict': 'pass',
+            'canonical': 'pass',
+            # `abs` rather than the signed value: "the bill fell -1.20%" is a double negative that reads
+            # as an increase to anyone skimming, and this is the one line where the sign is already
+            # carried by the verb.
+            'text': f'the paired bill fell {abs(delta_pct):.2f}%',
+        }
+    return {
+        'ident': 'G5',
+        'verdict': 'fail',
+        'canonical': 'fail',
+        'text': (
+            f'the paired bill rose {delta_pct:.2f}%; the absolute threshold belongs to the '
+            'reference arm'
+        ),
+    }
+
+
+def print_forms(
+    document: dict,
+    control: dict[int, float],
+    treated: dict[int, float],
+    delta: float,
+    population: int,
+    discordant: tuple[int, int],
+) -> None:
+    """Print `C8`'s five criteria, in id order, in the words the three old ones have always printed in.
+
+    The separator is the one observable difference between a pass and everything else: `G1 pass  ...`
+    with two spaces, `G1 fail: ...` with a colon. That asymmetry predates this function and is kept
+    because two archived evidence files quote the text, so moving it would put this script's output and
+    the documents that cite it one punctuation mark apart for no gain.
+
+    `G1`, `G2`, `G4` print byte for byte what they printed before `G3` and `G5` were decided here. The
+    two new lines take their id's position instead of being appended at the end -- `G3` between `G2` and
+    `G4`, `G5` last -- because a block that read `G1 G2 G4 G5 G3` would put the accuracy clause after the
+    bill, which is the order the evidence tables have been written in and not the order the criteria are
+    numbered in.
+    """
+    for verdict in criterion_verdicts(document, control, treated, delta, population, discordant):
+        if verdict['ident'] == '':
+            print(verdict['text'])
+        else:
+            separator = '  ' if verdict['verdict'] == 'pass' else ': '
+            print(f"{verdict['ident']} {verdict['verdict']}{separator}{verdict['text']}")
+
+
+def criterion_report(
+    document: dict,
+    control: dict[int, float],
+    treated: dict[int, float],
+    delta: float,
+    population: int,
+    discordant: tuple[int, int],
+) -> dict[str, dict[str, str]]:
+    """The same verdicts, keyed by criterion id, for a caller that wants them as data.
+
+    `verdict` is the canonical three-state -- `pass`, `fail`, `unread` -- plus `not-taken` for the one
+    state `G4` can be in when the population offers no gainer at all. The qualifier a criterion carries
+    in its printed form (`G2 fail on magnitude`) is deliberately **not** folded into this field: a
+    consumer filtering on `verdict == 'fail'` must see the magnitude case, because the mechanism worked
+    and the floor was not reached, and a fourth enum value would let that distinction escape into the
+    prose again.
+    """
+    report: dict[str, dict[str, str]] = {}
+    for verdict in criterion_verdicts(document, control, treated, delta, population, discordant):
+        if verdict['ident'] == '':
+            continue
+        report[verdict['ident']] = {'verdict': verdict['canonical'], 'reason': verdict['text']}
+    return report
 
 
 def mcnemar_exact(b: int, c: int) -> float:
@@ -430,7 +694,7 @@ def main(argv: list[str]) -> int:
         print(__doc__)
         return 2
     path = argv[0]
-    options = {'--windows': None, '--pairing': 'reference'}
+    options = {'--windows': None, '--pairing': 'reference', '--criteria-json': '0'}
     index = 1
     while index < len(argv):
         flag = argv[index]
@@ -575,7 +839,19 @@ def main(argv: list[str]) -> int:
         # verdicts are allowed to disagree -- `F3 fail` with `G2 pass` is not a contradiction, it is the
         # finding that the mechanism reallocates rather than densifies.
         print_density(document)
-        print_forms(document, control, treated)
+        print_forms(document, control, treated, delta, len(scope), (b, c))
+        # The same five verdicts as data, for a caller that writes the evidence file rather than reading
+        # the log. `1` rather than a flag with no value because this parser's whole contract is
+        # `--name value`, and a second parsing style for one option is the shape that made `--alpha` in
+        # `paired-test.mjs` documented and unreachable for a round.
+        if options['--criteria-json'] == '1':
+            print(
+                json.dumps(
+                    {'criteria': criterion_report(document, control, treated, delta, len(scope), (b, c))},
+                    indent=1,
+                    sort_keys=True,
+                )
+            )
     return 0
 
 

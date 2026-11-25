@@ -61,7 +61,7 @@ nobody has dispatched at 500 questions since it was measured.
 
 | system | score | what decides whether it compares |
 | --- | ---: | --- |
-| **cortex** (this run) | **90.15** | public prompt, official judge, 500 questions, 4 repetitions, reproducible |
+| **cortex** (this run) | **91.20** | public prompt, official judge, 500 questions, 4 repetitions, reproducible |
 | Recallium | 98.4 | Claude Opus 5.5 reader, self-reported; the same harness reads 90.2 with the official GPT-4o reader |
 | agentmemory V4 | 96.2 | single deterministic run, Claude Opus 4.6 reader |
 | Maximem Synap | 95.6 | self-reported, 2026-10-28 |
@@ -72,6 +72,21 @@ nobody has dispatched at 500 questions since it was measured.
 | Honcho / Zep | 90.4 / 90.2 | self-reported; Zep with gpt-5.4 reading and judging |
 | Supermemory | **85.2 accuracy** | its advertised 97% is **Recall@20**, a retrieval metric — `docs/SOTA-LANDSCAPE.md` §1 |
 | RAW-RAG (naive) | 87.5 | arXiv:2610.30755, no extraction, no rewriting |
+
+The cortex row read `90.15` until this round, and the correction is the paragraph three lines above applied
+to the table it was written for. `§0` states `91.20` from `S16`; `§0.1` kept quoting the superseded
+`41546569106` reading under the words "this run", so one file carried two current positions and the older
+one was in the table a reader compares against competitors. Both numbers are real — `90.15` is the arm
+before the per-route budget table, the `self-index` ranking signal and `ask: verbatim-acts` landed — and
+`docs/COMMITTED-READINGS.md` is where the superseded one stays, because a superseded reading is still a
+reading and the word that had to go was **current**, not the number.
+
+**A second row of this table is worth stating explicitly, because it decides what "SOTA" means here.**
+`Maximem Synap` at `95.6` is self-reported and closed; `Recallium` at `98.4` runs Claude Opus 5.5 and reads
+`90.2` with the official GPT-4o reader — the same harness, eight points apart, on the reader alone. The
+cortex column is reproducible end to end (public prompt, official judge, 4 repetitions, archived artifact),
+which is a property none of the rows above it carry. That is not a claim to the top of the table; it is the
+reason a two-point gap against a self-reported number is not a two-point gap against a measurement.
 
 ### 0.2 Three rows added on 2026-11-20, and the one that changes an argument
 
