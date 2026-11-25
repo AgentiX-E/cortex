@@ -105,7 +105,7 @@ on:
         default: '0'
         type: string
       capability:
-        description: 'Population selector, as in the arm: `KU` (the default) grades the 78 knowledge-update questions where a supersession can be the failure mode at all; `all` is the registered 500 and the instrument S12 is registered on'
+        description: 'Population selector, as in the arm: `KU` (the default) grades the 78 knowledge-update questions where a supersession can be the failure mode at all; `all` is the registered 500 and the instrument S12 is registered on. The other four codes the report prints are accepted too -- `IE`, `MR`, `TR`, `ABS` -- and a comma list is a union, so `IE,KU` is the 222-question population `PREREG-TRUNCATION-SHORT-ROUTES.md` registers. `MR` is the population `13.291`''s ask adoption was read on, and it is the one `pairing=ask` wants: the same 121 questions the 93.50-against-91.70 reading was taken on, at a fifth of the whole-volume price'
         required: false
         default: 'KU'
         type: string

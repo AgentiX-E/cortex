@@ -51,7 +51,7 @@ This is the arm every S1–S5 number is measured against.
 ```
 
 `cortex_memory_review_pass` is listed here **only in §2's aftermath**: the field's default is now `bare`, so this
-block without that line reproduces the *treatment* and not `39509698041`. A preset file that documents an arm but
+block without that line reproduces the _treatment_ and not `39509698041`. A preset file that documents an arm but
 omits a field whose default moved is a preset file that has silently become a different arm — the same defect as
 §0, arriving through a default rather than through an omission.
 
@@ -178,12 +178,12 @@ for a future IE increment; it is not a reason to ship this one.
 ```
 
 It **reorders** `enumerated`'s multi-session block and adds, drops and rewords nothing: the merging sentence —
-*"the answer may require combining evidence from more than one turn or session … do not reply
-`INSUFFICIENT_EVIDENCE` merely because no single piece states the answer outright"* — is moved from six lines
+_"the answer may require combining evidence from more than one turn or session … do not reply
+`INSUFFICIENT_EVIDENCE` merely because no single piece states the answer outright"_ — is moved from six lines
 above the closing rule to immediately above it. That sentence is already an answer to seven of the control's
-twelve MR declines; the reason it was not read is that the enumeration contract's *"do not merge two items into
-one"* sat closer to the rule that decides, and one reply quotes it back as *"a separate session and cannot be
-merged"*. Reach `enumerated`'s, change set `{multi-session}`, control `40751394094`.
+twelve MR declines; the reason it was not read is that the enumeration contract's _"do not merge two items into
+one"_ sat closer to the rule that decides, and one reply quotes it back as _"a separate session and cannot be
+merged"_. Reach `enumerated`'s, change set `{multi-session}`, control `40751394094`.
 
 Two checks make it a one-variable run, and both are tests:
 
@@ -223,6 +223,41 @@ not read:
   its `discordantQuestions` describes). A dispatch that inherits one and compares against the other has two
   variables, and the artifact's own config line is the only place that says which happened.
 
+## 3.6 The ask pairing — `semantic-carry.yml`, `pairing: ask`
+
+**What it prices.** `§13.291`'s adoption (93.50% against 91.70%) is the only ask reading the campaign has, and it
+compares two artifacts. `45636994046` tried to read a second ask and moved the rendering as well, which is why
+`RETRACTIONS.md` 28 withdraws its `-4.96` and `PREREG-CLOCK-AXIS.md` §7 asked for a one-pass pair. This preset is
+that pair: each route's **reference** instruction block on the control side, `CORTEX_MEMORY_ASK`'s block on the
+feature side, and `layered` on both.
+
+**Why this workflow and not the arm's.** `benchmark-cortex-memory.yml` sits at 24 of GitHub's 25 dispatch inputs
+and the suite forbids sitting at the ceiling, so `CORTEX_MEMORY_RESOLUTION` there is a repository variable with a
+`'raw'` fallback — which is how a dispatch came to measure an arm it had not named. `semantic-carry.yml` is at 14,
+and its `pairing` input is an enumerable axis selector: adding `ask` to that enum cost no slot.
+
+| input           | value           | why                                                                                              |
+| --------------- | --------------- | ------------------------------------------------------------------------------------------------ |
+| `pairing`       | `ask`           | splits `ask` and nothing else; puts `resolution` on `layered` for **both** sides                 |
+| `ask`           | `verbatim-acts` | the block the product ships, and the declared default, so a bare `pairing=ask` IS the re-pricing |
+| `capability`    | `MR`            | the 121 questions `13.291` was read on, and a fifth of `all`'s price                             |
+| `windows`       | `2`             | the registered shape for a pair; `1` makes the reach zero by construction                        |
+| `ablation_runs` | `2`             | the screening default; `4` is the confirmation                                                   |
+| `limit`         | `0`             | the whole file before the capability filter                                                      |
+| `budget_cny`    | `12`            | `MR` × 2 at the measured rate; the gate refuses above it                                         |
+| `shards`        | `8`             | the split is wall clock, not treatment                                                           |
+| `workers`       | `8`             | sized for a shard                                                                                |
+
+**What it refuses.** `ask=route` is rejected before the first call: `route` IS the control side, so a pair named
+that way renders the reference block twice and publishes a zero **with an ask's name on both sides** — which would
+be read as "the instruction block does not matter" about the adoption that is worth 1.80 points. That refusal is
+`pairingViolation`, and `arm-pairing.test.ts` asserts it over a 4 × 16 Cartesian product as well as by message.
+
+**What it does not do.** It cannot price an ask against a _different_ ask. The control is the reference block and
+it is fixed, on purpose: a reading taken today and one taken after the next adoption have to measure the same
+transition, or the two numbers are not comparable. An ask-against-ask preset would need a second parameter and is
+not registered.
+
 ## 4. The competitor run
 
 ```json
@@ -251,13 +286,13 @@ arm and the two-run control give a within-arm spread of 6 and 5; a single pair g
 +13 was first read as "inside a nine-question floor" and then, once repeats existed, as +3.15 points. **A floor
 estimated from one run is not a floor, it is another point.**
 
-**And the third, from §13.125.7**: a floor is not one number. The control's *count* moved 2 questions across four
-repetitions at `temperature=0`, its *per-question identity* disagreed with itself on at least 7 of 500 between two
+**And the third, from §13.125.7**: a floor is not one number. The control's _count_ moved 2 questions across four
+repetitions at `temperature=0`, its _per-question identity_ disagreed with itself on at least 7 of 500 between two
 runs, and the treatment's count moved 7. Quoting "seven" without saying which of the three it is describes a
 quantity that was never measured.
 
 **And the fourth, from §13.130**: the reach and the change set are two different statements, and an artifact only
-prints the first. `askRoutes` says which routes the block was composed onto; the *change set* says which routes
+prints the first. `askRoutes` says which routes the block was composed onto; the _change set_ says which routes
 actually read different bytes. Three dispatches were registered as single-variable and were not, because the
 fallthrough reverted the untouched routes to the shipped block instead of keeping the control's. Read
 `askRoutes` **against the control's**, and if they differ, the run is not one variable apart no matter what the
