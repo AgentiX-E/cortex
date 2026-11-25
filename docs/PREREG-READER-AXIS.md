@@ -1,6 +1,6 @@
 # PREREG-READER-AXIS
 
-**Status:** pending — not dispatched, or dispatched and not yet read: no Result section exists for it.
+**Status:** decided — dispatched (run `40698867439` against `40698883428`), and read to the question rather than to the total: section 8 is the result.
 
 Holding the hits fixed and changing only the model that reads them, because the largest published delta on this
 benchmark is a reader swap and this project has never measured its own.
@@ -150,3 +150,38 @@ Every `PREREG-*.md` that states a numeric threshold must have a row in `acceptan
 number, or a sentence saying why it is deliberately not a row. The check that enforces it reads this file for a
 `≥ N points` pattern and the table for `M1`'s threshold, and fails when they disagree -- which means the
 amendment above is the last one that can be made by hand.
+
+## 8. Result
+
+**The registration was decided on the pair, and the pair describes a contract rather than a reader.** The reading is
+**417 → 381** (`deepseek-chat` → `deepseek-v4-pro`, −7.20 points), which refuses `M1` in the sign the matrix's `onMiss`
+splits out as a *prompt-contract defect* rather than as the retrieval-dominated signature.
+
+What this section adds is not the number, which was already on the record, but its **location**, which the record had
+wrong: `docs/AUDIT-READER-AXIS-ATTRIBUTION.md` pairs the two artifacts question by question and reads
+
+| capability | lost | gained | net |
+| --- | ---: | ---: | ---: |
+| `IE` | 14 | 2 | −12 |
+| `MR` | 13 | 10 | −3 |
+| `KU` | 10 | 2 | −8 |
+| `TR` | 21 | 7 | −14 |
+| `ABS` | **0** | **1** | **+1** |
+
+with a reply-shape split of the 58 losses at **9 declined / 33 committed / 16 shape-failed**. The attribution that
+stood in `cortex-docs` §175.4 — the loss is bare declines on abstention questions — is retracted
+(`RETRACTIONS.md` §26), because `ABS` moved the other way and the largest bucket is replies that obeyed the contract.
+
+`R1` (≥ 3 points in one direction) is **cleared with the wrong sign**, so the axis is priced and not adoptable.
+`R3` (the abstention route must not move by more than one question) is **passed**: it moved by one, upward. `R4` (the
+gain concentrates in `MR` and `TR`) cannot apply to a loss of this shape. `R2` (identical candidate sets) is
+**unverified**, because the archived pair predates the report's `reader` block (§13.212) and two artifacts whose
+`featureConfig` is byte-identical cannot be asked which deployment produced them — the pair is attributable from the
+dispatch record only, and this file now says so instead of implying otherwise.
+
+**What the axis can still be asked.** Not "is a stronger reader better" — that question has an answer on this contract
+and the answer is no. The question the pair leaves open is the one it localises: a reply that copies the contract's
+generic `Step N` heading instead of instantiating it is wrong **32% of the time on the control and 34% on the
+treatment**, while a reply that instantiates is wrong 12.4% and 20.6% of the time. That marker exists on both readers,
+so the next registration on this axis is about the **heading the contract asks for**, not about the model that writes
+it.
