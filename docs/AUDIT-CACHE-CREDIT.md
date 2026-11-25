@@ -15,8 +15,10 @@ it because the treated side's cache-weighted price was **1.55x** the control's. 
 control side with **885,375 of 918,259 prompt tokens (96.4%)**. The prompts those tokens belong to are in
 the same artifact. They share **22 characters** of prefix at the longest, and **1.4%** of their text is
 content that any other prompt had already sent. A cache is a lookup on something; nothing in these
-prompts is there to be found, so the credit is not a reuse measure and a price built out of it cannot
-veto a mechanism whose prompt-token count moved **+0.07%**.
+prompts is there to be found — and §7 then measured what the counter is: a **prefix cache**, verdict
+`position` at a residual of 0.035. Both statements are true at once, and together they are the finding:
+the counter measures reuse, these prompts contain almost none, and the 96.4% is therefore not about
+these prompts. A price built on it cannot veto a mechanism whose prompt-token count moved **+0.07%**.
 
 ## 1. The five numbers, all from one shard of one run
 
@@ -74,6 +76,13 @@ winner when its mean absolute residual is within **0.15**. The rule, fixed here 
 | --- | --- | --- |
 | `position` or `content` | the credit is a reuse measure, and the 63 archived prompts were simply not what it was measuring | `R5` is registered on the price ratio, `resolution` stays `raw`, and the lever is to make a turn's rendering independent of the question |
 | `neither` | the credit is not a reuse measure | the 1.55x is withdrawn as a bill, `R5` is registered on **prompt tokens per answer** (+0.07%), and `resolution: 'layered'` is adopted on `R1`/`R2`/`R3` as registered |
+
+**Amendment, written after the dispatch rather than before it.** The `position` row says `R5` is
+registered on the price ratio, and §7.2 retired that half: the probe's own control row credits a
+byte-identical repeat with **82.7%**, so the credit is a function of arrival order and no ratio over it
+is a bill. The branch's *decision* stands — `resolution` stays `raw` and the lever is the rendering —
+and the criterion that decides in the meantime is `R3`, prompt tokens per answer. A registration may be
+amended by a measurement it did not anticipate; it may not be amended by a preference.
 
 The rule is written this way because the alternative is a ratio that can veto an arm while being
 unfalsifiable: `R3` was registered as a **token** ceiling (`+1.0%`) precisely because the campaign had
