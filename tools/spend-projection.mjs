@@ -150,6 +150,108 @@ function price(promptTokens, cacheHitPromptTokens, completionTokens, prices) {
 }
 
 /**
+ * The measured price of a capability-scoped dispatch, or `null` when no bill covers the selection.
+ *
+ * ## Why a rate and not a model
+ *
+ * `capability=MR` at two repetitions was **billed 5.87 CNY**. Divided by its own 242 question-runs
+ * that is 0.0243, which is the only figure in this file that was read off a provider's invoice rather
+ * than derived from one. Every other route costs about 0.0064 and the difference is not noise: `MR`
+ * is one of the two routes that carry the reasoning, so its completion line is a third of the bill
+ * where the file's is a sixth.
+ *
+ * ## What is extrapolated, and why only that
+ *
+ * Repetitions. Each repetition is its own call with its own prompt, so a bill scales linearly in
+ * them -- the same claim the file-scaled branch makes, measured on the axis that carries no
+ * cache-order assumption. Questions are **not** extrapolated: the census states how many of each
+ * capability the run will ask, and those are the counts multiplied here. There is no share test and
+ * no `limit` factor, because a scoped run's population is a named set rather than a sample.
+ *
+ * ## Why a partially covered selection answers `null` rather than a mixture
+ *
+ * A total that added one measured row to one floored row would be a floor. The caller's whole
+ * decision rests on which of the two it holds -- the dispatch gate refuses a floor without a stated
+ * budget and prices a measurement without one -- so the mixed case answers `null` and keeps the
+ * floor's label. The alternative, an `approximate: true` flag, is the `cost-ledger.py` defect: one
+ * number that two readers can disagree about because what it assumed is not in the file.
+ */
+export function measuredScopedCost({ capability, census, runs, capabilityRates }) {
+  const measured = capabilityRates?.measured;
+  if (measured === undefined || measured === null) return null;
+  const rows = [];
+  for (const name of capability) {
+    const bill = measured[name];
+    if (bill === undefined || bill === null) return null;
+    requireCount(`${name}.questions`, census[name]);
+    if (census[name] === 0) return null;
+    // The rate is **derived from the invoice**, never stored as a rounded copy of it. A file that
+    // carried `0.0243` beside `5.87` would be two numbers that disagree in the fourth decimal, and the
+    // one a reader checked would not be the one the arithmetic used -- so the block records the bill
+    // and its denominator, and the quotient is computed here.
+    requireCount(`${name}.billedQuestions`, bill.billedQuestions);
+    requireCount(`${name}.billedRuns`, bill.billedRuns);
+    if (bill.billedQuestions === 0 || bill.billedRuns === 0) {
+      throw new Error(`${name}.billedQuestions and ${name}.billedRuns denominate a rate and cannot be zero`);
+    }
+    if (typeof bill.billedCny !== 'number' || !(bill.billedCny > 0)) {
+      throw new Error(`${name}.billedCny must be a positive number, got ${JSON.stringify(bill.billedCny)}`);
+    }
+    const cnyPerQuestionRun = bill.billedCny / (bill.billedQuestions * bill.billedRuns);
+    const questionRuns = census[name] * runs;
+    rows.push({
+      capability: name,
+      questions: census[name],
+      questionRuns,
+      cnyPerQuestionRun,
+      billedRuns: bill.billedRuns,
+      cny: questionRuns * cnyPerQuestionRun,
+      // Carried per row rather than once for the total, because a two-capability selection can be
+      // covered by two different bills and a single `source` would then name one of them.
+      source: bill.source,
+    });
+  }
+  if (rows.length === 0) return null;
+  const total = rows.reduce((sum, row) => sum + row.cny, 0);
+  const questionRuns = rows.reduce((sum, row) => sum + row.questionRuns, 0);
+  return { rows, total, questionRuns, source: capabilityRates.source };
+}
+
+/**
+ * The projection object for a measured scoped design. Same shape as the scaled one, and `basis`
+ * says which of the two arithmetics produced it -- the field the dispatch gate's log needs, so a
+ * reader of the bill does not have to infer from the size of the number how it was obtained.
+ */
+function measuredScopedProjection(measured, { capability, runs, prices, observedThinkingReach, thinkingReach }) {
+  return {
+    scaled: true,
+    basis: 'measured',
+    factor: undefined,
+    questionFactor: undefined,
+    runFactor: undefined,
+    population: { corpora: measured.rows.reduce((sum, row) => sum + row.questions, 0), windows: 1, questions: measured.rows.reduce((sum, row) => sum + row.questions, 0) },
+    selected: [...capability],
+    questionRuns: measured.questionRuns,
+    cost: { cached: 0, uncached: 0, output: 0, total: measured.total },
+    perCapability: measured.rows,
+    rateSource: measured.source,
+    perQuestionPerRun: {
+      cached: 0,
+      uncached: 0,
+      output: 0,
+      total: measured.total / measured.questionRuns,
+    },
+    thinkingReachChanged:
+      observedThinkingReach !== undefined &&
+      thinkingReach !== undefined &&
+      String(observedThinkingReach) !== String(thinkingReach),
+    lowerBound: false,
+    lowerBoundBecause: undefined,
+    prices,
+  };
+}
+
+/**
  * Project what a dispatch of `limit` questions at `runs` repetitions will be billed.
  *
  * `observed` is the usage block of a run that already happened, with the population it was taken
@@ -170,6 +272,7 @@ export function project({
   census,
   observedCensus,
   capability,
+  capabilityRates,
   observedThinkingReach,
   thinkingReach,
   prices = DEEPSEEK_PRICES,
@@ -222,6 +325,28 @@ export function project({
     }
     selectedQuestions = capability.reduce((total, name) => total + observedCensus[name], 0);
     if (selectedQuestions === 0) return refuse('the selected capabilities carry no questions in the baseline');
+    // §13.348's floor, closed where a bill exists to close it with.
+    //
+    // The census says how many questions a scoped run asks and nothing about what they cost, so this
+    // branch used to fall through to the file-scaled arithmetic and label the result a lower bound --
+    // correctly, because `MR`'s question-run is 0.0243 CNY against the file's 0.0064 and the factor
+    // was 3.4. A capability whose rate has been **billed** needs none of that scaling: the bill is the
+    // measurement, it is linear in repetitions for the reason every repetition is its own call, and
+    // the only remaining arithmetic is a multiplication by a count this baseline states.
+    //
+    // All or nothing on the selection. A total that mixed one measured row with one floored row would
+    // be a floor, and a floor printed under the heading "measured" is the defect in the other
+    // direction -- so a partially covered selection keeps the old branch and keeps its label.
+    const measured = measuredScopedCost({ capability, census: observedCensus, runs, capabilityRates });
+    if (measured !== null) {
+      return measuredScopedProjection(measured, {
+        capability,
+        runs,
+        prices,
+        observedThinkingReach,
+        thinkingReach,
+      });
+    }
   } else {
     const shareFailure = checkShares({ census, observedCensus });
     if (shareFailure !== null) {
@@ -360,6 +485,35 @@ export function describe(projection, { limit, runs, capability } = {}) {
       'No projection is printed, because a figure whose assumption failed would be read as a measurement.',
     ];
   }
+  // A measured scoped design has no token split to print and does not pretend to one. What it has
+  // instead is the bill it came from, which is the more useful thing to show: a rate a reader can
+  // check against the run it was taken from, multiplied by a count the baseline states.
+  if (projection.basis === 'measured') {
+    const rows = projection.perCapability ?? [];
+    const rate = rows.length === 1 ? rows[0].cnyPerQuestionRun : undefined;
+    const billedRuns = rows.map((row) => row.billedRuns);
+    const extrapolated = billedRuns.length > 0 && billedRuns.every((count) => (runs ?? 0) > count);
+    return [
+      `Measured spend for capability ${(projection.selected ?? capability ?? []).join('+')} x ${runs ?? '?'} runs ` +
+        `(${projection.questionRuns} question-runs)`,
+      `  MEASURED${rate === undefined ? '' : `  ${rate.toFixed(4)}`} CNY per question-run` +
+        ` (bill: ${rows[0]?.source ?? projection.rateSource ?? 'unstated'})`,
+      ...rows.map(
+        (row) =>
+          `  ${row.capability.padEnd(4)}${String(row.questions).padStart(5)} qs x ${String(runs ?? '?').padStart(3)} = ` +
+          `${String(row.questionRuns).padStart(5)} question-runs  ${row.cny.toFixed(2)} CNY`,
+      ),
+      `  TOTAL           ${projection.cost.total.toFixed(2)} CNY   (measured, not scaled: the only axis extrapolated is repetitions)` +
+        (extrapolated ? ' *' : ''),
+      ...(extrapolated
+        ? [
+            `  * ${runs} repetitions is above the ${billedRuns[0]} the bill was rendered at: linear in tokens,`,
+            '    cache behaviour at that count unmeasured -- the same caveat `scoped-spend.mjs` prints.',
+          ]
+        : []),
+      `  prices: ${projection.prices.model} as of ${projection.prices.asOf}, which is the price the bill was rendered at`,
+    ];
+  }
   const { cost, usage, factor } = projection;
   const hitShare = usage.promptTokens === 0 ? 0 : usage.cacheHitPromptTokens / usage.promptTokens;
   return [
@@ -426,6 +580,9 @@ async function main(argv) {
     census: options.census,
     observedCensus,
     capability: options.capability,
+    // Read off the same file as the census, so the two halves of a scoped price -- how many questions
+    // and what one of them costs -- cannot come from two artifacts a reader has to reconcile.
+    capabilityRates: report.capabilityRates,
     observedThinkingReach: report.memoryArmConfig?.reader?.thinkingRoutes?.join('+') ?? report.memoryArmConfig?.reader?.thinking,
     thinkingReach: options.thinking,
   });

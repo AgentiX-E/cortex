@@ -1429,6 +1429,29 @@ def split_finance(argv: list[str]) -> tuple[list[str], dict]:
     return rest, {"budget": budget, "named": named, "flags": flags}
 
 
+def _rates_cover(baseline: dict, capability: str) -> bool:
+    """Whether every capability in `capability` has a billed rate in the baseline.
+
+    A **presence** check and deliberately not an arithmetic one: the price of a scoped dispatch is
+    `spend-projection.mjs`'s to compute, and a second implementation here would be a second answer to
+    the same question. What the gate needs to know is only whether that tool is about to print a
+    measurement or a floor, because the two get different treatment -- a measurement is tested against
+    the ceiling and a floor is refused without a ceiling the operator named.
+
+    Comma lists are the workflow's grammar, and a name in a different case is the same name: the
+    selector folds case before it looks anything up, so `mr` reaches the same 121 questions and the
+    same bill.
+    """
+    measured = (baseline.get("capabilityRates") or {}).get("measured") or {}
+    names = [part.strip().upper() for part in capability.split(",") if part.strip() != ""]
+    # An empty selection is not a covered one. `all(...)` over nothing is `True`, which would let a
+    # blank selector ride the default ceiling as if it had been priced -- the vacuous truth is the
+    # only way this predicate can be wrong in the direction that spends money.
+    if not names:
+        return False
+    return all(name in {key.upper() for key in measured} for name in names)
+
+
 def projected_spend(inputs: dict[str, str], budget: float | None, named: bool = True) -> float | None:
     """Print this dispatch's projected bill and refuse when it breaches `budget`.
 
@@ -1480,19 +1503,30 @@ def projected_spend(inputs: dict[str, str], budget: float | None, named: bool = 
     scoped = capability != "" and capability.upper() != "ALL"
     if scoped:
         arguments.extend(["--capability", capability])
-        # §13.348. A capability-scoped projection is a **floor**, not an estimate: the census is the
-        # right count of questions and the wrong unit of cost, because per-question cost is
+        # §13.348. A capability-scoped projection used to be a **floor**, not an estimate: the census
+        # is the right count of questions and the wrong unit of cost, because per-question cost is
         # route-scoped and `MR` is the route that carries the reasoning. The first scoped dispatch was
         # projected at 1.73 CNY and billed 5.87 -- 3.4x -- so the default ceiling is not a ceiling
-        # here. An operator who means it names a number; the alternative is a gate that reports a
-        # confident figure it knows to be low, which is the defect it was built to remove.
-        if not named and budget is not None:
+        # here, and the gate demanded a number rather than print a confident figure it knows to be low.
+        #
+        # That refusal was right and it made every cheap design unquotable: an operator who wants the
+        # 5.87 run has to *guess* 6, and one who guesses 2 is told to buy a bigger budget for an
+        # arithmetic problem. `spend-baseline.json`'s `capabilityRates` is the same measurement in the
+        # form the projection can use -- the bill, its own question and repetition counts, and nothing
+        # else -- so a selection it covers is priced rather than floored and needs no guess. The gate
+        # asks only whether the baseline *covers the selection*; the arithmetic stays in the tool, and
+        # a partial cover still refuses because a mixed total would be a floor wearing a measurement's
+        # label.
+        if not named and budget is not None and not _rates_cover(baseline, capability):
             raise SystemExit(
                 "a capability-scoped dispatch is priced as a lower bound, so it needs a stated "
                 "budget: the census scales by question count and per-question cost is route-scoped "
                 f"(`MR` measured 0.0243 CNY per question-run against the file's 0.0064). The last "
                 f"scoped {capability} run was projected at 1.73 CNY and billed 5.87. Pass --budget N "
-                "with the ceiling you mean, or --no-budget to dispatch unpriced."
+                "with the ceiling you mean, or --no-budget to dispatch unpriced. "
+                f"{capability} has no billed rate in {SPEND_BASELINE.name} yet: once a scoped run of it "
+                "is billed, record the bill there (capabilityRates.measured) and this run prices "
+                "itself."
             )
     if budget is not None:
         arguments.extend(["--budget", f"{budget}"])

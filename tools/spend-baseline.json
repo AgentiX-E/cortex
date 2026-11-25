@@ -49,5 +49,18 @@
    ],
    "temperature": 0
   }
+ },
+ "capabilityRates": {
+  "note": "Capabilities whose question-run price has been BILLED rather than derived from the file average. A capability-scoped dispatch is otherwise priced as a floor: the census says how many questions it asks and nothing about what they cost, and the file average is not what a route costs. Absent capabilities are absent on purpose -- the floor and its LOWER BOUND label stay until a bill covers them, because inventing a rate from the file average is the 3.4x error section 13.348 measured.",
+  "measured": {
+   "MR": {
+    "billedCny": 5.87,
+    "billedQuestions": 121,
+    "billedRuns": 2,
+    "source": "PREREGISTRATION-CORTEX-MEMORY-ARM.md section 13.348.2: `capability=MR` at two repetitions billed 5.87 CNY against a 1.73 projection. The rate is billedCny / (billedQuestions x billedRuns) = 0.0243, computed at read time and never stored rounded.",
+    "armConfig": "the arm shipped on the day of that dispatch: deepseek-chat, thinking on multi-session+temporal, both sides and the judge included in the bill",
+    "caveat": "The bill bundles both arms and the judge, so the rate is a whole-dispatch price rather than a reader-call price. It is linear in repetitions and stated per question-run; it is not comparable to `costPerCapability`'s feature-side rows for the same capability, which apportion completion by question-runs and therefore understate a thinking route."
+   }
+  }
  }
 }

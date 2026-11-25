@@ -315,6 +315,15 @@ class TestCapabilityScopedRuns:
     A capability-scoped dispatch is a fifth of a pass, so the gate has to price it as one. Without
     this the budget default of 3.00 CNY refuses every capability run -- a gate that fires on the
     cheap configuration while letting the expensive one through is worse than no gate.
+
+    ## What changed here, and why the old assertion had to go
+
+    `MR` used to read **0.86** for one repetition, from the census factor `121/500 x 1/4` applied to
+    the file's token counts. That number was a **floor** and the tool said so: the same dispatch
+    billed **5.87** at two repetitions, 3.4x the projection. So the test that pinned 0.86 was pinning
+    the defect's symptom, and the fix is not a tighter threshold -- it is the baseline carrying the
+    bill. `capabilityRates.measured.MR` records 5.87 over 121 questions x 2 repetitions, and the rate
+    is derived from those three numbers at read time.
     """
 
     BASELINE = REPO / "tools" / "spend-baseline.json"
@@ -324,14 +333,44 @@ class TestCapabilityScopedRuns:
             pytest.skip("the spend baseline is not present")
         return _cli("--report", str(self.BASELINE), "--runs", "1", *args)
 
-    def test_one_capability_is_priced_from_the_census_not_from_the_file(self):
-        # `MR` is 121 of 500 questions, so the factor is 0.242 of a one-repetition pass and the total
-        # has to land under a fifth of it -- if the tool priced the file, this would read ~3.57.
+    def test_a_billed_capability_is_priced_from_its_bill_not_from_the_census(self):
+        # One repetition of `MR` is half the bill: 121 question-runs at 0.0243. The census floor said
+        # 0.86; the invoice says 2.94, and the invoice is the one that gets paid.
         result = self._run("--limit", "0", "--capability", "MR")
         assert result.returncode == 0, result.stderr
-        assert "capability MR" in result.stdout
-        assert "0.8" in result.stdout
-        assert "3.5" not in result.stdout
+        assert "Measured spend for capability MR" in result.stdout
+        assert "2.94" in result.stdout
+        assert "LOWER BOUND" not in result.stdout
+        # The rate is printed so the bill can be re-derived: 5.87 / (121 x 2).
+        assert "0.0243 CNY per question-run" in result.stdout
+
+    def test_the_billed_repetition_count_reproduces_the_invoice_exactly(self):
+        # The identity that makes this a price rather than a second opinion: at the repetitions the
+        # bill was rendered at, the projection must return the bill. Anything else means the rate and
+        # its denominator have drifted apart.
+        result = _cli("--report", str(self.BASELINE), "--limit", "0", "--capability", "MR", "--runs", "2")
+        assert result.returncode == 0, result.stderr
+        assert "5.87" in result.stdout
+        assert "*" not in result.stdout.split("TOTAL")[1].splitlines()[0]
+
+    def test_a_design_above_the_billed_repetitions_is_labelled_as_extrapolated(self):
+        # Repetitions are linear in tokens and the cache behaviour at a count nobody billed is not
+        # measured. The mark is the same one `scoped-spend.mjs` prints, so two tools cannot disagree
+        # about which of their figures is measured.
+        result = _cli("--report", str(self.BASELINE), "--limit", "0", "--capability", "MR", "--runs", "4")
+        assert result.returncode == 0, result.stderr
+        assert "11.74" in result.stdout
+        assert "above the 2 the bill was rendered at" in result.stdout
+
+    def test_a_capability_without_a_bill_keeps_the_floor_and_its_label(self):
+        # All or nothing on the selection. `TR` has no billed rate, so a `MR+TR` total would be one
+        # measured row added to one floored row -- a floor, and the label has to say so rather than
+        # inherit the measured heading from its neighbour.
+        result = _cli("--report", str(self.BASELINE), "--limit", "0", "--capability", "MR,TR", "--runs", "2")
+        assert result.returncode == 0, result.stderr
+        assert "Projected spend for capability MR+TR" in result.stdout
+        assert "LOWER BOUND" in result.stdout
+        assert "Measured spend" not in result.stdout
 
     def test_the_whole_file_is_either_zero_or_its_own_size(self):
         # Two spellings of one state: the workflow says `limit=0` and the tool's default is the file's
@@ -354,6 +393,68 @@ class TestCapabilityScopedRuns:
         assert result.returncode == 1
         assert "carries no XX" in result.stdout
         assert "ABS, IE, KU, MR, TR" in result.stdout
+
+
+class TestMeasuredScopedCost:
+    """The rate arithmetic, without a baseline file in the way.
+
+    Each refusal here has a default that would produce a confident number: a missing bill priced at
+    nothing, a zero denominator read as a free run, a negative bill credited as a discount.
+    """
+
+    CENSUS = {"MR": 121, "TR": 127}
+    BILL = {"MR": {"billedCny": 5.87, "billedQuestions": 121, "billedRuns": 2, "source": "fixture"}}
+
+    def _cost(self, **override) -> object:
+        call = {
+            "capability": ["MR"],
+            "census": self.CENSUS,
+            "runs": 2,
+            "capabilityRates": {"measured": self.BILL},
+        }
+        call.update(override)
+        return _call(f"mod.measuredScopedCost({json.dumps(call)})")
+
+    def test_the_rate_is_the_bill_over_its_own_question_runs(self):
+        cost = self._cost()
+        assert cost["rows"][0]["cnyPerQuestionRun"] == pytest.approx(5.87 / 242)
+        assert cost["total"] == pytest.approx(5.87)
+
+    def test_an_uncovered_capability_answers_null_rather_than_a_mixture(self):
+        assert self._cost(capability=["MR", "TR"]) is None
+
+    def test_no_rates_at_all_answers_null(self):
+        assert self._cost(capabilityRates=None) is None
+
+    def test_a_bill_with_no_denominator_is_refused(self):
+        broken = {"measured": {"MR": {"billedCny": 5.87, "billedQuestions": 0, "billedRuns": 2}}}
+        result = _call_error(
+            "mod.measuredScopedCost("
+            + json.dumps({"capability": ["MR"], "census": self.CENSUS, "runs": 2, "capabilityRates": broken})
+            + ")"
+        )
+        assert result.returncode != 0
+        assert "cannot be zero" in result.stderr
+
+    def test_a_bill_that_is_not_positive_is_refused(self):
+        broken = {"measured": {"MR": {"billedCny": -1, "billedQuestions": 121, "billedRuns": 2}}}
+        result = _call_error(
+            "mod.measuredScopedCost("
+            + json.dumps({"capability": ["MR"], "census": self.CENSUS, "runs": 2, "capabilityRates": broken})
+            + ")"
+        )
+        assert result.returncode != 0
+        assert "must be a positive number" in result.stderr
+
+    def test_a_capability_the_census_does_not_carry_is_refused(self):
+        result = _call_error(
+            "mod.measuredScopedCost("
+            + json.dumps(
+                {"capability": ["MR"], "census": {"TR": 127}, "runs": 2, "capabilityRates": {"measured": self.BILL}}
+            )
+            + ")"
+        )
+        assert result.returncode != 0
 
 
 def test_the_per_thousand_questions_line_is_the_observed_price_times_a_thousand() -> None:

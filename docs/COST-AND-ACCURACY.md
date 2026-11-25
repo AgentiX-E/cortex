@@ -299,6 +299,42 @@ the same tool prints when it is not. **The gate had to learn the census**: with 
 would have priced `I1` as a 7.13 CNY double pass and refused a 1.73 CNY dispatch, which is the "cheap and
 expensive look identical at the moment of choosing" defect one layer up from where it was fixed.
 
+### 10.1 The floor is gone where a bill exists to replace it
+
+That third column was a **floor** and the tool said so, which left the selector's own price unquotable: an
+operator who wants the 5.87 CNY run had to *guess* 6. The missing ingredient was not a better model — it was
+the invoice, written down in the form the projection can use. `tools/spend-baseline.json` now carries
+`capabilityRates.measured.MR`: `billedCny: 5.87`, `billedQuestions: 121`, `billedRuns: 2`, and nothing else.
+The rate is `5.87 / (121 x 2)` **computed at read time**, because a file that also stored `0.0243` would be two
+numbers that disagree in the fourth decimal and the one a reader checked would not be the one the arithmetic
+used.
+
+| dispatch | questions | projected before | priced now | basis |
+| --- | ---: | ---: | ---: | --- |
+| `capability=MR`, 1 run | 121 | 0.86 | **2.94** | billed (half of the 2-run bill) |
+| `capability=MR`, 2 runs | 121 | 1.73 | **5.87** | billed |
+| `capability=MR`, 4 runs | 121 | 3.45 | **11.74** | billed, extrapolated in repetitions (marked) |
+| whole file, 1 run | 500 | 3.57 | 3.57 | file-scaled, exact |
+| whole file, 2 runs | 500 | 7.13 | 7.13 | file-scaled, exact |
+| whole file, 4 runs | 500 | 14.26 | 14.26 | billed (`42467`) |
+| `capability=TR`, 2 runs | 127 | 1.81 | 1.81 | **still a floor**: no bill for `TR` alone |
+
+Two rules the implementation keeps, both of them about which of the two arithmetics produced a number:
+
+1. **All or nothing on the selection.** `MR,TR` is one billed row and one floored row, so the total is a floor
+   and the label says `LOWER BOUND`. A mixed total printed under a measurement's heading is the §13.348 defect
+   in the other direction, and the gate keys on that label: it refuses a floor without a stated budget and
+   prices a measurement like anything else.
+2. **Repetitions are the only extrapolated axis.** Each repetition is its own call, which is the claim the
+   file-scaled branch already makes on the only axis that carries no cache-order assumption. Above the billed
+   count the line is marked `*`, the same mark `tools/scoped-spend.mjs` prints.
+
+The consequence for a plan is not a discount on the same designs — it is that the cheap designs become
+**quotable**, which is what makes ordering them a decision instead of a wager. §194 in `cortex-docs` does the
+arithmetic for the queue that was previously priced at 95 CNY: three capability-scoped mechanisms cost
+**7.76** between them, and the 4-repetition file confirmation is 3.57 for one more repetition pooled with the
+two already archived — not 16, because the first two were already bought.
+
 Two limits on the selector, stated so the numbers above are not read as a general discount:
 
 - **It buys resolution on one capability, not on the arm.** The five-way union is available

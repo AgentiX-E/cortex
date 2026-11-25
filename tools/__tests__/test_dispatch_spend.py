@@ -147,15 +147,36 @@ class TestCapabilityScopedPricing:
         inputs["limit"] = "0"
         inputs["ablation_runs"] = "2"
         inputs["capability"] = "MR"
-        assert dispatch.projected_spend(inputs, dispatch.DEFAULT_BUDGET_CNY) is None
+        assert dispatch.projected_spend(inputs, 20.0) is None
         printed = capsys.readouterr().out
         assert "capability MR" in printed
         assert "500 questions" not in printed
 
+    def test_a_billed_capability_is_priced_and_the_gate_stops_demanding_a_guess(self, dispatch, capsys):
+        # The refusal below is what `MR` used to get, and it made the cheapest experiment in the
+        # campaign unquotable: the run is 5.87 CNY and the operator had to guess 6. With the bill in
+        # the baseline the number is printed and tested against the ceiling like every other one --
+        # so at a ceiling above the bill it dispatches with no guess, and at a ceiling below it the
+        # refusal is a comparison rather than a warning about arithmetic.
+        inputs = dict(dispatch.INPUTS)
+        inputs["limit"] = "0"
+        inputs["ablation_runs"] = "2"
+        inputs["capability"] = "MR"
+        assert dispatch.projected_spend(inputs, 8.0, named=False) is None
+        printed = capsys.readouterr().out
+        assert "Measured spend for capability MR" in printed
+
+        with pytest.raises(SystemExit) as raised:
+            dispatch.projected_spend(inputs, dispatch.DEFAULT_BUDGET_CNY, named=False)
+        message = str(raised.value)
+        assert "BUDGET EXCEEDED" in message and "5.87" in message
+        assert "lower bound" not in message
+
     def test_the_whole_file_and_the_capability_are_different_numbers(self, dispatch, capsys):
-        # 121/500 x 2/4 = scale 0.121, so 14.26 CNY reads 1.73. The assertion is on the total line
-        # rather than on a substring of any line, because the per-line figures happen to contain
-        # "0.83" for the output row and a looser check would pass on the wrong number.
+        # The whole file at two repetitions is 7.13 CNY and `MR` alone is 5.87 -- from its own bill,
+        # not from the 121/500 factor, which said 1.73 and was 3.4x low. The assertion is on the total
+        # line rather than on a substring of any line, because the per-line figures happen to contain
+        # the same digits as the number being tested.
         inputs = dict(dispatch.INPUTS)
         inputs["limit"] = "0"
         inputs["ablation_runs"] = "2"
@@ -163,7 +184,8 @@ class TestCapabilityScopedPricing:
         dispatch.projected_spend(inputs, 1000.0)
         total = [line for line in capsys.readouterr().out.splitlines() if "TOTAL" in line]
         assert len(total) == 1
-        assert "1.73" in total[0]
+        assert "5.87" in total[0]
+        assert "1.73" not in total[0]
 
     def test_a_partial_limit_with_a_capability_is_refused_rather_than_overridden(self, dispatch):
         # Silently dropping `limit` here would dispatch a run bigger than the one that was asked
@@ -198,27 +220,40 @@ class TestCapabilityScopedPricing:
             dispatch.projected_spend(inputs, dispatch.DEFAULT_BUDGET_CNY)
         assert "carries no XX" in str(raised.value)
 
-    def test_a_scoped_dispatch_needs_a_named_budget(self, dispatch):
-        # §13.348. The projection is a floor for a scoped run (measured 1.73 projected against 5.87
-        # billed), so riding the default ceiling is not a decision -- it is a floor under a number
-        # nobody chose. The refusal has to carry the measurement, or the operator reads it as a
-        # formality and passes the default explicitly.
+    def test_an_unbilled_capability_still_needs_a_named_budget(self, dispatch):
+        # §13.348's refusal survives where its premise does. `TR` has never been billed on its own,
+        # so its projection is still a floor -- and a floor under a ceiling nobody chose is not a
+        # budget. The refusal has to carry the measurement, or the operator reads it as a formality
+        # and passes the default explicitly.
         inputs = dict(dispatch.INPUTS)
         inputs["limit"] = "0"
         inputs["ablation_runs"] = "2"
-        inputs["capability"] = "MR"
+        inputs["capability"] = "TR"
         with pytest.raises(SystemExit) as raised:
             dispatch.projected_spend(inputs, dispatch.DEFAULT_BUDGET_CNY, named=False)
         message = str(raised.value)
         assert "lower bound" in message
         assert "5.87" in message and "1.73" in message
+        # And it names the repair rather than only the rule: record the bill, and the next run of
+        # this capability prices itself.
+        assert "capabilityRates.measured" in message
 
-    def test_naming_the_budget_lets_the_scoped_dispatch_through(self, dispatch):
+    def test_naming_the_budget_lets_the_unbilled_capability_through(self, dispatch):
         inputs = dict(dispatch.INPUTS)
         inputs["limit"] = "0"
         inputs["ablation_runs"] = "2"
-        inputs["capability"] = "MR"
+        inputs["capability"] = "TR"
         assert dispatch.projected_spend(inputs, 8.0, named=True) is None
+
+    def test_a_mixed_selection_is_a_floor_because_one_of_its_rows_is(self, dispatch):
+        # `MR` is billed and `TR` is not, and the total is one of each. The gate has to refuse it
+        # unnamed, because a mixed total is a floor wearing a measurement's label.
+        inputs = dict(dispatch.INPUTS)
+        inputs["limit"] = "0"
+        inputs["ablation_runs"] = "2"
+        inputs["capability"] = "MR,TR"
+        with pytest.raises(SystemExit):
+            dispatch.projected_spend(inputs, dispatch.DEFAULT_BUDGET_CNY, named=False)
 
     def test_the_named_flag_is_what_the_parser_reports(self, dispatch):
         _, default = dispatch.split_finance([])
