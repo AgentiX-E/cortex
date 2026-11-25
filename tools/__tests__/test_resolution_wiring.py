@@ -140,11 +140,23 @@ def test_the_arm_forwards_the_form_through_a_compile_enforced_table() -> None:
         'the table exists and its value never reaches the treatment the constructor is built from, which '
         'is the same failure one line later and the exact shape of `semanticCarry`'
     )
-    assert "...(treatment.resolution === 'raw' ? {} : { resolution: treatment.resolution })" in bench, (
+    assert 'resolution: treatment.resolution,' in bench, (
         'the treatment exists and its form never reaches CortexMemory. The chain is three links -- table to '
         '`armTreatment`, `armTreatment` to the constructor -- and a check on the first alone would pass a '
         'run in which the middle link still read `armOptions`, which is the control-against-control shape '
         'one flag over: `layered` would be `layered` per process and the pair would compare it to itself.'
+    )
+    # Named unconditionally, and that changed on the day the product's default did. The spread this line
+    # replaces was `...(treatment.resolution === 'raw' ? {} : {...})`, whose comment said `raw` is
+    # "expressed by not passing the key so the control reproduces every archived prompt byte for byte".
+    # True while the class read an absent field as the head cut; false from `45543010618` on, because
+    # `assembleMemory` now resolves the registered rendering -- so an omitted key renders **layered** on
+    # the side whose artifact says `resolution=raw`, which is the configuration line and the prompt
+    # disagreeing about which arm was administered. Asserted as an absence rather than left to the line
+    # above: a spread reintroduced beside it would still contain the string that assertion looks for.
+    assert "treatment.resolution === 'raw' ? {}" not in bench, (
+        'the per-side rendering is spread conditionally again: `raw` is no longer expressed by omitting the '
+        'key, so a control side that omits it renders the adopted forms under the control\'s label'
     )
 
 

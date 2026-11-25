@@ -27,7 +27,7 @@
  *    rendering, and differs from the reference arm's prompt — so the assertion is about which arm
  *    reached the reader, not about which constant was read.
  */
-import { readFileSync } from 'node:fs';
+import { existsSync, readFileSync } from 'node:fs';
 
 import { describe, expect, it } from 'vitest';
 import type { LLM } from '@agentix-e/cortex-core';
@@ -49,6 +49,49 @@ function baseline(): Baseline {
   return JSON.parse(
     readFileSync(new URL('../../../../tools/arm-config-baseline.json', import.meta.url), 'utf8'),
   ) as Baseline;
+}
+
+/** One field adopted after the baseline was recorded, with the dispatch that priced it. */
+interface Adoption {
+  readonly field: string;
+  readonly baseline: unknown;
+  readonly to: unknown;
+  readonly dispatch: string;
+  readonly population: string;
+  readonly criteria: Readonly<Record<string, string>>;
+  readonly criterionSource: string;
+  readonly readings: Readonly<Record<string, unknown>>;
+  readonly withdrawnObjection: string;
+  readonly caveat: string;
+  readonly recordedIn: string;
+}
+
+/**
+ * The adoptions the product has taken since the baseline, in the order they were taken.
+ *
+ * ## Why the baseline is not simply re-recorded
+ *
+ * `tools/arm-config-baseline.json` answers one question: *what arm did one dispatch apply, and what did it
+ * read*. `45543010618` priced a rendering that `44017278305` predates, so it has no key to change -- and
+ * writing `layered` into the baseline anyway would make a 91.25% reading describe a rendering it never
+ * rendered. That is the falsification this repository withdraws readings over, not a bookkeeping choice.
+ *
+ * So the shipped arm is a **composition**: the measured baseline, plus a ledger whose every row names the
+ * dispatch that priced it and the four criteria that dispatch was read against. A field cannot enter the
+ * ledger without them, and this file is where that is enforced.
+ */
+function adoptions(): readonly Adoption[] {
+  const file = JSON.parse(
+    readFileSync(new URL('../../../../tools/arm-adoptions.json', import.meta.url), 'utf8'),
+  ) as { adoptions: readonly Adoption[] };
+  return file.adoptions;
+}
+
+/** The baseline with every adoption applied: what the product is supposed to be shipping. */
+function adoptedArm(): Record<string, unknown> {
+  const arm: Record<string, unknown> = { ...baseline().memoryArmConfig };
+  for (const adoption of adoptions()) arm[adoption.field] = adoption.to;
+  return arm;
 }
 
 /**
@@ -212,6 +255,7 @@ async function promptWith(arm: {
 describe('the arm the registration measured is the arm the product ships', () => {
   it('classifies every field of `memoryArmConfig`, in both directions', () => {
     const artifact = baseline().memoryArmConfig;
+    const ledger = new Set(adoptions().map((adoption) => adoption.field));
     const decided = new Set<string>([
       ...Object.keys(REGISTERED_ARM),
       ...Object.keys(REGISTERED_ARM_ELSEWHERE),
@@ -224,9 +268,11 @@ describe('the arm the registration measured is the arm the product ships', () =>
     // `evidenceRolesRoutes`) are decided by the product, so a row that needs it again would be a row
     // added to a table this file no longer has — which is the point rather than an inconvenience.
     expect([...Object.keys(artifact)].filter((key) => !decided.has(key))).toEqual([]);
-    // And the reverse: a field this file decided about that the artifact does not carry is a stale
-    // classification, which is how a removed option keeps a reason nobody re-read.
-    expect([...decided].filter((key) => !(key in artifact))).toEqual([]);
+    // And the reverse: a field this file decided about that neither the artifact nor the ledger carries is
+    // a stale classification, which is how a removed option keeps a reason nobody re-read. The ledger is
+    // part of the second half because a field adopted after the baseline cannot be in the baseline: the
+    // dispatch it was priced by came later, and the row that says so is the only place it exists.
+    expect([...decided].filter((key) => !(key in artifact) && !ledger.has(key))).toEqual([]);
     // The two tables must not overlap, or one field has two answers and the equality below reads
     // whichever table the iteration happened to reach first.
     expect(Object.keys(REGISTERED_ARM).filter((key) => key in REGISTERED_ARM_ELSEWHERE)).toEqual(
@@ -234,8 +280,8 @@ describe('the arm the registration measured is the arm the product ships', () =>
     );
   });
 
-  it('agrees with `tools/arm-config-baseline.json` on every field it decides', () => {
-    const artifact = baseline().memoryArmConfig;
+  it('agrees with the baseline plus every adoption on every field it decides', () => {
+    const artifact = adoptedArm();
     const disagreements: { key: string; product: unknown; artifact: unknown }[] = [];
     for (const [key, product] of Object.entries(REGISTERED_ARM)) {
       const projection = PROJECTED_ARM_FIELDS[key];
@@ -249,13 +295,49 @@ describe('the arm the registration measured is the arm the product ships', () =>
     expect(disagreements).toEqual([]);
   });
 
-  it('applies the registered width and reach on a bare call', async () => {
-    // The tripwire, in the direction it now points. It used to assert that a bare call printed this
-    // 900-character turn **whole**, which was the gap the unshipped table recorded; it failed when the
-    // default landed, and the fix it prescribed was to move the row up rather than to relax the assertion.
-    // What it asserts now is the other half of the same claim: the arm the benchmark dispatches and the arm
-    // this function assembles cut in the same place, at the width the artifact records.
-    const LONG = `${'The plumber came on the ninth and replaced the valve. '.repeat(20)}END-OF-LONG-TURN`;
+  it('admits an adoption only when the rule that decides it says adopt', () => {
+    // The ledger's whole value is that a row cannot be written by preference. Each of these is a way a row
+    // could be added without evidence, and each fails here rather than in a document nobody re-reads.
+    for (const adoption of adoptions()) {
+      expect(Object.keys(REGISTERED_ARM)).toContain(adoption.field);
+      expect(JSON.stringify(REGISTERED_ARM[adoption.field as keyof typeof REGISTERED_ARM])).toBe(
+        JSON.stringify(adoption.to),
+      );
+      // `R4` is the registration's own decision clause -- "adopt if and only if `R2` and `R3`" -- so a row
+      // whose decision was not taken is a row that nobody decided, whatever it was filed under.
+      expect(adoption.criteria.R4).toBe('fired');
+      expect(adoption.criteria.R2).toBe('pass');
+      expect(adoption.criteria.R3).toBe('pass');
+      // A dispatch id, not a document reference: the number is what a reader can re-open.
+      expect(adoption.dispatch).toMatch(/^\d{8,}$/);
+      // The registration must exist at the path the row names, and live in the external-docs repository, so
+      // "the rule was written before the dispatch" is checkable rather than asserted.
+      expect(adoption.criterionSource.startsWith('cortex/docs/')).toBe(true);
+      expect(
+        existsSync(
+          new URL(
+            `../../../../${adoption.criterionSource.slice('cortex/'.length)}`,
+            import.meta.url,
+          ),
+        ),
+      ).toBe(true);
+      // What the row does **not** claim. An adoption with no caveat is an adoption whose population had no
+      // route it did not improve, which for a mechanism measured over five capabilities is a claim about
+      // the reading rather than about the mechanism.
+      expect(adoption.caveat.length).toBeGreaterThan(40);
+    }
+  });
+
+  it('applies the registered width, reach and rendering on a bare call', async () => {
+    // The tripwire, in the direction it now points. It has asserted two things in its life and the second
+    // one failed when the rendering was adopted: it used to require the printed turn to be the cap's own
+    // prefix, `LONG.slice(0, maxTurnChars)`, which is what the head cut produced. The registered arm no
+    // longer head-cuts -- an unrelated turn becomes a record -- so the prefix assertion is now false of a
+    // correct product, and relaxing it was not the fix. What survives, and is the same claim one level up,
+    // is that a bare call cuts where the registration cuts: the turn is shortened, the shortening keeps the
+    // opening sentence, and the tail is gone.
+    const OPENING = 'The plumber came on the ninth and replaced the valve. ';
+    const LONG = `${OPENING.repeat(20)}END-OF-LONG-TURN`;
     const seen: string[] = [];
     const install = assembleMemory({
       llm: recordingLlm(seen),
@@ -271,7 +353,10 @@ describe('the arm the registration measured is the arm the product ships', () =>
     const prompt = seen[0] ?? '';
     expect(LONG.length).toBeGreaterThan(REGISTERED_ARM.maxTurnChars);
     expect(prompt).not.toContain('END-OF-LONG-TURN');
-    expect(prompt).toContain(LONG.slice(0, REGISTERED_ARM.maxTurnChars));
+    // The record's opening: printed once, not twenty times, and not the cap's prefix.
+    expect(prompt).toContain(OPENING.trim());
+    expect(prompt.match(new RegExp(OPENING.trim(), 'g'))?.length).toBe(1);
+    expect(prompt).not.toContain(OPENING.repeat(2).trim());
   });
 
   it('lets a caller step away from the default with the empty reach', async () => {

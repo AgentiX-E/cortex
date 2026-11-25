@@ -53,6 +53,7 @@
  * confirmation run read 90.15% against 91.20%.
  */
 import type { EvidenceAsk, PromptContract } from './prompt.js';
+import type { ResolutionMode } from './resolution.js';
 import type { TurnCapRoute } from './types.js';
 import { REGISTERED_ROOMS } from './rooms.js';
 
@@ -128,6 +129,41 @@ export const REGISTERED_ARM = {
   maxTurnChars: 400,
   /** The two routes the width stops at. §13.72 is why the other four are left whole. */
   maxTurnCharsRoutes: ['multi-session', 'temporal'] as readonly TurnCapRoute[],
+  /**
+   * §14.133's form list, adopted on `45543010618`: **+1.80 points, paired, on the 500-question register**.
+   *
+   * ## Why this row is here and why it is the first one priced by a dispatch the baseline predates
+   *
+   * `tools/arm-config-baseline.json` is the arm `S16` (`44017278305`, four passes, 91.25%) applied, and it
+   * predates this field — an artifact from before `resolution` existed cannot spell it. The adoption is
+   * therefore recorded in `tools/arm-adoptions.json` rather than edited into that file: the baseline keeps
+   * meaning "the arm one dispatch applied and what it read", the ledger says which fields have moved since,
+   * and `registered-arm.test.ts` compares this table against the composition of the two. Editing the
+   * baseline instead would have made a 91.25% reading claim a rendering it never rendered.
+   *
+   * ## The reading
+   *
+   * `45543010618`, eight shards, two repetitions, `pairing: resolution`, every other field equal on both
+   * sides: **91.70% → 93.50%**, +9 questions (b=19, c=9), `MR` 83.06 → 89.26 (+6.20), `TR` +0.39, `IE`
+   * +1.33, **`KU` −1.39**, `ABS` 0.00. The four criteria were registered before the dispatch
+   * (`docs/PREREGISTRATION-RESOLUTION-REPLICATION.md`) and read by one tool: `R1` `MR` up-down +8 → pass,
+   * `R2` Fisher 0.0872 × 0.0884 → 0.0452 → pass, `R3` prompt tokens per answer **+0.07%** of the +1.0%
+   * ceiling → pass, `R4` "adopt if and only if `R2` and `R3`" → **fired**.
+   *
+   * The one objection was the cache-weighted price (1.55x), and it is **withdrawn as evidence** rather than
+   * answered: `docs/AUDIT-CACHE-CREDIT.md` finds the counter credited **96.4%** of prompts whose bytes
+   * permit **1.4%** of reuse and share **22 characters** of prefix, and probe `45574814660` then measured a
+   * byte-identical repeat at **82.7%**, so the credit is a function of when a call arrived. `R3` is the
+   * quantity that does not depend on arrival order, and it passed.
+   *
+   * ## What is not claimed
+   *
+   * `KU` moved **−1.39** (two questions of 72) on the one route the mechanism was not aimed at. That is
+   * inside the noise and it is also the shape of a real cost, so it stays in the record as the next
+   * candidate rather than as a footnote: the `KU` conflict block (§11) is off in this arm and is the
+   * mechanism registered to address that route.
+   */
+  resolution: 'layered' as ResolutionMode,
   /** §12.5's rendering. Every reading from `S9` onwards was taken with it. */
   promptContract: 'evidence-blocks-unsourced' as PromptContract,
   /** No query expansion in the registered arm; §13.68 measured the widening and did not adopt it. */

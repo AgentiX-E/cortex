@@ -1011,13 +1011,26 @@ const RESOLUTION_VARIABLE = 'CORTEX_MEMORY_RESOLUTION';
 /** The two renderings the product documents, in the order the refusal message lists them. */
 const RESOLUTIONS: readonly string[] = ['raw', 'layered'];
 /**
- * What a run that names nothing gets.
+ * What a run that names nothing gets: the **control**, which is the rendering every archived artifact used.
  *
- * `raw` because every archived artifact was rendered whole: an artifact that spelled nothing has to be the
- * arm every published number was produced under, and `layered` has a reading of its own to earn first. It is
- * also why the value is always projected rather than spread conditionally -- `raw` is a state this campaign
- * dispatches as its control, so a run that spelled it and a run that predates the field must not be the same
- * bytes.
+ * ## What changed underneath this constant, and what did not
+ *
+ * `45543010618` adopted `layered` into the product (`REGISTERED_ARM.resolution`), so the product's default
+ * and this constant are now deliberately different values answering different questions:
+ *
+ * - the product defaults a treatment because a customer calling `assembleMemory` should get the arm with a
+ *   reading;
+ * - this arm defaults the **control**, because the value here describes what one dispatch administered, and
+ *   a dispatch that names nothing administered the rendering every published number was produced under.
+ *
+ * The dispatcher writes the variable explicitly before every run (`dispatch-cortex-memory-ab.py`), so the
+ * two only diverge for a hand-dispatched workflow: that run measures the control, and its artifact says
+ * `resolution=raw`, which is true. A dispatch that wants the shipped arm names `layered` -- and then the
+ * artifact says `layered` too. `tools/arm-adoptions.json` records which arm ships.
+ *
+ * It is also why the value is always projected rather than spread conditionally: `raw` is a state this
+ * campaign dispatches as its control, so a run that spelled it and a run that predates the field must not be
+ * the same bytes.
  */
 const DEFAULT_RESOLUTION = 'raw';
 

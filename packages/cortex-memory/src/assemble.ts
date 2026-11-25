@@ -783,6 +783,34 @@ export function assembleMemory(options: AssembleOptions): Installation {
               : { evidenceRolesRoutes: options.evidenceRolesRoutes }),
           };
 
+  // The rendering, resolved on the room table's rule and **bound to the width above**.
+  //
+  // The three form ceilings are ratios of `maxTurnChars`, so a call that resolves no width has nothing to
+  // take a ratio of: writing `layered` beside an absent cap would be a name for a treatment with no scale,
+  // and the class refuses exactly that pairing (`CortexMemory`'s third guard). So the resolution is decided
+  // by the width the call actually assembles with, not by the width the caller happened to type.
+  //
+  // Three cases, the room table's three, with one addition the table does not need: a caller who names a
+  // rendering gets that rendering on every profile including `minimal`, because stating a value is not the
+  // same act as accepting a default, and `minimal` withholds defaults rather than overruling callers. It
+  // withholds this one for the reason it withholds the table: its 39.55% was measured at the reference
+  // rendering, so a default that moved its bytes would move a reading nobody re-took.
+  //
+  // ## Why a named window withdraws the default, which is the fourth term
+  //
+  // `turnWindow: 'match'` and `resolution: 'layered'` are two answers to one question -- which characters
+  // of a long turn survive a cap -- and the class refuses them together for the reason it refuses two
+  // second consultations. A default that did not step aside would therefore turn a legal call
+  // (`{maxTurnChars, turnWindow: 'match'}`, measured as `C6`) into a throw at construction. The default is
+  // the arm nobody named; a caller who named a window named a rendering, and `registered-arm.test.ts` is
+  // where "these two cannot collide by default" is a test rather than an argument.
+  const resolution =
+    options.resolution !== undefined
+      ? options.resolution
+      : profile === 'minimal' || cap?.maxTurnChars === undefined || options.turnWindow === 'match'
+        ? undefined
+        : REGISTERED_ARM.resolution;
+
   const memory = new CortexMemory({
     llm: options.llm,
     ...(options.readerByRoute === undefined ? {} : { readerByRoute: options.readerByRoute }),
@@ -824,7 +852,7 @@ export function assembleMemory(options: AssembleOptions): Installation {
     ...(roles === undefined ? {} : roles),
     ...(options.turnCutMarker === undefined ? {} : { turnCutMarker: options.turnCutMarker }),
     ...(options.turnWindow === undefined ? {} : { turnWindow: options.turnWindow }),
-    ...(options.resolution === undefined ? {} : { resolution: options.resolution }),
+    ...(resolution === undefined ? {} : { resolution }),
     // The three options requirement ⑯ had not reached. Forwarded, not defaulted, for the reason stated on
     // each field: `undefined` is the historical silence, and a composition root that defaults a mechanism on
     // is a second arm. `replyRepair` and `reviewPass` are forwarded separately rather than as a pair so the

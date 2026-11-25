@@ -782,7 +782,11 @@ export type PromptOptions = {
    * ## Why absent is `'raw'`
    *
    * Every archived prompt was rendered whole, and a default that moved would make each of them
-   * unreproducible from the code -- the argument `turnCutMarker` and `turnWindow` make one field up.
+   * unreproducible from the code -- the argument `turnCutMarker` and `turnWindow` make one field up. This is
+   * the **renderer's** record, and it is deliberately not where the product's default lives: `assembleMemory`
+   * resolves the registered arm (`assemble.ts`), so a caller who names nothing gets `'layered'` there and a
+   * prompt builder handed no field still renders the archived bytes. Two layers, two answers, one of them
+   * reproducible and the other measured.
    */
   resolution?: ResolutionMode;
   /**

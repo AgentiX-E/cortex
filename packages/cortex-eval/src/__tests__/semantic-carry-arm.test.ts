@@ -517,13 +517,19 @@ describe('the forward from the arm options into the product constructor', () => 
     expect(ARM).toContain("pairing === 'resolution' && armOptions.resolution !== 'layered'");
   });
 
-  it('spreads the resolution from the treatment rather than from the parsed option', () => {
+  it('names the resolution from the treatment, unconditionally', () => {
     // The same defect one key over: `CORTEX_MEMORY_RESOLUTION=layered` is `layered` for the whole
     // process, so reading `armOptions` inside the literal would render both sides layered and the pair
     // would compare the mechanism against itself.
-    expect(ARM).toContain(
-      "...(treatment.resolution === 'raw' ? {} : { resolution: treatment.resolution })",
-    );
+    //
+    // It is also unconditional as of `45543010618`, and that is the second half of the same defence. The
+    // spread this replaces wrote `raw` as an **absent** key, on the stated grounds that omitting it
+    // reproduces every archived prompt byte for byte. That was true while the class read an absent field as
+    // the head cut; the day the product's default became `layered`, an omitted key started rendering the
+    // treatment on the side whose artifact says `resolution=raw`. Conditional and unconditional are
+    // therefore not two spellings of one thing any more, and only one of them can be right.
+    expect(ARM).toContain('resolution: treatment.resolution,');
+    expect(ARM).not.toContain("treatment.resolution === 'raw' ? {}");
     expect(ARM).not.toContain(
       '...(forwardedResolution === undefined ? {} : { resolution: forwardedResolution })',
     );

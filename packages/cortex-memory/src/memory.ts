@@ -933,6 +933,11 @@ export class CortexMemory implements SessionAwareMemorySystem {
     // ratios of `maxTurnChars`, so without a cap there is no scale to take a ratio of. The refusal is here
     // rather than in `prompt.ts` for the reason every guard in this constructor is: a field that cannot act
     // is a configuration line naming a treatment the run never administered.
+    //
+    // It tests the **explicit** value, and that is now load-bearing rather than incidental: `assembleMemory`
+    // resolves the registered rendering, and it does so only where a width resolved too (`assemble.ts`'s
+    // fourth term). So the default can never arrive here as `layered` without a cap, and a caller who
+    // spelled the pair by hand still gets the refusal rather than a silent no-op.
     if (options.resolution === 'layered' && options.maxTurnChars === undefined) {
       throw new Error(
         "resolution: 'layered' needs maxTurnChars: the three form ceilings are ratios of the per-turn " +

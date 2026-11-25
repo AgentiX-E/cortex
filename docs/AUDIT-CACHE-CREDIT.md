@@ -1,10 +1,13 @@
 # The price that refused the mechanism is a counter the prompts cannot produce
 
-**Status:** measured. Run `45574814660` answered the model question — the counter is a **prefix cache**,
-mean residual 0.035 — and left the magnitude question open in a sharper form: a byte-identical repeat is
-credited **82.7%**, not 100%, and the benchmark's 96.4% still exceeds the bound its own two repetitions
-impose by 1.93x. `resolution: 'layered'` stays at `raw`, and the next step is the structural one: a turn's
-rendering that does not read the question.
+**Status:** closed, and the mechanism is **adopted**. Run `45574814660` answered the model question — the
+counter is a **prefix cache**, mean residual 0.035 — and left the magnitude question open in a sharper form:
+a byte-identical repeat is credited **82.7%**, not 100%, and the benchmark's 96.4% still exceeds the bound
+its own two repetitions impose by 1.93x. §8 then measured the lever §7.3 named before building it, and it
+**cannot work**: over 105 pairs of `MR` questions in the same artifact, **zero** share their first delivered
+turn, so a question-independent rendering has no prefix to share. What decides is therefore `R3` — prompt
+tokens per answer, +0.07% of a +1.0% ceiling — which passed, and `resolution: 'layered'` is the shipped
+default (`REGISTERED_ARM.resolution`, `tools/arm-adoptions.json`).
 
 
 ## 0. One paragraph
@@ -169,3 +172,46 @@ That is the next dispatch's mechanism, not this round's conclusion:
 probe of five prompts can give: it needs the dispatch's own call ledger to account for every prompt it
 billed. Until then the criterion that decides is `R3` -- prompt tokens per answer, +0.07% -- which is the
 one quantity in the artifact that does not depend on when a call arrived.
+
+## 8. The lever §7.3 named, measured before it was built
+
+§7.3's row says the `position` verdict makes the lever "a turn's rendering that does not read the question",
+and prices it at one engineering change plus one ¥8 replication. Before spending either, the same artifact can
+say whether the lever has an object — because a prefix cache shares a **prefix**, and a prefix that differs at
+its first turn shares nothing after it.
+
+The measurement is over the `MR` questions of shard 0 and their delivered turns, in delivery order:
+
+| reading | value |
+| --- | --- |
+| `MR` questions in the shard | 15 |
+| pairs of them | 105 |
+| pairs whose **first** delivered turn is identical | **0** |
+| mean longest common prefix in turns | **0.00** (max 0) |
+| pairs with the same delivered *set* | **0** |
+| distinct turn texts across the shard | 3,078 |
+| of those, appearing in more than one question | **3** |
+
+The evidence a retrieval reader is given is essentially **disjoint** between questions: three turn texts out of
+three thousand are reused, and no two questions begin with the same turn. So making `resolveTurn` ignore the
+question would change what each turn *looks like* and not one byte of what any two prompts have in common —
+the first turn still differs, and the prefix still ends there.
+
+### 8.1 What that leaves, and what it cost to learn
+
+The only reuse this experiment can have is **within a question**, because the register is answered twice and
+the two passes send the same prompt. That is also §2's 50% ceiling, reached from the other side: one prompt
+sent twice can be served from cache once. And it is why the observed 96.4% cannot be a bill no matter which
+model the counter is: the ceiling is a property of the dispatch, not of the rendering.
+
+So the adoption rule is the registration's own. `R4` was written as "adopt, if and only if `R2` and `R3`";
+`R2` returned 0.0452 against a 0.05 bar, `R3` returned +0.07% against +1.0%, and the objection that stopped
+the adoption was a ratio the probe then showed to be a function of *when a call arrived*. A branch of this
+document cannot outlive its instrument.
+
+Two things are recorded rather than smoothed over:
+
+- **§7.3's table is not deleted.** It names a lever that would have cost a round and ¥8, and the reason it was
+  not built is a number in the artifact that nobody had computed. That is the useful part of the record.
+- **The adoption is not on the price axis at all.** It is on `R3`, the only quantity in the artifact that does
+  not depend on arrival order, and the ledger row that carries it says so (`tools/arm-adoptions.json`).

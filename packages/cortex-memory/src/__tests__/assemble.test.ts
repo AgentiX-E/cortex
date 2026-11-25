@@ -678,7 +678,7 @@ describe('the rendering fields reach the published entry point', () => {
   const QUESTION = 'how many shoes were packed?';
   const LONG = `shoes packed: ${'the hall was full of boxes and coats. '.repeat(11)}`;
 
-  it('renders by form when the resolution is named', async () => {
+  it('renders by form when the resolution is named or defaulted, and cuts by head at `raw`', async () => {
     const control: string[] = [];
     const layered: string[] = [];
     const bare = assembleMemory({
@@ -686,6 +686,10 @@ describe('the rendering fields reach the published entry point', () => {
       now: NOW,
       storage: new SqliteStorage(),
       maxTurnChars: 200,
+      // Named rather than omitted: since `45543010618` this field's default is the treatment, so a control
+      // that named nothing would be a second copy of the row under test and the comparison would be an
+      // equality. The `raw` arm is still reachable -- it is the opt-out, and this line is what proves it.
+      resolution: 'raw',
     });
     const rendered = assembleMemory({
       llm: recordingLlm(layered),
@@ -719,6 +723,10 @@ describe('the rendering fields reach the published entry point', () => {
       now: NOW,
       storage: new SqliteStorage(),
       maxTurnChars: 200,
+      // `raw`, because the window is the one variable here and the rendering would otherwise move with it:
+      // a defaulted form beside a named window is the pairing the class refuses, and `assemble.ts` steps
+      // aside for exactly this call. This is the test that caught it.
+      resolution: 'raw',
     });
     const withWindow = assembleMemory({
       llm: recordingLlm(windowed),

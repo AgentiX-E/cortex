@@ -1,0 +1,39 @@
+{
+  "note": "Fields the product has adopted since `tools/arm-config-baseline.json` was recorded, each with the dispatch that priced it. The baseline is not edited to carry them: it is the record of ONE dispatch and what that dispatch read, so writing a newer value into it would make an old reading claim a configuration it never ran. `registered-arm.test.ts` reads this file, applies every row to the baseline, and compares the result with `REGISTERED_ARM` — so the shipped arm is the measured arm plus a list of adoptions that each name their evidence, and a field adopted without one is a red build rather than a paragraph in a report.",
+  "adoptions": [
+    {
+      "field": "resolution",
+      "baseline": "absent",
+      "to": "layered",
+      "dispatch": "45543010618",
+      "population": "longmemeval-500, 8 shards, 2 repetitions, pairing=resolution",
+      "criteria": {
+        "R1": "pass",
+        "R2": "pass",
+        "R3": "pass",
+        "R4": "fired"
+      },
+      "criterionSource": "cortex/docs/PREREGISTRATION-RESOLUTION-REPLICATION.md",
+      "readings": {
+        "baseline": 0.917,
+        "feature": 0.935,
+        "deltaPoints": 1.8,
+        "better": 19,
+        "worse": 9,
+        "fisherP": 0.0452,
+        "promptTokensPerAnswerDelta": 0.0007,
+        "promptTokensPerAnswerCeiling": 0.01,
+        "byCapability": {
+          "MR": 6.2,
+          "TR": 0.39,
+          "IE": 1.33,
+          "KU": -1.39,
+          "ABS": 0
+        }
+      },
+      "withdrawnObjection": "The cache-weighted price (1.55x) was raised after the reading and is withdrawn as evidence: the same artifact credits 96.4% of prompts whose bytes permit 1.4% of reuse (docs/AUDIT-CACHE-CREDIT.md §2), and probe 45574814660 measured a byte-identical repeat at 82.7%, so the credit tracks when a call arrived rather than what the prompt contains.",
+      "caveat": "KU moved -1.39 on 72 questions, the one route this mechanism was not aimed at. Inside the noise and still the next candidate: the KU conflict block is off in this arm.",
+      "recordedIn": "cortex-docs docs/04-execution-tracking-report.md §192"
+    }
+  ]
+}

@@ -114,6 +114,12 @@ function harness(
     storage: new SqliteStorage(),
     ...(options.maxTurnChars === undefined ? {} : { maxTurnChars: options.maxTurnChars }),
     ...(options.routes === undefined ? {} : { maxTurnCharsRoutes: options.routes }),
+    // The rendering is **held**, because this file measures reach and not rendering: every assertion below
+    // is about which routes the width stops at, and the strings it compares are the head cut's. Since
+    // `45543010618` the default is the form list, so a harness that named nothing would render the excerpt
+    // and record here and the width's reach would be unobservable from these prompts. The default's own
+    // reach is `resolution-default.test.ts`'s subject, where the form is the variable.
+    resolution: 'raw' as const,
   });
   let remembered: Promise<unknown> | undefined;
   const context = (): string[] => longTurns().map((turn) => turn.text);

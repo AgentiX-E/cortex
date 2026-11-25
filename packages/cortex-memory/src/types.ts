@@ -385,10 +385,17 @@ export type CortexMemoryOptions = {
    * excerpt form both decide *which characters* of a long turn survive, so a run carrying both would be two
    * mechanisms in one slot and its reading could not be attributed to either.
    *
-   * ## Why absent is `'raw'`
+   * ## Why absent is `'raw'` **here**, and what it is at the entry point
    *
    * Every archived prompt was rendered whole; a default that moved would make each of them unreproducible
-   * from the code, which is the argument `turnCutMarker` and `turnWindow` make one field up.
+   * from the code, which is the argument `turnCutMarker` and `turnWindow` make one field up. That argument
+   * is about the **renderer**, and it still holds: `CortexMemory` given no field renders the head cut.
+   *
+   * The default moved one layer up instead. `assembleMemory` resolves `REGISTERED_ARM`, and `45543010618`
+   * adopted `'layered'` into it (`+1.80` paired on the 500-question register, `R1`/`R2`/`R3` pass and `R4`
+   * fired), so a customer calling the published entry point gets the measured rendering and `'raw'` is the
+   * opt-out. The separation is what keeps both claims true at once: the renderer stays reproducible from the
+   * archive, and the product ships the arm that has a reading.
    */
   resolution?: ResolutionMode | undefined;
   /**

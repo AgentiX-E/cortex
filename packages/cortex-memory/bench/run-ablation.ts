@@ -1218,13 +1218,21 @@ async function main(): Promise<void> {
       // at parse time, and the product refuses `match` without a cap -- which is why the two spreads are
       // adjacent rather than one field: the window without the width is a render option that cannot act.
       ...(armOptions.turnWindow === 'match' ? { turnWindow: 'match' as const } : {}),
-      // §14.133.2's form list. Spread only when it acts, for the reason every conditional spread here is.
-      // `treatment.resolution` rather than `forwardedResolution`, because `C7` is a one-flag pair: the
+      // §14.133.2's form list, and since `45543010618` **always spelled**, because the product's default
+      // moved and an omitted key no longer means `raw`.
+      //
+      // What this line used to say was that `raw` is "expressed by not passing the key so the control
+      // reproduces every archived prompt byte for byte". That was true while the class read an absent field
+      // as the head cut. It is now false: `assembleMemory` resolves the registered arm, and the class's own
+      // absent-means-raw is below the composition root this bench builds through (`buildCortex` passes the
+      // option explicitly). A run that left the key out would therefore render **layered** on the side whose
+      // artifact says `resolution=raw` -- the exact shape this file exists to prevent, one field over: the
+      // configuration line and the prompt disagreeing about which arm was administered.
+      //
+      // `treatment.resolution` rather than `forwardedResolution`, for the reason the pair is one flag: the
       // control side renders the registered form in the same job, and reading the parsed option would render
-      // both sides layered. The table at the top of this file still validates the NAME once per process; what
-      // travels here is the side's own form, and `raw` is expressed by not passing the key so the control
-      // reproduces every archived prompt byte for byte.
-      ...(treatment.resolution === 'raw' ? {} : { resolution: treatment.resolution }),
+      // both sides layered. The table at the top of this file still validates the NAME once per process.
+      resolution: treatment.resolution,
       // §13.81's budget. Absent means the product's 24,000, which is what every archived run used; a
       // number raises the room without touching a single turn, which is the only lever §13.80 left.
       ...(armOptions.maxPromptChars === undefined
