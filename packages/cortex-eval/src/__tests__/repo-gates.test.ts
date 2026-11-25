@@ -557,3 +557,55 @@ describe('the failure census reads the vocabularies it copies', () => {
     expect(copied?.[1]).toBe(declared?.[1]);
   });
 });
+
+describe('a guard script cannot exist without running in the check chain', () => {
+  /**
+   * The three that are not gates, each with the reason rather than a preference.
+   *
+   * A `guard:` prefix is a claim that the script enforces something, and a script that enforces
+   * something from nowhere is a rule nobody is held to. The failure this table is built for is the
+   * ordinary one: a new check is written, added to `scripts`, run by hand once, and the chain is
+   * never touched again -- which is how `census:check` came to depend on `build` without saying so
+   * (the defect at the top of this file). Naming the exemption is therefore the price of an
+   * exemption, and a stale entry is also a failure: an exemption for a script that no longer exists
+   * is a permit nobody revoked.
+   */
+  const EXEMPT: Readonly<Record<string, string>> = {
+    'guard:diagnose':
+      'takes a target argument; it diagnoses one failure, it does not gate the tree',
+    'guard:sh': 'reads a shell fragment on stdin; it is the helper the other gates call',
+    'guard:shim': 'its pytest file is run by `test:tools`, which is in the chain',
+  };
+
+  it('wires every guard into check, or writes down why not', () => {
+    const scripts = rootPackage().scripts;
+    const check = scripts['check'];
+    expect(check).toBeDefined();
+
+    const unwired = Object.keys(scripts)
+      .filter((name) => name.startsWith('guard:'))
+      .filter((name) => !(check as string).includes(name));
+    for (const name of unwired) {
+      expect(
+        EXEMPT[name],
+        `${name} is a guard the check chain never runs and no exemption names`,
+      ).toBeDefined();
+    }
+  });
+
+  it('keeps no exemption for a guard that no longer exists', () => {
+    const scripts = rootPackage().scripts;
+    for (const name of Object.keys(EXEMPT)) {
+      // A stale permit reads as coverage in every later review, which is worse than no table: the
+      // reader counts four exemptions and the tree has three guards.
+      expect(scripts[name], `EXEMPT names ${name}, which is not a script`).toBeDefined();
+    }
+  });
+
+  it('runs the queue-floor instrument, because the floor it computes orders the queue', () => {
+    // The specific member this table was extended for. `AUDIT-QUEUE-FLOOR.md` re-ranks every
+    // remaining mechanism by the floor in this file; a floor that is not computed on every push is
+    // a number in a document.
+    expect(rootPackage().scripts['check']).toContain('pnpm guard:queue-floor');
+  });
+});
