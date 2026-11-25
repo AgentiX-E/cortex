@@ -1,9 +1,8 @@
 # PREREG-TRUNCATION-SHORT-ROUTES
 
-**Status:** pending — registered before its dispatch, amended once before the dispatch (§0.1). There is
-deliberately no Result section: `tools/prereg-status.mjs` fails a registration that declares `pending` and also
-carries one, because a section with a placeholder in it is read as a result by every later reader and by the
-gate.
+**Status:** decided — dispatched as run `45678454743` at commit `69b309fa` (222 questions, two repetitions,
+22m53s), and the reading is in §7. Amended once before the dispatch (§0.1); the amendment is why the criteria
+below name a cascade axis that the original registration did not have.
 
 ## 0. What is being tested
 
@@ -186,3 +185,71 @@ ratio — the two agree on the lower bound and the ratio is what makes the ceili
 The order is deliberate. This dispatch is the only one in the queue that can **falsify a diagnosis** rather
 than add a lever, and if `T4` passes while `T1` fails then `⑤` and `⑬` both become the wrong next move and
 the queue is rewritten.
+
+## 7. Result (run `45678454743`, 222 questions, two repetitions)
+
+**The mechanism executed and the effect was negative on every adoption criterion.** `T4` passed by 2.5 to 12.5
+points on all three routes, and the arm still lost **9 questions** while spending **5.13% more prompt
+characters**.
+
+| criterion | registered | observed | verdict |
+| --- | --- | --- | :-- |
+| `T4` `flat` gold | 50.3% → **≥70%** | **72.8%** (861/1182) | **met** |
+| `T4` `knowledge-update` gold | 49.9% → **≥70%** | **73.3%** (1238/1688) | **met** |
+| `T4` `assistant` gold | 76.3% → **≥85%** | **88.8%** (468/527) | **met** |
+| `T6` cascade | ≤2 `correct → abstention`, none at 100% gold | **2 declines in 222** (0.90%), 0 converted from correct | **not fired** |
+| `T1` `IE`+`KU` net | **≥ +4** of 222, `b ≥ 6, c ≤ 1` | **−9** (`b=6, c=15`) | **falsified** |
+| `T2` McNemar | p ≤ 0.05 | **p = 0.0784** | **falsified** |
+| `T3` prompt tokens | ≤ **+1.0%** | **+5.13%** (22,083 → 23,216 chars) | **falsified** |
+| `T5` `abstention` | byte-identical | route absent from the dispatched field; prompts untouched | **met** |
+
+Delivered turns per route, before → after: `flat` 19 → **60**, `knowledge-update` 18 → **56**, `assistant`
+18 → **51** (mean over the population 19.4 → **59.2**). The bound §0.1.3 predicted was 40–100 and the point
+estimate it replaced ("roughly 60") was right; the arithmetic that produced the bound was the only part of
+this registration that had to be corrected before the money was spent.
+
+Per capability: `IE` 141/150 → **135/150** (−6), `KU` 65/72 → **62/72** (−3). Overall 206/222 (**92.79%**) →
+197/222 (**88.74%**), Wilson 95% CI 88.61–95.52 → 83.90–92.26.
+
+### 7.1 What the loss is made of, which is the reading
+
+`tools/failure-classes.mjs` on both artifacts, restricted to the same 222 questions:
+
+| class | before | after | institution |
+| --- | --: | --: | --- |
+| `preference` | 6 | **6** | behaviour — **invariant** |
+| `number-misselected` | 3 | **6** | numeric — the operand was delivered and another was used |
+| `text-misselected` | 4 | **8** | text — the term was delivered and another was named |
+| `derived-number` | 2 | 3 | numeric — a value to compute |
+| `empty` | 1 | 2 | behaviour |
+| `number-absent` / `text-absent` | **0** | **0** | delivery — **still zero** |
+
+**Every question the treatment added to the loss column is a `misselected`.** The class that means *"the reader
+never saw it"* stayed at zero while gold coverage rose 22 points, and the one class that cannot respond to
+delivery at all — `preference` — did not move by one question. §13.72's cascade therefore did not recur in the
+form it was registered under (`T6` is clean: the reader no longer declines), and it recurred in a worse form:
+**the reader answered, and answered worse.** On `assistant` the arm now has **6 failures whose gold arrived
+complete**, against **0** before.
+
+### 7.2 The verdict, against the three branches §3 registered
+
+- It is **not** the informative negative. Accuracy did not stay still while coverage rose; it fell.
+- It is **not** the `T6` branch either: the decline licence is not what moved.
+- It is the third branch, and it is the one that ends the direction:
+
+> **A wider window on these routes is a decision-side harm that no rendering repairs.** The same width, at
+> `raw` in §13.72 and at `layered` here, costs `IE` (30 then 12) and `KU` (4 then 3) with the same sign; the
+> forms change the *size* of the loss and not its direction, and the loss is concentrated in the class where
+> the operand is present. The mechanism is the list length itself, and `maxTurnCharsRoutes` cannot reach these
+> three routes until something makes the reader select operands better in a longer list.
+
+`⑭` is closed. It is not "pending, unaffordable": it has been run, it lost 9 questions and 5.13% of the prompt
+budget, and no re-read of the artifact changes that.
+
+### 7.3 What this cost, and what it was worth
+
+The projection said **¥10.80** as a ceiling and **¥3.17** as a lower bound for this population; the run's own
+accounting is in the artifact's `llmUsage`. What it bought is the closure of the campaign's largest open
+diagnosis — that the `IE`/`KU` failures are a delivery institution — with a deterministic mechanism read
+(`T4`) that no future round has to re-establish, and a failure census that says what the remaining 25 failures
+are instead.

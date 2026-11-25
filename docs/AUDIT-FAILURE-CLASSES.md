@@ -126,21 +126,42 @@ below it, and `preference`'s 6 on `flat` is 6.38 against 7.59.
 The grouping is the whole argument. Pricing `derived-number` (8) alone would file a 3.80-point mechanism as a
 1.60-point one; that is precisely how this queue has been mis-ordered for five rounds.
 
-## 5. The prediction this note registers for `45678454743`, before its artifact was read
+## 5. The prediction this note registered for `45678454743`, and how it read
 
 The truncation dispatch (§0.1 of `PREREG-TRUNCATION-SHORT-ROUTES.md`) was in flight while this census was
-written. The census makes a prediction that the registration's own criteria do not: **it will read as the
+written, so the census made a prediction the registration's own criteria did not: **it will read as the
 informative negative.**
 
-Of `knowledge-update`'s 7 failures, **6 are `misselected` or `derived`** (1 `number-misselected`, 3
-`text-misselected`, 2 `derived-number`) and 1 is `empty`; **none is `number-absent` or `text-absent`.** So
-raising that route's gold coverage from 49.9% to ≥70% has almost no question to convert: the operand those
-questions need is *already in the delivered turns*. The registered `T4` should pass (it is deterministic) and
-`T1` should fail with a conversion count around `b ≤ 2`.
+> Of `knowledge-update`'s 7 failures, **6 are `misselected` or `derived`** and 1 is `empty`; **none is
+> `number-absent` or `text-absent`.** So raising that route's gold coverage from 49.9% to ≥70% has almost no
+> question to convert. The registered `T4` should pass (it is deterministic) and `T1` should fail with a
+> conversion count around `b ≤ 2`.
 
-If that is what the artifact says, `MEASURE-RESOLUTION-WALL.md`'s strongest sentence gets a second reading from
-a different direction: **the delivery diagnosis that `§193`–`§197` were built on is false for this arm**, and
-the queue is rewritten around §4.
+**It half-read.** `T4` passed by 12.5 points on `knowledge-update` (49.9% → 73.3%), `T1` failed, and the
+conversion count was `b = 6, c = 15` — six did convert, and **fifteen went the other way**. The prediction had
+the sign right and the magnitude wrong, and the magnitude is the better finding:
+
+| class | before (`45543010618`) | after (`45678454743`) | institution |
+| --- | --: | --: | --- |
+| `preference` | 6 | **6** | behaviour — invariant |
+| `number-misselected` | 3 | **6** | numeric — delivered and not chosen |
+| `text-misselected` | 4 | **8** | text — delivered and not chosen |
+| `derived-number` | 2 | 3 | numeric — a value to compute |
+| `empty` | 1 | 2 | behaviour |
+| `number-absent` / `text-absent` | **0** | **0** | delivery — still zero |
+
+**Every question the treatment added to the loss column is a `misselected`, and the absent classes stayed at
+zero.** That is not a delivery reading with a noise problem; it is the opposite of a delivery reading. The
+operand count in the delivered evidence rose 22 points and the number of failures where the operand was absent
+did not move, because it was already zero.
+
+The class that cannot respond to delivery at all — `preference`, six questions on `flat` — did not move by one.
+That invariance is worth as much as the loss: it says the census is measuring a property of the questions
+rather than a property of the draw.
+
+The verdict is in the registration's §7. For this note the consequence is narrower and it is the one §4 was
+built for: **the delivery institution is empty on this arm under both renderings**, so the queue's remaining
+rows are the numeric and behaviour institutions, and only one of them is above its floor.
 
 ## 6. What this changes about the queue
 
@@ -154,6 +175,12 @@ the queue is rewritten around §4.
 
 The next dispatch is therefore the one the numeric row names, and it is the first in this campaign whose
 ceiling clears its floor before it is run.
+
+One row left this table during the round it was written: **the delivery lever on `flat`, `knowledge-update` and
+`assistant` was dispatched and lost 9 questions while gaining 22 points of gold coverage** (`45678454743`,
+`PREREG-TRUNCATION-SHORT-ROUTES.md` §7). Its ceiling was never priced here because its target class was empty
+before the run and stayed empty after it, which is the shape §4 predicts: a lever aimed at a class with no
+members cannot win, whatever it does to coverage.
 
 ## 7. Verification
 
