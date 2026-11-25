@@ -126,6 +126,65 @@ cost of not forwarding is a measurement a customer cannot reproduce. `assemble-c
 reach at the composed level — four routes move, two stay byte-identical, and deleting the block reproduces the
 off-prompt exactly — and its own mutation (deleting the forwarding line) turns three of its six assertions red.
 
+### 1.5 The sixth field is not an experiment switch, it is the provider contract
+
+`readerByRoute` is the first field in this list that a *customer* rather than an experiment wants. Requirement
+eleven asks the design to accept different LLM providers by injection; `LLM` is one interface and `readerByRoute`
+is six slots of it, and `memory.ts#readerFor` has consumed the map since the round that measured the effect. What
+the published composition root could not do was **reach the slots**.
+
+The reason it went unseen is specific, and it is not "nobody looked". Every earlier gap was found by comparing the
+registration against the manual, and a field whose default is the adopted configuration has a *value* to compare.
+This one has a **fallback** instead: a map that cannot be expressed is not an error, it is six routes on `llm`. So
+the failure mode is a complete, valid, silent run whose reading says the per-route rule did not help — the one
+conclusion the map exists to test, produced by a composition root that never passed the map on.
+
+`assemble-reader-by-route.test.ts` therefore asserts four things a careless forwarding fails: each named route
+calls its own stub (`temporal`, `multi-session`), an unnamed route calls `llm`, an absent map is the historical
+behaviour, and — the assertion that survives an implementation which routes correctly but leaks identity — the
+**prompt is byte-identical under two different readers**. The mutation is 4 red of 6: the two that stay green are
+the two "must not move" assertions, which is the shape a mutation should have.
+
+| field | why it was missing | what a customer lost |
+| --- | --- | --- |
+| `ask`, `promptContract` | arrived with a number, compared against the manual | a mechanism with a reading |
+| `supersededRendering`, `evidenceRoles` | same | same |
+| `conflicts` | off by default, so no value to compare | a reach table they could not act on |
+| **`readerByRoute`** | **falls back instead of failing** | **the provider contract, and a per-route reading that silently measured one reader** |
+
+### 1.6 The audit becomes a ratchet, because a hand audit already missed twice
+
+Two fields were found by hand-comparing a registration against a manual, and both were found late. A hand
+audit is not a mechanism, and for the fallback case in §1.5 it is not even a valid method: the run that
+loses the map is complete, valid and silent, so there is nothing to compare.
+
+`tools/assemble-coverage.mjs` (`guard:assemble`) makes the comparison mechanical. Every field
+`CortexMemoryOptions` declares is exactly one of three things:
+
+| identity | meaning | how it is found |
+| --- | --- | --- |
+| **forwarded** | the composition root reads `options.<name>` | text of `assemble.ts` |
+| **explained** | deliberately not forwardable, reason recorded beside it | the tool's `EXPLAINED` table |
+| **open** | not yet decided, named, and capped | the tool's `OPEN` table |
+
+The reading is `33 field(s), 26 forwarded, 1 explained, 6/6 open`. `relevanceFor` is the only explained
+entry, for the reason `AUDIT-PRODUCT-SURFACE.md` §13 records: the product ranks with its own index and the
+callback is the harness's override, so forwarding both would let a caller set two rankers while the
+artifact names one. The six open entries are `widthPlan`, `relevanceUnits`, `windowRadius`,
+`reviewBareDecline`, `selfConsistency` and `windowOrdering`, each with the question it is waiting on.
+
+Three rules, and each one can fail for its own reason:
+
+- `unclaimed-field` -- declared, not forwarded, in neither table. A new field cannot land silently.
+- `stale-entry` -- listed as open but already forwarded, or listed for a field the type no longer has. An
+  out-of-date ledger is worse than a missing one, because it sends the next reader after a solved problem.
+- `ratchet-raised` -- more than six open entries. The gap may shrink; it may not be widened by adding one
+  more "later".
+
+The live mutation is the evidence that the pipeline is real rather than the predicate: deleting the
+`readerByRoute` forwarding line turns exactly one `unclaimed-field` red and exits 1, and restoring it
+returns `33 / 26 / 1 / 6`. That is the same pair of readings the two earlier fields never had.
+
 ## 2. The same defect on the dispatch side
 
 Three documents agreed with each other and disagreed with the run:

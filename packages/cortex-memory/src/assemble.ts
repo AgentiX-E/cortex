@@ -92,6 +92,40 @@ export type AssemblyProfile = 'minimal' | 'reader' | 'full';
 export type AssembleOptions = {
   /** The text generator. Injected, because this package owns no provider and no credential. */
   readonly llm: LLM;
+  /**
+   * Per-route readers: the one axis that was measured as a **per-route** effect rather than a global one.
+   *
+   * `#readerFor` in `memory.ts` is the consumer, and it falls back to {@link llm} for a route the map does
+   * not name. That fallback is why this field had to be forwarded by hand while every other field could be
+   * left alone: a run that names one route is a complete run, so nothing in the composition path fails when
+   * the map cannot be expressed -- the caller simply gets the fallback reader on all six routes and a
+   * reading that says the per-route rule did not help.
+   *
+   * ## What the measurement says, in one table
+   *
+   * `§13.197` ran the same arm on the same 220 questions twice with `thinking` as the only difference:
+   *
+   * | route | effect of turning thinking on |
+   * | --- | --- |
+   * | `temporal` | **+4** questions, none lost |
+   * | `knowledge-update` | **+2** questions |
+   * | `improvisational` (`IE`) | **−16** questions |
+   *
+   * The mechanism is the closing line of a block: `temporal` and `multi-session` end with *"reply with the
+   * Step 2 number alone"* and a reader that obeys it does better there, while `flat` has no such line and the
+   * same obedience costs it sixteen. One reader for six routes cannot express that, and a per-route map is
+   * the only shape that can.
+   *
+   * ## The asymmetry this field is the evidence for
+   *
+   * Requirement eleven asks the design to support different LLM providers by injection. The contract has
+   * always supported it -- `LLM` is one interface and `readerByRoute` is six slots of it -- but until this
+   * line existed the published composition root could not reach the slots, so the support was real at the
+   * type level and absent at the only construction path a customer has. `assemble-reader-by-route.test.ts`
+   * holds it end to end with two stubs and no network: each route calls the reader it names, and a route the
+   * map omits calls {@link llm}.
+   */
+  readonly readerByRoute?: Partial<Record<TurnCapRoute, LLM>> | undefined;
   /** Epoch milliseconds for every time-stamped decision. A constant pins a run; nothing here reads the clock. */
   readonly now: number;
   /**
@@ -677,6 +711,7 @@ export function assembleMemory(options: AssembleOptions): Installation {
 
   const memory = new CortexMemory({
     llm: options.llm,
+    ...(options.readerByRoute === undefined ? {} : { readerByRoute: options.readerByRoute }),
     now: options.now,
     gate,
     corpus,
