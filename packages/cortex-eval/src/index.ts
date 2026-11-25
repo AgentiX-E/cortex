@@ -757,3 +757,24 @@ export {
   type StabilityReading,
   type StabilitySelection,
 } from './failure-stability.js';
+
+// The provider's cache credit, read against the prompts that produced it. `45543010618` refused
+// `resolution: 'layered'` on a 1.55x cache-weighted price while the same artifact's 63 prompts shared
+// a 22-character prefix and no 200-character block at all — so the counter credited 96.4% of prompts
+// that were textually unique, and a price ratio built from it cannot veto a mechanism whose prompt
+// tokens moved +0.07%. The two models and the verdict are here rather than in `bench/` for the reason
+// the rest of this file is: a reading this one is allowed to disagree with has to be testable.
+export {
+  buildCacheCreditPrompts,
+  sharedPrefixChars,
+  positionExpectation,
+  contentExpectation,
+  fitCacheCreditModels,
+  renderCacheCreditReport,
+  type CacheCreditFit,
+  type CacheCreditModelFit,
+  type CacheCreditPrompt,
+  type CacheCreditRow,
+  type CacheCreditSample,
+  type CacheCreditVariant,
+} from './cache-credit.js';

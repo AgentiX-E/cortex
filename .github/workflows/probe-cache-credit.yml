@@ -1,0 +1,109 @@
+# The cache-credit probe, dispatched by hand and never by a commit.
+#
+# `packages/cortex-eval/bench/probe-cache-credit.ts` sends five prompts and prints what the provider
+# says each one cost. It answers one question, and the question is not academic: run `45543010618`
+# refused `resolution: 'layered'` because the cache-weighted price of the treated side was 1.55x the
+# control's, and the same artifact's own prompts share **22 characters** of prefix and no sentence at
+# all beyond the instruction line. A prefix cache cannot credit 96.4% of a prompt it has never seen,
+# and neither can a content cache, so either the counter is inflated or the two runs are not
+# comparable -- and the difference decides whether a +1.80-point accuracy gain is affordable.
+#
+# ## Why five calls and not five hundred
+#
+# The question is about the *counter*, not about the arm. Five prompts whose shared content is known
+# by construction separate the only two shapes a reuse counter can have: a cache that serves a run from
+# the start of the prompt, and one that serves content wherever it was seen. The first credits 0% of a
+# reordered text; the second credits all of it. Nothing a 500-question dispatch could add would make
+# that distinction sharper, and a 500-question dispatch costs eight yuan to ask.
+#
+# ## Why it is not wired to `push`
+#
+# The standing instruction is that model measurements are dispatched on demand and recorded, never
+# fired by a commit. This one bills about 950 prompt tokens and eight completion tokens per call, 4,700 over the
+whole run:
+# the whole run is a rounding error, and it is still dispatch-only, because the rule is about who asked
+# for a number rather than about what the number cost.
+name: Cache-credit probe
+
+on:
+  workflow_dispatch:
+    inputs:
+      model:
+        description: 'Reader model id (empty = the workflow default, deepseek-chat)'
+        required: false
+        default: ''
+        type: string
+
+permissions:
+  contents: read
+
+env:
+  DEEPSEEK_API_KEY: ${{ secrets.DEEPSEEK_API_KEY }}
+
+jobs:
+  probe:
+    name: Cache-credit probe (five prompts, one provider)
+    runs-on: ubuntu-latest
+    # Five sequential calls. Ten minutes is not a budget for the model; it is the point at which a
+    # hung socket has to become a failed run rather than a run that sits until someone notices.
+    timeout-minutes: 10
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 9.15.0
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Build packages
+        # The bench imports the package that owns the models (`@agentix-e/cortex-eval`), so the build
+        # has to run first for the same reason `probe-multi-step.yml` builds: a bench resolved against
+        # a stale `dist` measures the previous commit.
+        run: pnpm build
+
+      - name: Probe the counter
+        env:
+          # Inputs reach the shell through `env`, never through string interpolation: an input is
+          # user-controlled, and interpolation into a command is how an input becomes code.
+          PROBE_MODEL: ${{ github.event.inputs.model }}
+        run: |
+          set -o pipefail
+          if [ -n "$PROBE_MODEL" ]; then export DEEPSEEK_MODEL="$PROBE_MODEL"; fi
+          # Absolute output path: `pnpm --filter` runs with the package directory as its working
+          # directory, so a relative path lands one level below what `upload-artifact` resolves
+          # against. Run `44867629266` uploaded a log and silently not its JSON for exactly this.
+          pnpm --filter @agentix-e/cortex-eval probe:cache-credit -- \
+            --out "$GITHUB_WORKSPACE/cache-credit.json" 2>&1 | tee probe-output.log
+
+          {
+            echo '### Cache-credit probe'
+            echo ''
+            echo '```'
+            cat probe-output.log
+            echo '```'
+            echo ''
+            echo 'A `neither` verdict means the credit is not a reuse measure, so the 1.55x price'
+            echo 'ratio of run `45543010618` cannot be a bill and cannot veto the arm.'
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Upload probe reading
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: cache-credit-probe
+          path: |
+            cache-credit.json
+            probe-output.log
+          # `error`, not `warn`: a summary without its per-variant rows is not a reading, and the
+          # reason `44867629266` looked complete is that a missing file only produced a warning.
+          if-no-files-found: error

@@ -1,7 +1,7 @@
 {
   "name": "@agentix-e/cortex-eval",
   "version": "0.1.0",
-  "description": "cortex-eval \u2014 scientific evaluation harness for agent memory systems (metrics, significance testing, ablation)",
+  "description": "cortex-eval — scientific evaluation harness for agent memory systems (metrics, significance testing, ablation)",
   "license": "MIT",
   "author": "Lambertyan",
   "type": "module",
@@ -22,6 +22,7 @@
     "lint": "eslint src/ bench/",
     "typecheck": "tsc -p tsconfig.json && tsc -p tsconfig.bench.json",
     "bench": "node --import tsx bench/run.ts",
+    "probe:cache-credit": "node --import tsx bench/probe-cache-credit.ts",
     "clean": "rm -rf dist *.tsbuildinfo coverage"
   },
   "dependencies": {
