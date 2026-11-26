@@ -136,6 +136,15 @@ describe('a count the question vocabulary can name', () => {
     expect(reading.plansTried / reading.keywordsTried).toBeGreaterThanOrEqual(2);
   });
 
+  it('reads a gold the corpus states as a number, which is what a count question carries', () => {
+    // The corpus states `answer: 3` for a count and `$3,750` for a price. An instrument typed
+    // `string` read the first one's characters and threw, which is how run `45750764632` died.
+    const numeric = measure({ ...TWO_BOOKS, answer: 2 }, 'question');
+    expect(numeric.goldNumbers).toEqual([2]);
+    expect(numeric.gold).toBe('2');
+    expect(numeric.grammarCeiling).toBe(true);
+  });
+
   it('says no, and says it with a zero share, when nothing in the grammar reaches the gold', () => {
     const unreachable = measure({ ...TWO_BOOKS, answer: '7' }, 'question');
     expect(unreachable.goldNumbers).toEqual([7]);

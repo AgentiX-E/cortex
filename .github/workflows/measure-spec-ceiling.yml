@@ -109,18 +109,31 @@ jobs:
           POPULATION: ${{ github.event.inputs.population }}
         run: |
           set -o pipefail
-          # Both vocabularies, because they answer different questions. `question` is the one a
-          # specifier could actually reason from -- it may name a filter only out of the words the
-          # question used -- and it is the reading the registration is judged on. `history` is an
-          # allowance the model does not get: it selects on any word the history uses, so it is an
-          # upper bound on what a reader that had already read every row could reach.
-          for MODE in question history; do
-            pnpm --filter @agentix-e/cortex-memory measure:spec-ceiling -- \
-              --dataset "$LONGMEMEVAL_PATH" \
-              --population "$POPULATION" \
-              --keywords "$MODE" \
-              --json "$GITHUB_WORKSPACE/spec-ceiling-$MODE.json" 2>&1 | tee "spec-ceiling-$MODE.log"
-          done
+          # Both vocabularies, because they answer different questions, and they are two calls
+          # rather than a loop because their search budgets differ.
+          #
+          # `question` is the reading the registration is judged on: a specifier may name a filter
+          # only out of the words the question used, and that vocabulary is a handful of words, so
+          # the search is exhaustive.
+          pnpm --filter @agentix-e/cortex-memory measure:spec-ceiling -- \
+            --dataset "$LONGMEMEVAL_PATH" \
+            --population "$POPULATION" \
+            --keywords "question" \
+            --json "$GITHUB_WORKSPACE/spec-ceiling-question.json" 2>&1 | tee spec-ceiling-question.log
+
+          # `history` is an allowance the model does not get: it selects on any word the history
+          # uses, so it bounds what a reader that had already read every row could reach. It is
+          # capped because the search is (keywords x units) plans executed over every row of the
+          # whole corpus -- six hundred keywords against a few hundred units is a quarter of a
+          # million executions per question, which is a timeout rather than a measurement. The cap
+          # is printed with the reading (`keywordsTried`), so a bounded search is never read as an
+          # exhaustive one.
+          pnpm --filter @agentix-e/cortex-memory measure:spec-ceiling -- \
+            --dataset "$LONGMEMEVAL_PATH" \
+            --population "$POPULATION" \
+            --keywords "history" \
+            --max-keywords 200 \
+            --json "$GITHUB_WORKSPACE/spec-ceiling-history.json" 2>&1 | tee spec-ceiling-history.log
 
           # The step summary is what a reader sees without downloading anything, and the criterion is
           # printed beside the reading so the decision does not have to be looked up in a document

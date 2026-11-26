@@ -53,7 +53,14 @@ function run(args: readonly string[]): Run {
   }
 }
 
-/** A two-question corpus, written where a workflow would put one. */
+/**
+ * A two-question corpus, written where a workflow would put one.
+ *
+ * The two answers are deliberately of two types: the corpus states a count question's gold as a
+ * **number** and a money question's as a **string**. Run `45750764632` died on exactly that --
+ * `gold.matchAll is not a function` -- because the instrument's type said `string` and the data did
+ * not agree. A fixture that wrote both as strings would let the same defect through again.
+ */
 function corpus(): string {
   const directory = mkdtempSync(join(tmpdir(), 'ceiling-cli-'));
   const path = join(directory, 'dataset.json');
@@ -62,7 +69,20 @@ function corpus(): string {
       question_id: 'q1',
       question_type: 'multi-session',
       question: 'How many books did I read?',
-      answer: '2',
+      // A number, which is what the corpus states for a count question.
+      answer: 2,
+      haystack_dates: ['2023/03/01 (Wed) 10:00', '2023/03/02 (Thu) 11:00'],
+      haystack_sessions: [
+        [{ role: 'user', content: 'I read a book about otters.' }],
+        [{ role: 'user', content: 'I read another book, and it cost $10.' }],
+      ],
+    },
+    {
+      question_id: 'q2',
+      question_type: 'multi-session',
+      question: 'How much did the book I read cost?',
+      // A string with a currency symbol, which is what the corpus states for a money question.
+      answer: '$10',
       haystack_dates: ['2023/03/01 (Wed) 10:00', '2023/03/02 (Thu) 11:00'],
       haystack_sessions: [
         [{ role: 'user', content: 'I read a book about otters.' }],
@@ -79,14 +99,14 @@ describe('the ceiling command line runs from the package directory', () => {
     const dataset = corpus();
     const out = join(tmpdir(), `ceiling-cli-${String(process.pid)}.json`);
     const population = join(tmpdir(), `ceiling-pop-${String(process.pid)}.json`);
-    writeFileSync(population, JSON.stringify({ ids: ['q1'], numericGold: 1, floor: 4.96 }));
+    writeFileSync(population, JSON.stringify({ ids: ['q1', 'q2'], numericGold: 2, floor: 4.96 }));
 
     const result = run(['--dataset', dataset, '--population', population, '--json', out]);
     expect(result.stderr).toBe('');
     expect(result.status).toBe(0);
-    expect(result.stdout).toContain('grammar ceiling: 1/1');
+    expect(result.stdout).toContain('grammar ceiling: 2/2');
     const reading = JSON.parse(readFileSync(out, 'utf8')) as { grammar: number; numeric: number };
-    expect(reading).toMatchObject({ grammar: 1, numeric: 1 });
+    expect(reading).toMatchObject({ grammar: 2, numeric: 2 });
   });
 
   it('fails rather than measuring when a named id is absent from the corpus', () => {

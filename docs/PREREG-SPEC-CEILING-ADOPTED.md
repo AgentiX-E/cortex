@@ -118,7 +118,14 @@ the reading says, the next increment is the membership adjudicator and not a fou
 3. **Not a re-reading of the twelve by hand.** C2 reads the *plan*, not the reply. Whether the plan
    points at the gold's set is a semantic judgement; whether the reader would have written that plan
    is not measured here and is not claimed.
-4. **Not a seventh attempt at the period bound.** `PREREG-CLOCK-AXIS.md` and §197 spent that axis
+4. **Not an exhaustive search of the history vocabulary.** The question vocabulary is searched
+   exhaustively -- it is a handful of words -- and the history vocabulary is capped at 200 keywords,
+   because the search is (keywords x units) plans executed over every row of the whole corpus and six
+   hundred keywords against a few hundred units is a quarter of a million executions per question,
+   which is a timeout rather than a measurement. The cap is printed with the reading, so a bounded
+   search is never read as an exhaustive one. The criterion is on the question vocabulary, so the cap
+   cannot move the decision.
+5. **Not a seventh attempt at the period bound.** `PREREG-CLOCK-AXIS.md` and §197 spent that axis
    (`verbatim-scope` −4, `verbatim-clock` zero). Two of the twelve are window errors and this
    measurement does not re-open them; it prices a mechanism that would have to reach them by a route
    the axis never tried, which is why the reading is per question rather than aggregate.

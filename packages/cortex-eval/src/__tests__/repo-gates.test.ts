@@ -682,7 +682,12 @@ describe('the specification ceiling is measured without a model, and says so in 
   });
 
   it('searches both vocabularies, because the question vocabulary is the reading and the history one is the bound', () => {
-    expect(body).toContain('--keywords "$MODE"');
-    expect(body).toContain('for MODE in question history');
+    // Two calls rather than a loop, because their search budgets differ: the question vocabulary is
+    // a handful of words and is searched exhaustively, and the history vocabulary is capped at 200
+    // keywords because (keywords x units) plans over every row of the whole corpus is a timeout
+    // rather than a measurement.
+    expect(body).toContain('--keywords "question"');
+    expect(body).toContain('--keywords "history"');
+    expect(body).toContain('--max-keywords 200');
   });
 });

@@ -111,7 +111,16 @@ export type DatasetQuestion = {
   readonly question_id: string;
   readonly question_type: string;
   readonly question: string;
-  readonly answer: string;
+  /**
+   * The gold, as the corpus states it -- and the corpus states it as a number for the questions
+   * whose answer is a count.
+   *
+   * This was typed `string` and the type was a belief: the first dispatch that reached a real corpus
+   * (`45750764632`) died on `gold.matchAll is not a function`, because a multi-session count question
+   * carries `answer: 3` and not `"3"`. A type that the data does not satisfy is a type that has not
+   * been read, and the reading that would have caught it is the one this file now performs.
+   */
+  readonly answer: string | number;
   readonly haystack_dates: readonly string[];
   readonly haystack_sessions: readonly (readonly {
     readonly role: string;
@@ -124,7 +133,7 @@ export type ArtifactQuestion = {
   readonly questionId: string;
   readonly question: string;
   readonly capability: string;
-  readonly groundTruth: string;
+  readonly groundTruth: string | number;
   readonly correct: boolean;
 };
 
@@ -173,7 +182,10 @@ function sessionsOf(question: DatasetQuestion): string[][] {
 }
 
 /** Every number a gold answer would accept, so `5 days. 6 days ...` accepts both. */
-function numbersInGold(gold: string): number[] {
+function numbersInGold(gold: string | number): number[] {
+  // A count question's gold is a number in the corpus and a string in the audit's tables; both are
+  // the same gold, and coercing here is what makes one reader serve both.
+  if (typeof gold === 'number') return [gold];
   const found: number[] = [];
   for (const match of gold.matchAll(/-?\d[\d,]*(?:\.\d+)?/g)) {
     const value = Number(match[0].replaceAll(',', ''));
@@ -277,7 +289,7 @@ function copyCeiling(ledger: Ledger, goldNumbers: readonly number[]): boolean {
 function measureQuestion(input: {
   readonly questionId: string;
   readonly question: string;
-  readonly gold: string;
+  readonly gold: string | number;
   readonly ledger: Ledger;
   readonly vocabularyMode: 'question' | 'history';
   readonly maxKeywords?: number;
@@ -312,7 +324,7 @@ function measureQuestion(input: {
   return {
     questionId: input.questionId,
     question: input.question,
-    gold: input.gold,
+    gold: String(input.gold),
     goldNumbers,
     copyCeiling: copyCeiling(ledger, goldNumbers),
     grammarCeiling: hitting.length > 0,
@@ -331,7 +343,7 @@ export function measure(
   corpus: DatasetQuestion,
   vocabularyMode: 'question' | 'history',
   maxKeywords?: number,
-  gold?: string,
+  gold?: string | number,
 ): SpecSummary {
   return measureQuestion({
     questionId: corpus.question_id,
@@ -421,7 +433,7 @@ export function selectPopulation(input: {
         missing.push(id);
         continue;
       }
-      selected.push({ corpus, gold: corpus.answer });
+      selected.push({ corpus, gold: String(corpus.answer) });
     }
     return { selected, missing };
   }
@@ -434,7 +446,7 @@ export function selectPopulation(input: {
       missing.push(question.questionId);
       continue;
     }
-    selected.push({ corpus, gold: question.groundTruth });
+    selected.push({ corpus, gold: String(question.groundTruth) });
   }
   return { selected, missing };
 }
