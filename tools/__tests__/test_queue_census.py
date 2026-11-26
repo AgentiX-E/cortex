@@ -245,6 +245,139 @@ class TestTheDeclineClassIsReadFromTheReply(unittest.TestCase):
             self.assertIn(name, table["taxonomy"], f"class {name} is outside the taxonomy")
 
 
+class TestTheOperandQuestionIsAskedOfTheGoldThatWasShown(unittest.TestCase):
+    """The split this tool exists to draw, drawn on the wrong text.
+
+    `number-misselected` is documented as *"the gold's number **is** in the delivered turns and the reply
+    used another"* -- the one class that separates *"the reader never saw it"* from *"the reader saw it and
+    answered something else"*. The code searched `goldOverlap.goldTurns`, and `question-record.ts:1160`
+    writes that field as *"the text of every gold turn, delivered or not"*, because the restore
+    counterfactual needs the turns the budget cut. So a question whose gold the window dropped was filed as
+    a **decision** fault, and the class was priced against a decision mechanism that cannot reach it.
+
+    `goldDelivered` -- one boolean per gold turn, `retrieved.includes(gold)` -- has been in the artifact
+    since the field was added. This tool never read it.
+
+    Asserted at the tool boundary, because the defect is a disagreement between what the record means and
+    what the classifier assumed it meant, and neither side alone shows it.
+    """
+
+    DROPPED = {
+        "carried": 18,
+        "total": 24,
+        "goldTurns": ["The deposit was $720 in total.", "I moved in on 2023/04/02."],
+        "goldDelivered": [False, True],
+    }
+
+    @staticmethod
+    def _run(records):
+        report = {"questions": records}
+        path = ROOT / "tools" / "__tests__" / "census-delivery.json"
+        path.write_text(json.dumps(report), encoding="utf-8")
+        try:
+            return subprocess.run(
+                ["node", str(ROOT / "tools" / "failure-classes.mjs"), "--json", str(path)],
+                capture_output=True,
+                text=True,
+                check=False,
+            )
+        finally:
+            path.unlink()
+
+    @staticmethod
+    def _record(**overrides):
+        base = {
+            "questionId": "q",
+            "route": "knowledge-update",
+            "correct": False,
+            "answer": "$220",
+            "rawOutput": "The deposit was $220.",
+            "groundTruth": "$720",
+            "goldOverlap": dict(TestTheOperandQuestionIsAskedOfTheGoldThatWasShown.DROPPED),
+        }
+        base.update(overrides)
+        return base
+
+    def _classes(self, records):
+        result = self._run(records)
+        self.assertEqual(result.returncode, 0, result.stderr)
+        return {name: row["count"] for name, row in json.loads(result.stdout)["classes"].items()}
+
+    def test_an_operand_in_a_dropped_gold_turn_is_a_delivery_fault(self) -> None:
+        # The sentence with `$720` is in the record and the window did not carry it, so the reader was never
+        # shown the number it failed to use. Same bytes, opposite institution.
+        self.assertEqual(self._classes([self._record()]), {"number-absent": 1})
+
+    def test_the_same_record_with_the_turn_carried_is_a_decision_fault(self) -> None:
+        overlap = dict(self.DROPPED, goldDelivered=[True, True])
+        classes = self._classes([self._record(goldOverlap=overlap)])
+        self.assertEqual(classes, {"number-misselected": 1})
+
+    def test_the_text_half_reads_the_same_map(self) -> None:
+        # `text-misselected` is the other class a decision mechanism is priced against, and it was drawn on
+        # the same unfiltered text.
+        classes = self._classes(
+            [
+                self._record(
+                    questionId="text",
+                    route="temporal",
+                    answer="a violinist",
+                    groundTruth="a sound engineer",
+                    goldOverlap={
+                        "carried": 3,
+                        "total": 9,
+                        "goldTurns": ["I work as a sound engineer.", "The studio is in Leeds."],
+                        "goldDelivered": [False, True],
+                    },
+                )
+            ]
+        )
+        self.assertEqual(classes, {"text-absent": 1})
+
+    def test_a_record_that_cannot_say_which_gold_was_shown_is_refused(self) -> None:
+        # The operand is in the gold, the budget dropped part of it, and nothing says which part.
+        # `misselected` would be a claim about a prompt the record never described.
+        overlap = {key: value for key, value in self.DROPPED.items() if key != "goldDelivered"}
+        result = self._run([self._record(goldOverlap=overlap)])
+        self.assertEqual(result.returncode, 1)
+        self.assertIn("cannot say whether the reader was shown it", result.stderr)
+
+    def test_a_full_delivery_needs_no_map(self) -> None:
+        # `carried == total` is the one state where the per-gold map is redundant, so an artifact predating
+        # the field is still readable there rather than refused wholesale.
+        classes = self._classes(
+            [
+                self._record(
+                    goldOverlap={"carried": 2, "total": 2, "goldTurns": ["The deposit was $720."]}
+                )
+            ]
+        )
+        self.assertEqual(classes, {"number-misselected": 1})
+
+    def test_a_miss_needs_no_map_either(self) -> None:
+        # An operand that appears in no gold turn cannot have been shown, whatever the budget did, so the
+        # refusal is narrower than "this record has no `goldDelivered`".
+        classes = self._classes(
+            [
+                self._record(
+                    answer="27",
+                    groundTruth="The deposit was 38 dollars.",
+                    goldOverlap={"carried": 9, "total": 24, "goldTurns": ["I set the thermostat."]},
+                )
+            ]
+        )
+        self.assertEqual(classes, {"number-absent": 1})
+
+    def test_a_map_that_disagrees_with_the_turns_is_refused(self) -> None:
+        # Both fields are written by one function and read as a pair; a length that disagrees means one of
+        # them was rebuilt by hand, and the delivery question would then be answered about the wrong turns.
+        result = self._run(
+            [self._record(goldOverlap=dict(self.DROPPED, goldDelivered=[True, False, True]))]
+        )
+        self.assertEqual(result.returncode, 1)
+        self.assertIn("read as a pair", result.stderr)
+
+
 class TestAnUnknownClassNameIsRefused(unittest.TestCase):
     def test_a_name_outside_the_taxonomy_is_not_read_as_zero(self) -> None:
         # The failure mode this guards: `text-absent` has no members on this arm, so a tool that read

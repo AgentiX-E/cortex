@@ -35,18 +35,27 @@
  *
  * The split that matters is `absent` against `misselected`, and it is the one thing this tool computes that
  * no existing reading does at question granularity: it is the difference between *"the reader never saw it"*
- * and *"the reader saw it and answered something else"*, decided by searching the delivered gold turns for
- * the gold's own operand. §196 drew that distinction per route from `goldOverlap.carried/total`; this draws
- * it per question from `goldOverlap.goldTurns`, which is the text.
+ * and *"the reader saw it and answered something else"*, decided by searching the gold the reader was
+ * **shown** for the gold's own operand. §196 drew that distinction per route from `goldOverlap.carried/total`;
+ * this draws it per question, and doing that correctly needs both halves of that field: `goldTurns` is the
+ * text and `goldDelivered` says which of those turns the prompt carried.
+ *
+ * **The first version of this file read `goldTurns` alone**, which is *"the text of every gold turn,
+ * delivered or not"* (`question-record.ts:1160`) -- so a question whose gold the window dropped was filed as
+ * a **decision** fault, and the one distinction this tool exists to draw was drawn on text the reader never
+ * saw. `operandReach` now asks the map, refuses the state where the map is missing and would change the
+ * class, and lets a miss stand without it: an operand in no gold turn cannot have been shown, whatever the
+ * budget did.
  *
  * `derived-number` exists because the first draft of this file lacked it and misfiled all eight `MR` counting
  * failures as `number-absent` -- a full delivery (`carried == total`) with the gold `3` against a reply of
  * `2` reads as "the operand was never delivered" to any rule that searches the evidence for the number. The
  * two are opposite institutions and only one of them is a delivery fault.
  *
- * `goldTurns` rather than the prompt is deliberate. The artifact does not carry prompt text -- it carries a
- * digest -- so a tool that wanted the prompt would either re-run the product or trust a reconstruction. The
- * gold turns are the subset that matters and they are delivered verbatim in the record.
+ * The gold turns rather than the prompt, deliberately. The artifact does not carry prompt text -- it carries
+ * a digest -- so a tool that wanted the prompt would either re-run the product or trust a reconstruction.
+ * The gold turns are the subset that matters, they are carried verbatim in the record, and their delivery is
+ * the one thing about the prompt the artifact states rather than implies.
  *
  * ## What it refuses
  *
@@ -60,7 +69,11 @@ import { readFileSync } from 'node:fs';
 
 import { isAbstention } from '../packages/cortex-memory/dist/parse.js';
 
-class Refusal extends Error {}
+/**
+ * Exported because a second tool reads this one's predicates, and two `Refusal` classes would make
+ * `instanceof` answer "no" at the seam -- which is what a copy of a rule always does, one layer out.
+ */
+export class Refusal extends Error {}
 
 /** The product's route order, and a copy of `TURN_CAP_ROUTES` that `repo-gates.test.ts` checks. */
 const ROUTES = ['multi-session', 'temporal', 'flat', 'knowledge-update', 'abstention', 'assistant'];
@@ -273,19 +286,103 @@ export function resolutionFloor(n, p) {
   return 100 * 2.8016 * Math.sqrt((p * (1 - p)) / n);
 }
 
-/** Whether the gold's own operand reaches the reader, for the classes that turn on that question. */
-function operandDelivered(truth, goldText) {
+/** Whether the gold's own operand appears in some text. The search, with no delivery claim in it. */
+function operandIn(truth, text) {
   const wanted = numbersIn(truth);
   if (wanted.length > 0) {
-    const delivered = new Set(numbersIn(goldText));
-    return wanted.some((value) => delivered.has(value));
+    const found = new Set(numbersIn(text));
+    return wanted.some((value) => found.has(value));
   }
   const wantedTerms = termsIn(truth);
   if (wantedTerms.size === 0) return true;
-  const deliveredTerms = termsIn(goldText);
+  const foundTerms = termsIn(text);
   let hit = 0;
-  for (const term of wantedTerms) if (deliveredTerms.has(term)) hit += 1;
+  for (const term of wantedTerms) if (foundTerms.has(term)) hit += 1;
   return hit / wantedTerms.size >= 0.5;
+}
+
+/**
+ * The gold text the reader was **shown**, or `null` when the record cannot say which gold was shown.
+ *
+ * ## The defect this closes, which this file's own docblock names and its code contradicted
+ *
+ * The table at the top of this file says `number-misselected` is *"the gold's number **is** in the
+ * delivered turns and the reply used another"*, and that the split this tool exists to draw is *"the
+ * difference between 'the reader never saw it' and 'the reader saw it and answered something else'"*.
+ * The code searched `goldOverlap.goldTurns`, and `question-record.ts:1160` writes that field as *"The
+ * text of every gold turn, **delivered or not**"* -- it is the restore counterfactual's input, not a
+ * record of what the prompt carried. So the delivery question was decided on text a budget cut may
+ * never have reached, and every question whose gold the window dropped was filed as a **decision**
+ * fault while its evidence never arrived.
+ *
+ * The artifact has carried the answer to this since `goldDelivered` was added -- one boolean per gold
+ * turn, `retrieved.includes(gold)`, written by the same function that writes `goldTurns`. This tool
+ * never read it.
+ *
+ * ## Why a miss needs no map and a hit does
+ *
+ * An operand that appears in **no** gold turn cannot have been shown, whatever the budget did, so
+ * `absent` is attributable without the map. An operand that appears in **some** gold turn is only
+ * attributable once the map says that turn was carried. That asymmetry is why the refusal below is
+ * narrower than "this record has no `goldDelivered`": it fires on exactly the state where the missing
+ * field changes the class, which is the same rule `classify` applies to a missing reply.
+ *
+ * `carried === total` is the one state where the map is redundant -- every gold turn was shown -- so an
+ * artifact predating the field is still readable there rather than refused wholesale.
+ */
+function shownGoldText(overlap, questionId) {
+  const goldTurns = overlap.goldTurns;
+  const delivered = overlap.goldDelivered;
+  if (delivered === undefined) {
+    return overlap.carried === overlap.total ? goldTurns.join('\n') : null;
+  }
+  if (!Array.isArray(delivered) || delivered.length !== goldTurns.length) {
+    throw new Refusal(
+      `question ${questionId} carries ${String(goldTurns.length)} gold turns and ` +
+        `${Array.isArray(delivered) ? String(delivered.length) : 'a non-array'} \`goldDelivered\`; the ` +
+        'two are written by one function and read as a pair, so a length that disagrees means one of ' +
+        'them was rebuilt by hand and the delivery question would be answered about the wrong turns',
+    );
+  }
+  const shown = [];
+  for (const [index, gold] of goldTurns.entries()) if (delivered[index] === true) shown.push(gold);
+  return shown.join('\n');
+}
+
+/**
+ * Whether the gold's own operand **reaches the reader**, for the classes that turn on that question.
+ *
+ * Three states, because there are three:
+ *
+ * - `'absent'` -- the operand is in no gold turn, so it cannot have been shown whatever the budget did;
+ * - `'delivered'` -- it is in a gold turn the prompt carried;
+ * - `'unknown'` -- the gold has no searchable operand at all (every content term is a stop word and it
+ *   states no number), so "did the reader see it" is a question about a text with nothing in it.
+ *
+ * `'unknown'` is not `'absent'` and it is not `'delivered'`: `classify` still files it under the class the
+ * old boolean filed it under, because collapsing it to `absent` would move counts this round did not
+ * measure, but `ceiling-witnesses.mjs` excludes it rather than counting it as a question the prompt
+ * reached -- a witness that answers "yes" for a gold with no operand is not a witness.
+ *
+ * Exported because the ceiling question is about **delivery** and not about the taxonomy: a second tool
+ * needs this predicate without needing to know which class name it would have become.
+ */
+export function operandReach(truth, overlap, questionId) {
+  const allGold = overlap.goldTurns.join('\n');
+  // Asked before the map is consulted, and answered as `unknown` rather than `delivered`: the shape is a
+  // gold with no operand in it, and both of the other two answers would be a claim about content.
+  if (numbersIn(truth).length === 0 && termsIn(truth).size === 0) return 'unknown';
+  if (!operandIn(truth, allGold)) return 'absent';
+  const shown = shownGoldText(overlap, questionId);
+  if (shown === null) {
+    throw new Refusal(
+      `question ${questionId} shows the gold's operand in its gold turns, but carries ` +
+        `${String(overlap.carried)} of ${String(overlap.total)} gold turns and no \`goldDelivered\`, so ` +
+        'the record cannot say whether the reader was shown it; `misselected` would be a claim about a ' +
+        'prompt nothing in this record observed',
+    );
+  }
+  return operandIn(truth, shown) ? 'delivered' : 'absent';
 }
 
 /**
@@ -340,10 +437,16 @@ export function classify(record) {
   }
   if (/^the user would prefer/i.test(String(record.groundTruth ?? ''))) return 'preference';
 
-  const goldText = overlap.goldTurns.join('\n');
   const truth = String(record.groundTruth ?? '');
   const numeric = numbersIn(truth).length > 0;
-  if (!numeric) return operandDelivered(truth, goldText) ? 'text-misselected' : 'text-absent';
+  // The operand question is asked of the gold the reader was **shown**, which is why it takes the whole
+  // `overlap` rather than a joined string: `overlap.goldTurns` is every gold turn, the ones the window
+  // dropped included, and searching it was how a delivery fault came to be filed as a decision fault.
+  // `absent` is the only reach that files a delivery fault; `delivered` and `unknown` both file a decision
+  // one, which is what the old boolean did for the second of them. Written as a test for `absent` rather
+  // than for `delivered` so that adding a fourth state cannot silently file it as a delivery fault.
+  const reach = () => operandReach(truth, overlap, record.questionId ?? '?');
+  if (!numeric) return reach() === 'absent' ? 'text-absent' : 'text-misselected';
   // A gold that is nothing but a number is a value the reader has to **compute**, not one it can find: on
   // `MR` the counting questions answer `3` where the facts are three separate turns, so the number appears
   // in the evidence only by coincidence. The question "was the operand delivered" therefore has no answer
@@ -354,7 +457,7 @@ export function classify(record) {
   // printed somewhere in the evidence would otherwise be filed as "delivered and not chosen" -- the one
   // reading that is certainly false for a value nobody stated.
   if (BARE_NUMBER.test(truth.trim())) return 'derived-number';
-  return operandDelivered(truth, goldText) ? 'number-misselected' : 'number-absent';
+  return reach() === 'absent' ? 'number-absent' : 'number-misselected';
 }
 
 /**
@@ -522,7 +625,14 @@ const FIXTURE = [
     correct: false,
     answer: '$220',
     groundTruth: '$720',
-    goldOverlap: { carried: 18, total: 24, goldTurns: ['The deposit was $720 in total.'] },
+    goldOverlap: {
+      carried: 18,
+      total: 24,
+      goldTurns: ['The deposit was $720 in total.'],
+      // Only the carried gold is searchable, and this one was carried, so the operand was shown. The
+      // fixture said so by implication before the delivery map existed; now it says it.
+      goldDelivered: [true],
+    },
   },
   {
     questionId: 'c',
@@ -602,6 +712,102 @@ function selfTest() {
   });
   if (absent !== 'number-absent') {
     throw new Error(`self-test: an undelivered operand must read number-absent, read ${absent}`);
+  }
+
+  // The split's other failure mode, and the one this file shipped with for as long as it existed: the
+  // operand **is** in the record's gold turns and the window **dropped** the turn that carries it.
+  // `goldTurns` is "the text of every gold turn, delivered or not", so searching it answers "the reader saw
+  // it" about a prompt that never held the sentence -- and what comes out is `misselected`, a decision fault,
+  // priced against a decision mechanism that cannot reach it by construction.
+  const dropped = classify({
+    questionId: 'n',
+    route: 'knowledge-update',
+    correct: false,
+    answer: '$220',
+    groundTruth: '$720',
+    goldOverlap: {
+      carried: 18,
+      total: 24,
+      goldTurns: ['The deposit was $720 in total.', 'I moved in on 2023/04/02.'],
+      goldDelivered: [false, true],
+    },
+  });
+  if (dropped !== 'number-absent') {
+    throw new Error(
+      `self-test: an operand in a gold turn the window dropped is a delivery fault and must read ` +
+        `number-absent, read ${dropped}`,
+    );
+  }
+
+  // And the same shape on the half of the corpus with no number in it, because `text-misselected` is the
+  // other class this file prices a decision mechanism against.
+  const droppedText = classify({
+    questionId: 'o',
+    route: 'temporal',
+    correct: false,
+    answer: 'a violinist',
+    groundTruth: 'a sound engineer',
+    goldOverlap: {
+      carried: 3,
+      total: 9,
+      goldTurns: ['I work as a sound engineer.', 'The studio is in Leeds.'],
+      goldDelivered: [false, true],
+    },
+  });
+  if (droppedText !== 'text-absent') {
+    throw new Error(
+      `self-test: an undelivered content term must read text-absent, read ${droppedText}`,
+    );
+  }
+
+  // The third state: the operand is in the gold, the budget dropped part of it, and the record does not say
+  // which part. `misselected` would be a claim about a prompt nothing observed, so it is refused -- and the
+  // refusal is narrower than "no map at all", which is why the two cases above still read a class.
+  let unattributable = false;
+  try {
+    classify({
+      questionId: 'p',
+      route: 'knowledge-update',
+      correct: false,
+      answer: '$220',
+      groundTruth: '$720',
+      goldOverlap: {
+        carried: 18,
+        total: 24,
+        goldTurns: ['The deposit was $720 in total.', 'I moved in on 2023/04/02.'],
+      },
+    });
+  } catch (error) {
+    if (!(error instanceof Refusal)) throw error;
+    unattributable = true;
+  }
+  if (!unattributable) {
+    throw new Error(
+      'self-test: an operand that may or may not have been shown, with no `goldDelivered` to say which, ' +
+        'must be refused rather than filed as a decision fault',
+    );
+  }
+
+  // The third reach state, which must be reachable or it is the `declined` class over again: a gold with no
+  // searchable operand. `classify` keeps filing it as a decision fault -- that is the behaviour this round
+  // did not change -- while `ceiling-witnesses.mjs` excludes it, so the state has to exist rather than be
+  // collapsed into one of the two answers that mean something.
+  const operandLess = {
+    questionId: 'q',
+    route: 'flat',
+    correct: false,
+    answer: 'a violinist',
+    groundTruth: 'Yes',
+    goldOverlap: { carried: 1, total: 2, goldTurns: ['Yes.'] },
+  };
+  if (operandReach('Yes', operandLess.goldOverlap, 'q') !== 'unknown') {
+    throw new Error('self-test: a gold with no searchable operand must read unknown, not delivered');
+  }
+  if (classify(operandLess) !== 'text-misselected') {
+    throw new Error(
+      'self-test: an operand-less gold stays a decision fault, which is the behaviour the ceiling tool ' +
+        'then declines to read as a witness',
+    );
   }
 
   // And the class that this tool's first draft got wrong: a bare gold is a value to compute, so its absence
@@ -751,9 +957,13 @@ function selfTest() {
       throw new Error(`self-test: the report printed no ${bundle} bundle`);
     }
   }
+  // No numerals in this line. It carried four of them, and by the time this round added two cases every one
+  // of those numbers was wrong while the self-test stayed green -- a count in a console message is asserted
+  // nowhere, which is the same shape as the `declined` class that was green over a dead branch. What is
+  // asserted is listed instead, and a case that stops being asserted has to be deleted from the list.
   console.log(
-    'self-test: 7 classifications, 3 reply shapes for `declined`, 1 absent operand, 1 derived value, ' +
-      '4 refusals, 1 floor, 5 report rows',
+    'self-test: every class on the fixture, both halves of the absent/misselected split on each operand ' +
+      'kind, the unattributable refusal, one floor, five report rows',
   );
 }
 
