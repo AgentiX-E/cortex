@@ -124,6 +124,30 @@ Sixty percent, not a hundred. That is the number this round exists to produce: t
 floor rewards (`AUDIT-QUEUE-FLOOR.md` §2), and the bundle's required conversion rate is the floor
 divided by its size.
 
+## 4a. Correction, measured on the archive: the population is eight, and the ceiling is the floor
+
+§4's ceiling is computed over a population this document's own §3 forbids. Two of the ten
+(`gpt4_731e37d7`, `3a704032`) are period questions, and the period is the axis §3 rules out with two
+measurements. So the mechanism may address **eight**.
+
+`MEASURE-MEMBERSHIP-REACH.md` applies the five adjudications to the rows each failing reply already
+enumerated, on the archived artifact, for ¥0. Ideal execution reaches **seven** of the eight and damages
+**none** of the ninety-five correct replies; one of the seven reaches by count only. The arithmetic:
+
+| reading | value |
+| --- | --- |
+| ceiling on the population the mechanism may address | **7 / 121 = 5.79 points** |
+| …on a set as well as a count | **6 / 121 = 4.96 points** |
+| paired floor (six gains, zero losses) | **4.96 points** |
+| conversion required | **6 of 7 = 86%** |
+| conversion the two members of its own family achieved | `verbatim-acts` 8 of 27; `verbatim-scope` 2 of 8 with 6 regressions |
+
+The audit's diagnosis stands — ten of twelve are membership questions. Its **price** does not: a bundle
+that must convert 86% of what it can reach, whose own relatives converted 25–30%, is priced out at this
+arm's conversion rates rather than disproved. The instrument, the seven corrections it needed and the
+shape of a safe adjudicator are in `MEASURE-MEMBERSHIP-REACH.md`; `tools/membership-reach.mjs` reproduces
+the table from any merged artifact.
+
 ## 5. What this does not claim
 
 1. **Not a proof per question.** For a count, the artifact gives the gold as a number and the reply as

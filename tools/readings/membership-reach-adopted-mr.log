@@ -1,0 +1,27 @@
+121 questions, 13 wrong, 11 of them with a comparable gold and answer
+reach at ideal execution: 7 of 11
+damage at ideal execution: 0 of 95 correct replies with a comparable gold
+
+  id                   gold    ans    adj   set  verdict     deltas
+  gpt4_15e38248           4      3      4     —  reached     possession+1
+  gpt4_a56e767c           4      3      3     —  short       —
+  gpt4_ab202e7f           5      7      5   80%  reached*    duplication-1 duplication-1
+  a1cc6108               11      ?      ?     —  uncompared  —
+  bf659f65                3      2      3     —  reached     possession+1
+  9ee3ecd6              100    300    300     —  short       —
+  3a704032                3      2      2     —  short       —
+  gpt4_731e37d7         720    220    220     —  short       —
+  gpt4_7fce9456           4      5      4  100%  reached     boundary-1
+  37f165cf              856      ?      ?     —  uncompared  —
+  gpt4_2f8be40d           3      4      3     —  reached     identity-1
+  gpt4_31ff4165           4      3      4     —  reached     possession+1
+  d851d5ba             3750   8750   3750     —  reached     attribution-1
+
+  `reached*` is a count that landed on the gold while the gold's own items were not all retained — see `set`.
+
+  adjudication    deltas  questions
+  identity             1          1
+  duplication          2          1
+  boundary             1          1
+  attribution          1          1
+  possession           3          3

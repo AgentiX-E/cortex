@@ -1,0 +1,2040 @@
+{
+  "source": {
+    "runId": "45543010618",
+    "arm": "adopted: layered + verbatim-acts, 500 questions, two repetitions",
+    "capability": "MR",
+    "artifact": "the merged artifact of `45543010618`, rebuilt by tools/merge-ablation.mjs after the census-key fix (\u00a7195.2)",
+    "tool": "tools/membership-reach.mjs",
+    "cost": "0 CNY: no model call, the deltas are read off the artifact's own rawOutput"
+  },
+  "summary": {
+    "population": 121,
+    "failures": 13,
+    "numericFailures": 11,
+    "reached": 7,
+    "reachedIds": [
+      "gpt4_15e38248",
+      "gpt4_ab202e7f",
+      "bf659f65",
+      "gpt4_7fce9456",
+      "gpt4_2f8be40d",
+      "gpt4_31ff4165",
+      "d851d5ba"
+    ],
+    "correctCompared": 95,
+    "damaged": 0,
+    "damagedIds": [],
+    "uncompared": 15,
+    "adjudications": {
+      "identity": {
+        "fired": 1,
+        "questions": 1
+      },
+      "duplication": {
+        "fired": 2,
+        "questions": 1
+      },
+      "boundary": {
+        "fired": 1,
+        "questions": 1
+      },
+      "attribution": {
+        "fired": 1,
+        "questions": 1
+      },
+      "possession": {
+        "fired": 3,
+        "questions": 3
+      }
+    }
+  },
+  "rows": [
+    {
+      "questionId": "gpt4_15e38248",
+      "correct": false,
+      "question": "How many pieces of furniture did I buy, assemble, sell, or fix in the past few months?",
+      "gold": "4",
+      "answer": "3",
+      "countedRows": 3,
+      "excludedRows": 9,
+      "deltas": [
+        {
+          "adjudication": "possession",
+          "delta": 1,
+          "row": "Casper mattress | excluded: only described as \u201cmy new,\u201d no buy/assemble/sell/fix action | 2023/05/21",
+          "because": "the quoted evidence says the item arrived or is in use"
+        }
+      ],
+      "adjudicated": 4,
+      "set": null,
+      "verdict": "reached",
+      "goldNumbers": [
+        4
+      ]
+    },
+    {
+      "questionId": "gpt4_a56e767c",
+      "correct": false,
+      "question": "How many movie festivals that I attended?",
+      "gold": "I attended four movie festivals.",
+      "answer": "3",
+      "countedRows": 3,
+      "excludedRows": 0,
+      "deltas": [],
+      "adjudicated": 3,
+      "set": null,
+      "verdict": "short",
+      "goldNumbers": [
+        4
+      ]
+    },
+    {
+      "questionId": "gpt4_ab202e7f",
+      "correct": false,
+      "question": "How many kitchen items did I replace or fix?",
+      "gold": "I replaced or fixed five items: the kitchen faucet, the kitchen mat, the toaster, the coffee maker, and the kitchen shelves.",
+      "answer": "7",
+      "countedRows": 7,
+      "excludedRows": 0,
+      "deltas": [
+        {
+          "adjudication": "duplication",
+          "delta": -1,
+          "row": "New Moen kitchen faucet | replacement picked up in exchange | 2023/05/28",
+          "because": "the replacement half of \"Old kitchen faucet\" (shared head \"faucet\")"
+        },
+        {
+          "adjudication": "duplication",
+          "delta": -1,
+          "row": "Toaster oven | replacement picked up in exchange | 2023/05/26",
+          "because": "the replacement half of \"Old toaster\" (shared head \"toaster\")"
+        }
+      ],
+      "adjudicated": 5,
+      "set": 0.8,
+      "verdict": "reached",
+      "goldNumbers": [
+        5
+      ]
+    },
+    {
+      "questionId": "a1cc6108",
+      "correct": false,
+      "question": "How old was I when Alex was born?",
+      "gold": "11",
+      "answer": "Cannot be determined from the evidence.",
+      "countedRows": 0,
+      "excludedRows": 0,
+      "deltas": [],
+      "set": null,
+      "verdict": "uncompared",
+      "goldNumbers": [
+        11
+      ]
+    },
+    {
+      "questionId": "bf659f65",
+      "correct": false,
+      "question": "How many music albums or EPs have I purchased or downloaded?",
+      "gold": "3",
+      "answer": "2",
+      "countedRows": 2,
+      "excludedRows": 2,
+      "deltas": [
+        {
+          "adjudication": "possession",
+          "delta": 1,
+          "row": "Tame Impala vinyl | only described as \u201cgot signed,\u201d not purchased/downloaded | 2023/05/26 (Session 33)",
+          "because": "the quoted evidence says the item arrived or is in use"
+        }
+      ],
+      "adjudicated": 3,
+      "set": null,
+      "verdict": "reached",
+      "goldNumbers": [
+        3
+      ]
+    },
+    {
+      "questionId": "9ee3ecd6",
+      "correct": false,
+      "question": "How many points do I need to earn to redeem a free skincare product at Sephora?",
+      "gold": "100",
+      "answer": "300 points",
+      "countedRows": 1,
+      "excludedRows": 1,
+      "deltas": [],
+      "adjudicated": 300,
+      "set": null,
+      "verdict": "short",
+      "goldNumbers": [
+        100
+      ]
+    },
+    {
+      "questionId": "3a704032",
+      "correct": false,
+      "question": "How many plants did I acquire in the last month?",
+      "gold": "3",
+      "answer": "2",
+      "countedRows": 2,
+      "excludedRows": 1,
+      "deltas": [],
+      "adjudicated": 2,
+      "set": null,
+      "verdict": "short",
+      "goldNumbers": [
+        3
+      ]
+    },
+    {
+      "questionId": "gpt4_731e37d7",
+      "correct": false,
+      "question": "How much total money did I spend on attending workshops in the last four months?",
+      "gold": "$720",
+      "answer": "$220",
+      "countedRows": 7,
+      "excludedRows": 0,
+      "deltas": [],
+      "adjudicated": 220,
+      "set": null,
+      "verdict": "short",
+      "goldNumbers": [
+        720
+      ]
+    },
+    {
+      "questionId": "gpt4_7fce9456",
+      "correct": false,
+      "question": "How many properties did I view before making an offer on the townhouse in the Brookside neighborhood?",
+      "gold": "I viewed four properties before making an offer on the townhouse in the Brookside neighborhood. The reasons I didn't make an offer on them were: the kitchen of the bungalow needed serious renovation, the property in Cedar Creek was out of my budget, the noise from the highway was a deal-breaker for the 1-bedroom condo, and my offer on the 2-bedroom condo was rejected due to a higher bid.",
+      "answer": "5",
+      "countedRows": 5,
+      "excludedRows": 4,
+      "deltas": [
+        {
+          "adjudication": "boundary",
+          "delta": -1,
+          "row": "3-bedroom townhouse in Brookside neighborhood (saw on Feb 22; offer on Feb 25) | viewed (evidence: saw) | 2023/03/08 [Session 23]",
+          "because": "names the anchor the question excludes (\"before making an offer on the townhouse in the Brookside neighborhood\")"
+        }
+      ],
+      "adjudicated": 4,
+      "set": 1,
+      "verdict": "reached",
+      "goldNumbers": [
+        4
+      ]
+    },
+    {
+      "questionId": "37f165cf",
+      "correct": false,
+      "question": "What was the page count of the two novels I finished in January and March?",
+      "gold": "856",
+      "answer": null,
+      "countedRows": 3,
+      "excludedRows": 2,
+      "deltas": [],
+      "set": null,
+      "verdict": "uncompared",
+      "goldNumbers": [
+        856
+      ]
+    },
+    {
+      "questionId": "gpt4_2f8be40d",
+      "correct": false,
+      "question": "How many weddings have I attended in this year?",
+      "gold": "I attended three weddings. The couples were Rachel and Mike, Emily and Sarah, and Jen and Tom.",
+      "answer": "4",
+      "countedRows": 4,
+      "excludedRows": 4,
+      "deltas": [
+        {
+          "adjudication": "identity",
+          "delta": -1,
+          "row": "Cousin\u2019s wedding last month | attended; evidence used: \u201clast wore it to\u201d | 2023/10/15 (Session 16)",
+          "because": "every token of this item is in \"Cousin Rachel\u2019s wedding at a vineyard in August\""
+        }
+      ],
+      "adjudicated": 3,
+      "set": null,
+      "verdict": "reached",
+      "goldNumbers": [
+        3
+      ]
+    },
+    {
+      "questionId": "gpt4_31ff4165",
+      "correct": false,
+      "question": "How many health-related devices do I use in a day?",
+      "gold": "4",
+      "answer": "3",
+      "countedRows": 3,
+      "excludedRows": 3,
+      "deltas": [
+        {
+          "adjudication": "possession",
+          "delta": 1,
+          "row": "Hearing aids (Phonak BTE) | use (evidence: ordering/using batteries) | 2023/05/22 \u2014 excluded: evidence describes battery purchase/use, not the act of using the hearing aids in a day.",
+          "because": "the row tags the act the question asks for and then excludes it"
+        }
+      ],
+      "adjudicated": 4,
+      "set": null,
+      "verdict": "reached",
+      "goldNumbers": [
+        4
+      ]
+    },
+    {
+      "questionId": "d851d5ba",
+      "correct": false,
+      "question": "How much money did I raise for charity in total?",
+      "gold": "$3,750",
+      "answer": "$8,750",
+      "countedRows": 5,
+      "excludedRows": 3,
+      "deltas": [
+        {
+          "adjudication": "attribution",
+          "delta": -1,
+          "row": "Music benefit concert at the Independent for local music education program | event raised over $5,000; user helped organize | Session 44 (2023/03/20)",
+          "because": "the event raised it and the speaker only organised it, which the gold counts as the event's"
+        }
+      ],
+      "adjudicated": 3750,
+      "set": null,
+      "verdict": "reached",
+      "goldNumbers": [
+        3750
+      ]
+    },
+    {
+      "questionId": "gpt4_59c863d7",
+      "correct": true,
+      "question": "How many model kits have I worked on or bought?",
+      "gold": "I have worked on or bought five model kits. The scales of the models are: Revell F-15 Eagle (scale not mentioned), Tamiya 1/48 scale Spitfire Mk.V, 1/16 scale German Tiger I tank, 1/72 scale B-29 bomber, and 1/24 scale '69 Camaro.",
+      "answer": "5",
+      "countedRows": 5,
+      "excludedRows": 2,
+      "deltas": [],
+      "adjudicated": 5,
+      "set": 1,
+      "verdict": "kept",
+      "goldNumbers": [
+        5
+      ]
+    },
+    {
+      "questionId": "c4a1ceb8",
+      "correct": true,
+      "question": "How many different types of citrus fruits have I used in my cocktail recipes?",
+      "gold": "3",
+      "answer": "3",
+      "countedRows": 3,
+      "excludedRows": 2,
+      "deltas": [],
+      "adjudicated": 3,
+      "set": null,
+      "verdict": "kept",
+      "goldNumbers": [
+        3
+      ]
+    },
+    {
+      "questionId": "gpt4_2ba83207",
+      "correct": true,
+      "question": "Which grocery store did I spend the most money at in the past month?",
+      "gold": "Thrive Market",
+      "answer": "Thrive Market",
+      "countedRows": 4,
+      "excludedRows": 5,
+      "deltas": [],
+      "set": null,
+      "verdict": "uncompared",
+      "goldNumbers": []
+    },
+    {
+      "questionId": "2788b940",
+      "correct": true,
+      "question": "How many fitness classes do I attend in a typical week?",
+      "gold": "5",
+      "answer": "5",
+      "countedRows": 6,
+      "excludedRows": 7,
+      "deltas": [],
+      "adjudicated": 5,
+      "set": null,
+      "verdict": "kept",
+      "goldNumbers": [
+        5
+      ]
+    },
+    {
+      "questionId": "5a7937c8",
+      "correct": true,
+      "question": "How many days did I spend participating in faith-related activities in December?",
+      "gold": "3 days.",
+      "answer": "3 days",
+      "countedRows": 3,
+      "excludedRows": 4,
+      "deltas": [],
+      "adjudicated": 3,
+      "set": null,
+      "verdict": "kept",
+      "goldNumbers": [
+        3
+      ]
+    },
+    {
+      "questionId": "1a8a66a6",
+      "correct": true,
+      "question": "How many magazine subscriptions do I currently have?",
+      "gold": "2",
+      "answer": "2",
+      "countedRows": 2,
+      "excludedRows": 5,
+      "deltas": [],
+      "adjudicated": 2,
+      "set": null,
+      "verdict": "kept",
+      "goldNumbers": [
+        2
+      ]
+    },
+    {
+      "questionId": "9aaed6a3",
+      "correct": true,
+      "question": "How much cashback did I earn at SaveMart last Thursday?",
+      "gold": "$0.75",
+      "answer": "$0.75",
+      "countedRows": 0,
+      "excludedRows": 0,
+      "deltas": [],
+      "adjudicated": 0.75,
+      "set": null,
+      "verdict": "kept",
+      "goldNumbers": [
+        0.75
+      ]
+    },
+    {
+      "questionId": "a4996e51",
+      "correct": true,
+      "question": "How many hours do I work in a typical week during peak campaign seasons?",
+      "gold": "50",
+      "answer": "50 hours per week",
+      "countedRows": 3,
+      "excludedRows": 0,
+      "deltas": [],
+      "adjudicated": 50,
+      "set": null,
+      "verdict": "kept",
+      "goldNumbers": [
+        50
+      ]
+    },
+    {
+      "questionId": "5025383b",
+      "correct": true,
+      "question": "What are the two hobbies that led me to join online communities?",
+      "gold": "photography and cooking",
+      "answer": "Photography and cooking",
+      "countedRows": 2,
+      "excludedRows": 2,
+      "deltas": [],
+      "set": null,
+      "verdict": "uncompared",
+      "goldNumbers": []
+    },
+    {
+      "questionId": "8979f9ec",
+      "correct": true,
+      "question": "What is the total number of lunch meals I got from the chicken fajitas and lentil soup?",
+      "gold": "8 meals",
+      "answer": "8",
+      "countedRows": 3,
+      "excludedRows": 0,
+      "deltas": [],
+      "adjudicated": 8,
+      "set": null,
+      "verdict": "kept",
+      "goldNumbers": [
+        8
+      ]
+    },
+    {
+      "questionId": "0ea62687",
+      "correct": true,
+      "question": "How much more miles per gallon was my car getting a few months ago compared to now?",
+      "gold": "2",
+      "answer": "2 miles per gallon",
+      "countedRows": 0,
+      "excludedRows": 0,
+      "deltas": [],
+      "adjudicated": 2,
+      "set": null,
+      "verdict": "kept",
+      "goldNumbers": [
+        2
+      ]
+    },
+    {
+      "questionId": "bc149d6b",
+      "correct": true,
+      "question": "What is the total weight of the new feed I purchased in the past two months?",
+      "gold": "70 pounds",
+      "answer": "70 pounds",
+      "countedRows": 2,
+      "excludedRows": 1,
+      "deltas": [],
+      "adjudicated": 70,
+      "set": null,
+      "verdict": "kept",
+      "goldNumbers": [
+        70
+      ]
+    },
+    {
+      "questionId": "a08a253f",
+      "correct": true,
+      "question": "How many days a week do I attend fitness classes?",
+      "gold": "4 days.",
+      "answer": "4 days a week",
+      "countedRows": 4,
+      "excludedRows": 2,
+      "deltas": [],
+      "adjudicated": 4,
+      "set": null,
+      "verdict": "kept",
+      "goldNumbers": [
+        4
+      ]
+    },
+    {
+      "questionId": "e56a43b9",
+      "correct": true,
+      "question": "How much discount will I get on my next purchase at FreshMart?",
+      "gold": "$5",
+      "answer": "$5",
+      "countedRows": 0,
+      "excludedRows": 0,
+      "deltas": [],
+      "adjudicated": 5,
+      "set": null,
+      "verdict": "kept",
+      "goldNumbers": [
+        5
+      ]
+    },
+    {
+      "questionId": "b5ef892d",
+      "correct": true,
+      "question": "How many days did I spend on camping trips in the United States this year?",
+      "gold": "8 days.",
+      "answer": "8 days",
+      "countedRows": 2,
+      "excludedRows": 4,
+      "deltas": [],
+      "adjudicated": 8,
+      "set": null,
+      "verdict": "kept",
+      "goldNumbers": [
+        8
+      ]
+    },
+    {
+      "questionId": "88432d0a",
+      "correct": true,
+      "question": "How many times did I bake something in the past two weeks?",
+      "gold": "4",
+      "answer": "4",
+      "countedRows": 4,
+      "excludedRows": 8,
+      "deltas": [],
+      "adjudicated": 4,
+      "set": null,
+      "verdict": "kept",
+      "goldNumbers": [
+        4
+      ]
+    },
+    {
+      "questionId": "2318644b",
+      "correct": true,
+      "question": "How much more did I spend on accommodations per night in Hawaii compared to Tokyo?",
+      "gold": "$270",
+      "answer": "$270",
+      "countedRows": 0,
+      "excludedRows": 0,
+      "deltas": [],
+      "adjudicated": 270,
+      "set": null,
+      "verdict": "kept",
+      "goldNumbers": [
+        270
+      ]
+    },
+    {
+      "questionId": "60bf93ed",
+      "correct": true,
+      "question": "How many days did it take for my laptop backpack to arrive after I bought it?",
+      "gold": "5 days. 6 days (including the last day) is also acceptable.",
+      "answer": "5 days",
+      "countedRows": 2,
+      "excludedRows": 0,
+      "deltas": [],
+      "adjudicated": 5,
+      "set": null,
+      "verdict": "uncompared",
+      "goldNumbers": [
+        5,
+        6
+      ]
+    },
+    {
+      "questionId": "c2ac3c61",
+      "correct": true,
+      "question": "How many online courses have I completed in total?",
+      "gold": "5",
+      "answer": "5",
+      "countedRows": 3,
+      "excludedRows": 3,
+      "deltas": [],
+      "adjudicated": 5,
+      "set": null,
+      "verdict": "kept",
+      "goldNumbers": [
+        5
+      ]
+    },
+    {
+      "questionId": "1f2b8d4f",
+      "correct": true,
+      "question": "What is the difference in price between my luxury boots and the similar pair found at the budget store?",
+      "gold": "$750",
+      "answer": "$750",
+      "countedRows": 0,
+      "excludedRows": 0,
+      "deltas": [],
+      "adjudicated": 750,
+      "set": null,
+      "verdict": "kept",
+      "goldNumbers": [
+        750
+      ]
+    },
+    {
+      "questionId": "3c1045c8",
+      "correct": true,
+      "question": "How much older am I than the average age of employees in my department?",
+      "gold": "2.5 years",
+      "answer": "2.5 years",
+      "countedRows": 0,
+      "excludedRows": 0,
+      "deltas": [],
+      "adjudicated": 2.5,
+      "set": null,
+      "verdict": "kept",
+      "goldNumbers": [
+        2.5
+      ]
+    },
+    {
+      "questionId": "0100672e",
+      "correct": true,
+      "question": "How much did I spend on each coffee mug for my coworkers?",
+      "gold": "$12",
+      "answer": "$12 per coffee mug",
+      "countedRows": 2,
+      "excludedRows": 0,
+      "deltas": [],
+      "adjudicated": 12,
+      "set": null,
+      "verdict": "kept",
+      "goldNumbers": [
+        12
+      ]
+    },
+    {
+      "questionId": "67e0d0f2",
+      "correct": true,
+      "question": "What is the total number of online courses I've completed?",
+      "gold": "20",
+      "answer": "20",
+      "countedRows": 2,
+      "excludedRows": 5,
+      "deltas": [],
+      "adjudicated": 20,
+      "set": null,
+      "verdict": "kept",
+      "goldNumbers": [
+        20
+      ]
+    },
+    {
+      "questionId": "099778bb",
+      "correct": true,
+      "question": "What percentage of leadership positions do women hold in the my company?",
+      "gold": "20%",
+      "answer": "20%",
+      "countedRows": 0,
+      "excludedRows": 0,
+      "deltas": [],
+      "adjudicated": 20,
+      "set": null,
+      "verdict": "kept",
+      "goldNumbers": [
+        20
+      ]
+    },
+    {
+      "questionId": "f0e564bc",
+      "correct": true,
+      "question": "What is the total amount I spent on the designer handbag and high-end skincare products?",
+      "gold": "$1,300",
+      "answer": "$1,300",
+      "countedRows": 2,
+      "excludedRows": 0,
+      "deltas": [],
+      "adjudicated": 1300,
+      "set": null,
+      "verdict": "kept",
+      "goldNumbers": [
+        1300
+      ]
+    },
+    {
+      "questionId": "efc3f7c2",
+      "correct": true,
+      "question": "How much earlier do I wake up on Fridays compared to other weekdays?",
+      "gold": "30 minutes",
+      "answer": "30 minutes earlier",
+      "countedRows": 0,
+      "excludedRows": 0,
+      "deltas": [],
+      "adjudicated": 30,
+      "set": null,
+      "verdict": "kept",
+      "goldNumbers": [
+        30
+      ]
+    },
+    {
+      "questionId": "e831120c",
+      "correct": true,
+      "question": "How many weeks did it take me to watch all the Marvel Cinematic Universe movies and the main Star Wars films?",
+      "gold": "3.5 weeks",
+      "answer": "3.5 weeks",
+      "countedRows": 2,
+      "excludedRows": 1,
+      "deltas": [],
+      "adjudicated": 3.5,
+      "set": null,
+      "verdict": "kept",
+      "goldNumbers": [
+        3.5
+      ]
+    },
+    {
+      "questionId": "6cb6f249",
+      "correct": true,
+      "question": "How many days did I take social media breaks in total?",
+      "gold": "17 days",
+      "answer": "17 days",
+      "countedRows": 2,
+      "excludedRows": 0,
+      "deltas": [],
+      "adjudicated": 17,
+      "set": null,
+      "verdict": "kept",
+      "goldNumbers": [
+        17
+      ]
+    },
+    {
+      "questionId": "80ec1f4f",
+      "correct": true,
+      "question": "How many different museums or galleries did I visit in the month of February?",
+      "gold": "2",
+      "answer": "2",
+      "countedRows": 2,
+      "excludedRows": 2,
+      "deltas": [],
+      "adjudicated": 2,
+      "set": null,
+      "verdict": "kept",
+      "goldNumbers": [
+        2
+      ]
+    },
+    {
+      "questionId": "2ce6a0f2",
+      "correct": true,
+      "question": "How many different art-related events did I attend in the past month?",
+      "gold": "4",
+      "answer": "4",
+      "countedRows": 4,
+      "excludedRows": 4,
+      "deltas": [],
+      "adjudicated": 4,
+      "set": null,
+      "verdict": "kept",
+      "goldNumbers": [
+        4
+      ]
+    },
+    {
+      "questionId": "9d25d4e0",
+      "correct": true,
+      "question": "How many pieces of jewelry did I acquire in the last two months?",
+      "gold": "3",
+      "answer": "3",
+      "countedRows": 3,
+      "excludedRows": 3,
+      "deltas": [],
+      "adjudicated": 3,
+      "set": null,
+      "verdict": "kept",
+      "goldNumbers": [
+        3
+      ]
+    },
+    {
+      "questionId": "gpt4_e05b82a6",
+      "correct": true,
+      "question": "How many times did I ride rollercoasters across all the events I attended from July to October?",
+      "gold": "10 times",
+      "answer": "10",
+      "countedRows": 10,
+      "excludedRows": 3,
+      "deltas": [],
+      "adjudicated": 10,
+      "set": null,
+      "verdict": "kept",
+      "goldNumbers": [
+        10
+      ]
+    },
+    {
+      "questionId": "d3ab962e",
+      "correct": true,
+      "question": "What is the total distance of the hikes I did on two consecutive weekends?",
+      "gold": "8 miles",
+      "answer": "8 miles",
+      "countedRows": 2,
+      "excludedRows": 1,
+      "deltas": [],
+      "adjudicated": 8,
+      "set": null,
+      "verdict": "kept",
+      "goldNumbers": [
+        8
+      ]
+    },
+    {
+      "questionId": "e6041065",
+      "correct": true,
+      "question": "What percentage of packed shoes did I wear on my last trip?",
+      "gold": "40%",
+      "answer": "40%",
+      "countedRows": 0,
+      "excludedRows": 0,
+      "deltas": [],
+      "adjudicated": 40,
+      "set": null,
+      "verdict": "kept",
+      "goldNumbers": [
+        40
+      ]
+    },
+    {
+      "questionId": "60036106",
+      "correct": true,
+      "question": "What was the total number of people reached by my Facebook ad campaign and Instagram influencer collaboration?",
+      "gold": "12,000",
+      "answer": "12,000 people",
+      "countedRows": 2,
+      "excludedRows": 1,
+      "deltas": [],
+      "adjudicated": 12000,
+      "set": null,
+      "verdict": "kept",
+      "goldNumbers": [
+        12000
+      ]
+    },
+    {
+      "questionId": "a96c20ee",
+      "correct": true,
+      "question": "At which university did I present a poster on my thesis research?",
+      "gold": "Harvard University",
+      "answer": "Harvard University",
+      "countedRows": 2,
+      "excludedRows": 0,
+      "deltas": [],
+      "set": null,
+      "verdict": "uncompared",
+      "goldNumbers": []
+    },
+    {
+      "questionId": "bb7c3b45",
+      "correct": true,
+      "question": "How much did I save on the Jimmy Choo heels?",
+      "gold": "$300",
+      "answer": "$300",
+      "countedRows": 2,
+      "excludedRows": 0,
+      "deltas": [],
+      "adjudicated": 300,
+      "set": null,
+      "verdict": "kept",
+      "goldNumbers": [
+        300
+      ]
+    },
+    {
+      "questionId": "09ba9854",
+      "correct": true,
+      "question": "How much will I save by taking the train from the airport to my hotel instead of a taxi?",
+      "gold": "$50",
+      "answer": "$50",
+      "countedRows": 0,
+      "excludedRows": 0,
+      "deltas": [],
+      "adjudicated": 50,
+      "set": null,
+      "verdict": "kept",
+      "goldNumbers": [
+        50
+      ]
+    },
+    {
+      "questionId": "078150f1",
+      "correct": true,
+      "question": "How much more money did I raise than my initial goal in the charity cycling event?",
+      "gold": "$50",
+      "answer": "$50",
+      "countedRows": 0,
+      "excludedRows": 0,
+      "deltas": [],
+      "adjudicated": 50,
+      "set": null,
+      "verdict": "kept",
+      "goldNumbers": [
+        50
+      ]
+    },
+    {
+      "questionId": "21d02d0d",
+      "correct": true,
+      "question": "How many fun runs did I miss in March due to work commitments?",
+      "gold": "2",
+      "answer": "2",
+      "countedRows": 2,
+      "excludedRows": 0,
+      "deltas": [],
+      "adjudicated": 2,
+      "set": null,
+      "verdict": "kept",
+      "goldNumbers": [
+        2
+      ]
+    },
+    {
+      "questionId": "46a3abf7",
+      "correct": true,
+      "question": "How many tanks do I currently have, including the one I set up for my friend's kid?",
+      "gold": "3",
+      "answer": "3",
+      "countedRows": 3,
+      "excludedRows": 1,
+      "deltas": [],
+      "adjudicated": 3,
+      "set": null,
+      "verdict": "kept",
+      "goldNumbers": [
+        3
+      ]
+    },
+    {
+      "questionId": "d23cf73b",
+      "correct": true,
+      "question": "How many different cuisines have I learned to cook or tried out in the past few months?",
+      "gold": "4",
+      "answer": "4",
+      "countedRows": 4,
+      "excludedRows": 6,
+      "deltas": [],
+      "adjudicated": 4,
+      "set": null,
+      "verdict": "kept",
+      "goldNumbers": [
+        4
+      ]
+    },
+    {
+      "questionId": "gpt4_d12ceb0e",
+      "correct": true,
+      "question": "What is the average age of me, my parents, and my grandparents?",
+      "gold": "59.6",
+      "answer": "59.6",
+      "countedRows": 0,
+      "excludedRows": 0,
+      "deltas": [],
+      "adjudicated": 59.6,
+      "set": null,
+      "verdict": "kept",
+      "goldNumbers": [
+        59.6
+      ]
+    },
+    {
+      "questionId": "129d1232",
+      "correct": true,
+      "question": "How much money did I raise in total through all the charity events I participated in?",
+      "gold": "$5,850",
+      "answer": "$5,850",
+      "countedRows": 3,
+      "excludedRows": 2,
+      "deltas": [],
+      "adjudicated": 5850,
+      "set": null,
+      "verdict": "kept",
+      "goldNumbers": [
+        5850
+      ]
+    },
+    {
+      "questionId": "gpt4_372c3eed",
+      "correct": true,
+      "question": "How many years in total did I spend in formal education from high school to the completion of my Bachelor's degree?",
+      "gold": "10 years",
+      "answer": "10 years",
+      "countedRows": 3,
+      "excludedRows": 3,
+      "deltas": [],
+      "adjudicated": 10,
+      "set": null,
+      "verdict": "kept",
+      "goldNumbers": [
+        10
+      ]
+    },
+    {
+      "questionId": "2311e44b",
+      "correct": true,
+      "question": "How many pages do I have left to read in 'The Nightingale'?",
+      "gold": "190",
+      "answer": "190 pages",
+      "countedRows": 2,
+      "excludedRows": 0,
+      "deltas": [],
+      "adjudicated": 190,
+      "set": null,
+      "verdict": "kept",
+      "goldNumbers": [
+        190
+      ]
+    },
+    {
+      "questionId": "51c32626",
+      "correct": true,
+      "question": "When did I submit my research paper on sentiment analysis?",
+      "gold": "February 1st",
+      "answer": "February 1st",
+      "countedRows": 2,
+      "excludedRows": 0,
+      "deltas": [],
+      "adjudicated": 1,
+      "set": null,
+      "verdict": "kept",
+      "goldNumbers": [
+        1
+      ]
+    },
+    {
+      "questionId": "681a1674",
+      "correct": true,
+      "question": "How many Marvel movies did I re-watch?",
+      "gold": "2",
+      "answer": "2",
+      "countedRows": 2,
+      "excludedRows": 2,
+      "deltas": [],
+      "adjudicated": 2,
+      "set": null,
+      "verdict": "kept",
+      "goldNumbers": [
+        2
+      ]
+    },
+    {
+      "questionId": "3fdac837",
+      "correct": true,
+      "question": "What is the total number of days I spent in Japan and Chicago?",
+      "gold": "11 days (or 12 days, if April 15th to 22nd is considered as 8 days)",
+      "answer": "12 days",
+      "countedRows": 2,
+      "excludedRows": 2,
+      "deltas": [],
+      "adjudicated": 12,
+      "set": null,
+      "verdict": "uncompared",
+      "goldNumbers": [
+        11,
+        12,
+        15,
+        22,
+        8
+      ]
+    },
+    {
+      "questionId": "92a0aa75",
+      "correct": true,
+      "question": "How long have I been working in my current role?",
+      "gold": "1 year and 5 months",
+      "answer": "1 year and 5 months",
+      "countedRows": 0,
+      "excludedRows": 0,
+      "deltas": [],
+      "adjudicated": 1,
+      "set": null,
+      "verdict": "uncompared",
+      "goldNumbers": [
+        1,
+        5
+      ]
+    },
+    {
+      "questionId": "ba358f49",
+      "correct": true,
+      "question": "How many years will I be when my friend Rachel gets married?",
+      "gold": "33",
+      "answer": "33",
+      "countedRows": 0,
+      "excludedRows": 0,
+      "deltas": [],
+      "adjudicated": 33,
+      "set": null,
+      "verdict": "kept",
+      "goldNumbers": [
+        33
+      ]
+    },
+    {
+      "questionId": "d6062bb9",
+      "correct": true,
+      "question": "What is the total number of views on my most popular videos on YouTube and TikTok?",
+      "gold": "1,998",
+      "answer": "1,998 views",
+      "countedRows": 2,
+      "excludedRows": 0,
+      "deltas": [],
+      "adjudicated": 1998,
+      "set": null,
+      "verdict": "kept",
+      "goldNumbers": [
+        1998
+      ]
+    },
+    {
+      "questionId": "8cf4d046",
+      "correct": true,
+      "question": "What is the average GPA of my undergraduate and graduate studies?",
+      "gold": "3.83",
+      "answer": "3.83",
+      "countedRows": 0,
+      "excludedRows": 0,
+      "deltas": [],
+      "adjudicated": 3.83,
+      "set": null,
+      "verdict": "kept",
+      "goldNumbers": [
+        3.83
+      ]
+    },
+    {
+      "questionId": "gpt4_d84a3211",
+      "correct": true,
+      "question": "How much total money have I spent on bike-related expenses since the start of the year?",
+      "gold": "$185",
+      "answer": "$185",
+      "countedRows": 3,
+      "excludedRows": 4,
+      "deltas": [],
+      "adjudicated": 185,
+      "set": null,
+      "verdict": "kept",
+      "goldNumbers": [
+        185
+      ]
+    },
+    {
+      "questionId": "36b9f61e",
+      "correct": true,
+      "question": "What is the total amount I spent on luxury items in the past few months?",
+      "gold": "$2,500",
+      "answer": "$2,500",
+      "countedRows": 3,
+      "excludedRows": 2,
+      "deltas": [],
+      "adjudicated": 2500,
+      "set": null,
+      "verdict": "kept",
+      "goldNumbers": [
+        2500
+      ]
+    },
+    {
+      "questionId": "00ca467f",
+      "correct": true,
+      "question": "How many doctor's appointments did I go to in March?",
+      "gold": "2",
+      "answer": "2",
+      "countedRows": 2,
+      "excludedRows": 4,
+      "deltas": [],
+      "adjudicated": 2,
+      "set": null,
+      "verdict": "kept",
+      "goldNumbers": [
+        2
+      ]
+    },
+    {
+      "questionId": "60472f9c",
+      "correct": true,
+      "question": "How many projects have I been working on simultaneously, excluding my thesis?",
+      "gold": "2",
+      "answer": "2",
+      "countedRows": 4,
+      "excludedRows": 1,
+      "deltas": [],
+      "adjudicated": 2,
+      "set": null,
+      "verdict": "kept",
+      "goldNumbers": [
+        2
+      ]
+    },
+    {
+      "questionId": "edced276",
+      "correct": true,
+      "question": "How many days did I spend in total traveling in Hawaii and in New York City?",
+      "gold": "15 days",
+      "answer": "15 days",
+      "countedRows": 2,
+      "excludedRows": 0,
+      "deltas": [],
+      "adjudicated": 15,
+      "set": null,
+      "verdict": "kept",
+      "goldNumbers": [
+        15
+      ]
+    },
+    {
+      "questionId": "gpt4_2f91af09",
+      "correct": true,
+      "question": "How many total pieces of writing have I completed since I started writing again three weeks ago, including short stories, poems, and pieces for the writing challenge?",
+      "gold": "23",
+      "answer": "23",
+      "countedRows": 3,
+      "excludedRows": 2,
+      "deltas": [],
+      "adjudicated": 23,
+      "set": null,
+      "verdict": "kept",
+      "goldNumbers": [
+        23
+      ]
+    },
+    {
+      "questionId": "cc06de0d",
+      "correct": true,
+      "question": "For my daily commute, how much more expensive was the taxi ride compared to the train fare?",
+      "gold": "$6",
+      "answer": "$6",
+      "countedRows": 0,
+      "excludedRows": 0,
+      "deltas": [],
+      "adjudicated": 6,
+      "set": null,
+      "verdict": "kept",
+      "goldNumbers": [
+        6
+      ]
+    },
+    {
+      "questionId": "d905b33f",
+      "correct": true,
+      "question": "What percentage discount did I get on the book from my favorite author?",
+      "gold": "20%",
+      "answer": "20%",
+      "countedRows": 0,
+      "excludedRows": 0,
+      "deltas": [],
+      "adjudicated": 20,
+      "set": null,
+      "verdict": "kept",
+      "goldNumbers": [
+        20
+      ]
+    },
+    {
+      "questionId": "e25c3b8d",
+      "correct": true,
+      "question": "How much did I save on the designer handbag at TK Maxx?",
+      "gold": "$300",
+      "answer": "$300",
+      "countedRows": 1,
+      "excludedRows": 0,
+      "deltas": [],
+      "adjudicated": 300,
+      "set": null,
+      "verdict": "kept",
+      "goldNumbers": [
+        300
+      ]
+    },
+    {
+      "questionId": "91b15a6e",
+      "correct": true,
+      "question": "What is the minimum amount I could get if I sold the vintage diamond necklace and the antique vanity?",
+      "gold": "$5,150",
+      "answer": "$5,150",
+      "countedRows": 0,
+      "excludedRows": 0,
+      "deltas": [],
+      "adjudicated": 5150,
+      "set": null,
+      "verdict": "kept",
+      "goldNumbers": [
+        5150
+      ]
+    },
+    {
+      "questionId": "3fe836c9",
+      "correct": true,
+      "question": "How much more was the pre-approval amount than the final sale price of the house?",
+      "gold": "$25,000",
+      "answer": "$25,000",
+      "countedRows": 0,
+      "excludedRows": 0,
+      "deltas": [],
+      "adjudicated": 25000,
+      "set": null,
+      "verdict": "kept",
+      "goldNumbers": [
+        25000
+      ]
+    },
+    {
+      "questionId": "61f8c8f8",
+      "correct": true,
+      "question": "How much faster did I finish the 5K run compared to my previous year's time?",
+      "gold": "10 minutes",
+      "answer": "10 minutes",
+      "countedRows": 0,
+      "excludedRows": 0,
+      "deltas": [],
+      "adjudicated": 10,
+      "set": null,
+      "verdict": "kept",
+      "goldNumbers": [
+        10
+      ]
+    },
+    {
+      "questionId": "157a136e",
+      "correct": true,
+      "question": "How many years older is my grandma than me?",
+      "gold": "43",
+      "answer": "43",
+      "countedRows": 0,
+      "excludedRows": 0,
+      "deltas": [],
+      "adjudicated": 43,
+      "set": null,
+      "verdict": "kept",
+      "goldNumbers": [
+        43
+      ]
+    },
+    {
+      "questionId": "a346bb18",
+      "correct": true,
+      "question": "How many minutes did I exceed my target time by in the marathon?",
+      "gold": "12",
+      "answer": "12",
+      "countedRows": 0,
+      "excludedRows": 0,
+      "deltas": [],
+      "adjudicated": 12,
+      "set": null,
+      "verdict": "kept",
+      "goldNumbers": [
+        12
+      ]
+    },
+    {
+      "questionId": "aae3761f",
+      "correct": true,
+      "question": "How many hours in total did I spend driving to my three road trip destinations combined?",
+      "gold": "15 hours for getting to the three destinations (or 30 hours for the round trip)",
+      "answer": "15 hours",
+      "countedRows": 3,
+      "excludedRows": 3,
+      "deltas": [],
+      "adjudicated": 15,
+      "set": null,
+      "verdict": "uncompared",
+      "goldNumbers": [
+        15,
+        30
+      ]
+    },
+    {
+      "questionId": "28dc39ac",
+      "correct": true,
+      "question": "How many hours have I spent playing games in total?",
+      "gold": "140 hours",
+      "answer": "140 hours",
+      "countedRows": 5,
+      "excludedRows": 0,
+      "deltas": [],
+      "adjudicated": 140,
+      "set": null,
+      "verdict": "kept",
+      "goldNumbers": [
+        140
+      ]
+    },
+    {
+      "questionId": "d682f1a2",
+      "correct": true,
+      "question": "How many different types of food delivery services have I used recently?",
+      "gold": "3",
+      "answer": "3",
+      "countedRows": 3,
+      "excludedRows": 1,
+      "deltas": [],
+      "adjudicated": 3,
+      "set": null,
+      "verdict": "kept",
+      "goldNumbers": [
+        3
+      ]
+    },
+    {
+      "questionId": "b3c15d39",
+      "correct": true,
+      "question": "How many days did it take for me to receive the new remote shutter release after I ordered it?",
+      "gold": "5 days. 6 days (including the last day) is also acceptable.",
+      "answer": "5 days",
+      "countedRows": 2,
+      "excludedRows": 0,
+      "deltas": [],
+      "adjudicated": 5,
+      "set": null,
+      "verdict": "uncompared",
+      "goldNumbers": [
+        5,
+        6
+      ]
+    },
+    {
+      "questionId": "gpt4_194be4b3",
+      "correct": true,
+      "question": "How many musical instruments do I currently own?",
+      "gold": "I currently own 4 musical instruments. I've had the Fender Stratocaster electric guitar for 5 years, the Yamaha FG800 acoustic guitar for 8 years, the 5-piece Pearl Export drum set for an unspecified amount of time, and the Korg B1 piano for 3 years.",
+      "answer": "4",
+      "countedRows": 4,
+      "excludedRows": 4,
+      "deltas": [],
+      "adjudicated": 4,
+      "set": 1,
+      "verdict": "uncompared",
+      "goldNumbers": [
+        4,
+        5,
+        800,
+        8,
+        5,
+        1,
+        3
+      ]
+    },
+    {
+      "questionId": "10d9b85a",
+      "correct": true,
+      "question": "How many days did I spend attending workshops, lectures, and conferences in April?",
+      "gold": "3 days",
+      "answer": "3 days",
+      "countedRows": 2,
+      "excludedRows": 3,
+      "deltas": [],
+      "adjudicated": 3,
+      "set": null,
+      "verdict": "kept",
+      "goldNumbers": [
+        3
+      ]
+    },
+    {
+      "questionId": "81507db6",
+      "correct": true,
+      "question": "How many graduation ceremonies have I attended in the past three months?",
+      "gold": "3",
+      "answer": "3",
+      "countedRows": 3,
+      "excludedRows": 2,
+      "deltas": [],
+      "adjudicated": 3,
+      "set": null,
+      "verdict": "kept",
+      "goldNumbers": [
+        3
+      ]
+    },
+    {
+      "questionId": "a11281a2",
+      "correct": true,
+      "question": "What was the approximate increase in Instagram followers I experienced in two weeks?",
+      "gold": "100",
+      "answer": "100",
+      "countedRows": 0,
+      "excludedRows": 0,
+      "deltas": [],
+      "adjudicated": 100,
+      "set": null,
+      "verdict": "kept",
+      "goldNumbers": [
+        100
+      ]
+    },
+    {
+      "questionId": "7405e8b1",
+      "correct": true,
+      "question": "Did I receive a higher percentage discount on my first order from HelloFresh, compared to my first UberEats order?",
+      "gold": "Yes.",
+      "answer": "Yes",
+      "countedRows": 0,
+      "excludedRows": 0,
+      "deltas": [],
+      "set": null,
+      "verdict": "uncompared",
+      "goldNumbers": []
+    },
+    {
+      "questionId": "4adc0475",
+      "correct": true,
+      "question": "What is the total number of goals and assists I have in the recreational indoor soccer league?",
+      "gold": "5",
+      "answer": "5",
+      "countedRows": 2,
+      "excludedRows": 1,
+      "deltas": [],
+      "adjudicated": 5,
+      "set": null,
+      "verdict": "kept",
+      "goldNumbers": [
+        5
+      ]
+    },
+    {
+      "questionId": "27016adc",
+      "correct": true,
+      "question": "What percentage of the countryside property's price is the cost of the renovations I plan to do on my current house?",
+      "gold": "10%",
+      "answer": "10%",
+      "countedRows": 0,
+      "excludedRows": 0,
+      "deltas": [],
+      "adjudicated": 10,
+      "set": null,
+      "verdict": "kept",
+      "goldNumbers": [
+        10
+      ]
+    },
+    {
+      "questionId": "1c549ce4",
+      "correct": true,
+      "question": "What is the total cost of the car cover and detailing spray I purchased?",
+      "gold": "$140",
+      "answer": "$140",
+      "countedRows": 2,
+      "excludedRows": 0,
+      "deltas": [],
+      "adjudicated": 140,
+      "set": null,
+      "verdict": "kept",
+      "goldNumbers": [
+        140
+      ]
+    },
+    {
+      "questionId": "60159905",
+      "correct": true,
+      "question": "How many dinner parties have I attended in the past month?",
+      "gold": "three",
+      "answer": "3",
+      "countedRows": 3,
+      "excludedRows": 5,
+      "deltas": [],
+      "adjudicated": 3,
+      "set": null,
+      "verdict": "kept",
+      "goldNumbers": [
+        3
+      ]
+    },
+    {
+      "questionId": "c18a7dc8",
+      "correct": true,
+      "question": "How many years older am I than when I graduated from college?",
+      "gold": "7",
+      "answer": "7",
+      "countedRows": 0,
+      "excludedRows": 0,
+      "deltas": [],
+      "adjudicated": 7,
+      "set": null,
+      "verdict": "kept",
+      "goldNumbers": [
+        7
+      ]
+    },
+    {
+      "questionId": "0a995998",
+      "correct": true,
+      "question": "How many items of clothing do I need to pick up or return from a store?",
+      "gold": "3",
+      "answer": "3",
+      "countedRows": 4,
+      "excludedRows": 4,
+      "deltas": [],
+      "adjudicated": 3,
+      "set": null,
+      "verdict": "kept",
+      "goldNumbers": [
+        3
+      ]
+    },
+    {
+      "questionId": "gpt4_f2262a51",
+      "correct": true,
+      "question": "How many different doctors did I visit?",
+      "gold": "I visited three different doctors: a primary care physician, an ENT specialist, and a dermatologist.",
+      "answer": "3",
+      "countedRows": 3,
+      "excludedRows": 3,
+      "deltas": [],
+      "adjudicated": 3,
+      "set": null,
+      "verdict": "kept",
+      "goldNumbers": [
+        3
+      ]
+    },
+    {
+      "questionId": "7024f17c",
+      "correct": true,
+      "question": "How many hours of jogging and yoga did I do last week?",
+      "gold": "0.5 hours",
+      "answer": "0.5 hours",
+      "countedRows": 1,
+      "excludedRows": 2,
+      "deltas": [],
+      "adjudicated": 0.5,
+      "set": null,
+      "verdict": "kept",
+      "goldNumbers": [
+        0.5
+      ]
+    },
+    {
+      "questionId": "a9f6b44c",
+      "correct": true,
+      "question": "How many bikes did I service or plan to service in March?",
+      "gold": "2",
+      "answer": "2",
+      "countedRows": 3,
+      "excludedRows": 3,
+      "deltas": [],
+      "adjudicated": 2,
+      "set": null,
+      "verdict": "kept",
+      "goldNumbers": [
+        2
+      ]
+    },
+    {
+      "questionId": "e3038f8c",
+      "correct": true,
+      "question": "How many rare items do I have in total?",
+      "gold": "99",
+      "answer": "99",
+      "countedRows": 5,
+      "excludedRows": 4,
+      "deltas": [],
+      "adjudicated": 99,
+      "set": null,
+      "verdict": "kept",
+      "goldNumbers": [
+        99
+      ]
+    },
+    {
+      "questionId": "4f54b7c9",
+      "correct": true,
+      "question": "How many antique items did I inherit or acquire from my family members?",
+      "gold": "5",
+      "answer": "5",
+      "countedRows": 5,
+      "excludedRows": 0,
+      "deltas": [],
+      "adjudicated": 5,
+      "set": null,
+      "verdict": "kept",
+      "goldNumbers": [
+        5
+      ]
+    },
+    {
+      "questionId": "f35224e0",
+      "correct": true,
+      "question": "What is the total number of episodes I've listened to from 'How I Built This' and 'My Favorite Murder'?",
+      "gold": "27",
+      "answer": "27 episodes",
+      "countedRows": 2,
+      "excludedRows": 0,
+      "deltas": [],
+      "adjudicated": 27,
+      "set": null,
+      "verdict": "kept",
+      "goldNumbers": [
+        27
+      ]
+    },
+    {
+      "questionId": "4bc144e2",
+      "correct": true,
+      "question": "How much did I spend on car wash and parking ticket?",
+      "gold": "$65",
+      "answer": "$65",
+      "countedRows": 0,
+      "excludedRows": 0,
+      "deltas": [],
+      "adjudicated": 65,
+      "set": null,
+      "verdict": "kept",
+      "goldNumbers": [
+        65
+      ]
+    },
+    {
+      "questionId": "720133ac",
+      "correct": true,
+      "question": "What is the total cost of Lola's vet visit and flea medication?",
+      "gold": "$75",
+      "answer": "$75",
+      "countedRows": 2,
+      "excludedRows": 3,
+      "deltas": [],
+      "adjudicated": 75,
+      "set": null,
+      "verdict": "kept",
+      "goldNumbers": [
+        75
+      ]
+    },
+    {
+      "questionId": "6c49646a",
+      "correct": true,
+      "question": "What is the total distance I covered in my four road trips?",
+      "gold": "3,000 miles",
+      "answer": "3,000 miles",
+      "countedRows": 8,
+      "excludedRows": 1,
+      "deltas": [],
+      "adjudicated": 3000,
+      "set": null,
+      "verdict": "kept",
+      "goldNumbers": [
+        3000
+      ]
+    },
+    {
+      "questionId": "ef9cf60a",
+      "correct": true,
+      "question": "How much did I spend on gifts for my sister?",
+      "gold": "$300",
+      "answer": "$300",
+      "countedRows": 2,
+      "excludedRows": 2,
+      "deltas": [],
+      "adjudicated": 300,
+      "set": null,
+      "verdict": "kept",
+      "goldNumbers": [
+        300
+      ]
+    },
+    {
+      "questionId": "a3332713",
+      "correct": true,
+      "question": "What is the total amount I spent on gifts for my coworker and brother?",
+      "gold": "$200",
+      "answer": "$200",
+      "countedRows": 3,
+      "excludedRows": 3,
+      "deltas": [],
+      "adjudicated": 200,
+      "set": null,
+      "verdict": "kept",
+      "goldNumbers": [
+        200
+      ]
+    },
+    {
+      "questionId": "8e91e7d9",
+      "correct": true,
+      "question": "What is the total number of siblings I have?",
+      "gold": "4",
+      "answer": "4",
+      "countedRows": 3,
+      "excludedRows": 3,
+      "deltas": [],
+      "adjudicated": 4,
+      "set": null,
+      "verdict": "kept",
+      "goldNumbers": [
+        4
+      ]
+    },
+    {
+      "questionId": "6d550036",
+      "correct": true,
+      "question": "How many projects have I led or am currently leading?",
+      "gold": "2",
+      "answer": "2",
+      "countedRows": 2,
+      "excludedRows": 7,
+      "deltas": [],
+      "adjudicated": 2,
+      "set": null,
+      "verdict": "kept",
+      "goldNumbers": [
+        2
+      ]
+    },
+    {
+      "questionId": "dd2973ad",
+      "correct": true,
+      "question": "What time did I go to bed on the day before I had a doctor's appointment?",
+      "gold": "2 AM",
+      "answer": "2 AM",
+      "countedRows": 2,
+      "excludedRows": 0,
+      "deltas": [],
+      "adjudicated": 2,
+      "set": null,
+      "verdict": "kept",
+      "goldNumbers": [
+        2
+      ]
+    },
+    {
+      "questionId": "2e6d26dc",
+      "correct": true,
+      "question": "How many babies were born to friends and family members in the last few months?",
+      "gold": "5",
+      "answer": "5",
+      "countedRows": 5,
+      "excludedRows": 2,
+      "deltas": [],
+      "adjudicated": 5,
+      "set": null,
+      "verdict": "kept",
+      "goldNumbers": [
+        5
+      ]
+    },
+    {
+      "questionId": "gpt4_5501fe77",
+      "correct": true,
+      "question": "Which social media platform did I gain the most followers on over the past month?",
+      "gold": "TikTok",
+      "answer": "TikTok",
+      "countedRows": 2,
+      "excludedRows": 2,
+      "deltas": [],
+      "set": null,
+      "verdict": "uncompared",
+      "goldNumbers": []
+    },
+    {
+      "questionId": "eeda8a6d",
+      "correct": true,
+      "question": "How many fish are there in total in both of my aquariums?",
+      "gold": "17",
+      "answer": "17",
+      "countedRows": 4,
+      "excludedRows": 1,
+      "deltas": [],
+      "adjudicated": 17,
+      "set": null,
+      "verdict": "kept",
+      "goldNumbers": [
+        17
+      ]
+    },
+    {
+      "questionId": "2b8f3739",
+      "correct": true,
+      "question": "What is the total amount of money I earned from selling my products at the markets?",
+      "gold": "$495",
+      "answer": "$495",
+      "countedRows": 8,
+      "excludedRows": 0,
+      "deltas": [],
+      "adjudicated": 495,
+      "set": null,
+      "verdict": "kept",
+      "goldNumbers": [
+        495
+      ]
+    },
+    {
+      "questionId": "85fa3a3f",
+      "correct": true,
+      "question": "What is the total cost of the new food bowl, measuring cup, dental chews, and flea and tick collar I got for Max?",
+      "gold": "$50",
+      "answer": "$50",
+      "countedRows": 4,
+      "excludedRows": 0,
+      "deltas": [],
+      "adjudicated": 50,
+      "set": null,
+      "verdict": "kept",
+      "goldNumbers": [
+        50
+      ]
+    },
+    {
+      "questionId": "6456829e",
+      "correct": true,
+      "question": "How many plants did I initially plant for tomatoes and cucumbers?",
+      "gold": "8",
+      "answer": "8",
+      "countedRows": 2,
+      "excludedRows": 1,
+      "deltas": [],
+      "adjudicated": 8,
+      "set": null,
+      "verdict": "kept",
+      "goldNumbers": [
+        8
+      ]
+    },
+    {
+      "questionId": "ef66a6e5",
+      "correct": true,
+      "question": "How many sports have I played competitively in the past?",
+      "gold": "two",
+      "answer": "2",
+      "countedRows": 2,
+      "excludedRows": 1,
+      "deltas": [],
+      "adjudicated": 2,
+      "set": null,
+      "verdict": "kept",
+      "goldNumbers": [
+        2
+      ]
+    },
+    {
+      "questionId": "77eafa52",
+      "correct": true,
+      "question": "How much more did I have to pay for the trip after the initial quote?",
+      "gold": "$300",
+      "answer": "$300",
+      "countedRows": 0,
+      "excludedRows": 0,
+      "deltas": [],
+      "adjudicated": 300,
+      "set": null,
+      "verdict": "kept",
+      "goldNumbers": [
+        300
+      ]
+    },
+    {
+      "questionId": "1192316e",
+      "correct": true,
+      "question": "What is the total time it takes I to get ready and commute to work?",
+      "gold": "an hour and a half",
+      "answer": "90 minutes",
+      "countedRows": 2,
+      "excludedRows": 0,
+      "deltas": [],
+      "adjudicated": 90,
+      "set": null,
+      "verdict": "uncompared",
+      "goldNumbers": []
+    },
+    {
+      "questionId": "73d42213",
+      "correct": true,
+      "question": "What time did I reach the clinic on Monday?",
+      "gold": "9:00 AM",
+      "answer": "9:00 AM",
+      "countedRows": 2,
+      "excludedRows": 1,
+      "deltas": [],
+      "adjudicated": 9,
+      "set": null,
+      "verdict": "uncompared",
+      "goldNumbers": [
+        9,
+        0
+      ]
+    },
+    {
+      "questionId": "55241a1f",
+      "correct": true,
+      "question": "What is the total number of comments on my recent Facebook Live session and my most popular YouTube video?",
+      "gold": "33",
+      "answer": "33",
+      "countedRows": 2,
+      "excludedRows": 1,
+      "deltas": [],
+      "adjudicated": 33,
+      "set": null,
+      "verdict": "kept",
+      "goldNumbers": [
+        33
+      ]
+    },
+    {
+      "questionId": "87f22b4a",
+      "correct": true,
+      "question": "How much have I made from selling eggs this month?",
+      "gold": "$120",
+      "answer": "$120",
+      "countedRows": 2,
+      "excludedRows": 0,
+      "deltas": [],
+      "adjudicated": 120,
+      "set": null,
+      "verdict": "kept",
+      "goldNumbers": [
+        120
+      ]
+    }
+  ]
+}
