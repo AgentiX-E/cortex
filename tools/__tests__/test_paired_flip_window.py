@@ -201,3 +201,85 @@ class PairedFlipSplitsWindows(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+def _headroom_rows(stdout: str) -> dict[str, list[str]]:
+    """The rows of the headroom table, keyed by capability, read from below its own header.
+
+    The tool prints four tables and three of them start with the capability name in the same column, so a
+    `startswith('MR ')` lookup returns whichever table came first. Anchoring on the header is the only
+    reading that cannot silently change meaning when a table is added above.
+    """
+    lines = stdout.splitlines()
+    header = next(
+        index for index, line in enumerate(lines) if line.startswith('capability') and 'answered' in line
+    )
+    rows: dict[str, list[str]] = {}
+    for line in lines[header + 1 :]:
+        parts = line.split()
+        if len(parts) != 7:
+            break
+        rows[parts[0]] = parts
+    return rows
+
+
+class TestTheHeadroomTheScoreIsShortBy(unittest.TestCase):
+    """The reading that chooses the target, which is not the reading that reports the gap.
+
+    Every mechanism before `§203` was aimed at the column that looked worst, and on the published arm that
+    column (`MR`, 7.2 points behind the strongest system) contains four questions a fix can reach. The table
+    this asserts separates the three states a question can be in -- right in every repetition, right in
+    some, right in none -- and tags the last one with what the control did, because a question the control
+    also never answers is a ceiling of the harness rather than a gap between the arms.
+    """
+
+    @staticmethod
+    def _artifact() -> dict:
+        """Nine questions, two repetitions, one of each shape the table has to tell apart.
+
+        `q0..q2` right in both; `q3..q4` the control right in both and this arm in neither; `q5` right in one
+        repetition only; `q6..q7` neither arm ever right; `q8` the control right in one repetition, this arm
+        in neither -- the cell that separates "demonstrated reachable" from "durable miss".
+        """
+        baseline = ["111111000", "111111001"]
+        feature = ["111001000", "111000000"]
+        return _artifact(baseline, feature, [f"q{i}" for i in range(9)])
+
+    def test_the_three_columns_add_up_to_the_population(self) -> None:
+        result = _run(self._artifact())
+        self.assertEqual(result.returncode, 0, result.stderr)
+        suite = _headroom_rows(result.stdout)["suite"]
+        _, n, answered, unstable, never, _, _ = suite
+        self.assertEqual(int(answered) + int(unstable) + int(never), int(n))
+
+    def test_the_ceiling_is_what_a_fix_demonstrated_could_reach_and_not_a_hundred(self) -> None:
+        result = _run(self._artifact())
+        suite = _headroom_rows(result.stdout)["suite"]
+        n, never, demonstrated, ceiling = (int(suite[1]), int(suite[4]), int(suite[5]), float(suite[6]))
+        # Two questions no pipeline gets: the ceiling is 1 - 2/9, not 100 and not 1 - 5/9.
+        self.assertEqual((n, never, demonstrated), (9, 5, 3))
+        self.assertAlmostEqual(ceiling, 100 * (1 - (never - demonstrated) / n), places=2)
+
+    def test_a_question_the_control_answers_only_once_still_counts_as_demonstrated(self) -> None:
+        # `q8` is baseline `some` with feature `never`. Read as `'every'`-only it would be priced with the
+        # unreachable half, and the ceiling would come out two points low -- the mis-pricing this column
+        # exists to prevent.
+        result = _run(self._artifact())
+        self.assertEqual(_headroom_rows(result.stdout)["suite"][5], "3")
+
+    def test_the_reexpanded_flapping_counts_still_match_the_one_list(self) -> None:
+        # The two columns the removed `flapping` field carried, recomputed from `contested` by the tool: a
+        # question whose baseline flapped and a question whose feature flapped are both `contested`, and the
+        # per-side columns must still see them apart.
+        result = _run(_artifact(["1110", "1010"], ["1110", "1100"], ["a", "b", "c", "d"]))
+        self.assertEqual(result.returncode, 0, result.stderr)
+        lines = result.stdout.splitlines()
+        header = next(
+            index
+            for index, line in enumerate(lines)
+            if line.startswith("capability") and "durable-miss" in line
+        )
+        row = next(line for line in lines[header + 1 :] if line.startswith("MR "))
+        # n, durable-miss, durable-win, agreed-wrong, contested, baseline/feature flapping
+        self.assertEqual(row.split()[-1], "1/1")
+        self.assertEqual(row.split()[-2], "2", "both questions are contested")

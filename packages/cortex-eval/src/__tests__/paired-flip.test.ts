@@ -151,10 +151,16 @@ describe('the summary separates flapping from durable, which a spread cannot', (
     expect(mr.durableMiss).toEqual(['miss']);
     expect(mr.durableWin).toEqual(['win']);
     expect(mr.agreedWrong).toEqual(['neither']);
-    expect(mr.contested).toBe(2);
+    // The population, not a count of it: `§203` could not name the twelve `MR` questions it had to
+    // dispatch at because this field was `12`, and a count cannot be dispatched at.
+    expect(mr.contested.map((row) => row.questionId)).toEqual(['flap-one', 'flap-two']);
     // The partition is total: every question lands in exactly one class.
     expect(
-      mr.durableMiss.length + mr.durableWin.length + mr.agreedWrong.length + mr.contested + 1,
+      mr.durableMiss.length +
+        mr.durableWin.length +
+        mr.agreedWrong.length +
+        mr.contested.length +
+        1,
     ).toBe(mr.total);
   });
 
@@ -163,10 +169,12 @@ describe('the summary separates flapping from durable, which a spread cannot', (
     // twice from two swinging once, and both are the same spread.
     const reading = summarisePaired(cases);
     // Two questions flapping, and the runs each of them was right for is what separates one question
-    // swinging twice from two swinging once — the same spread, opposite readings.
-    expect(reading.capabilities[0]!.flapping.feature).toEqual([
-      { questionId: 'flap-one', runs: 3 },
-      { questionId: 'flap-two', runs: 2 },
+    // swinging twice from two swinging once — the same spread, opposite readings. Both counts travel on
+    // the one list now, so the reader who wants the side-wise view filters it and cannot get a second,
+    // separately maintained answer to the same question.
+    expect(reading.capabilities[0]!.contested).toEqual([
+      { questionId: 'flap-one', baselineRuns: 4, featureRuns: 3 },
+      { questionId: 'flap-two', baselineRuns: 4, featureRuns: 2 },
     ]);
     expect(reading.rows.find((row) => row.questionId === 'flap-two')!.featureRuns).toBe(2);
     expect(reading.rows.find((row) => row.questionId === 'flap-one')!.featureRuns).toBe(3);
@@ -364,5 +372,130 @@ describe('the exact McNemar p-value of each repetition', () => {
     expect(spread.gapPerRun[0]).toBe(6);
     expect(concentrated.pValuePerRun[0]).toBeCloseTo(2 / 64, 12);
     expect(spread.pValuePerRun[0]).toBeGreaterThan(0.2);
+  });
+});
+
+/**
+ * The population the score is short by, which is not the gap.
+ *
+ * Every mechanism this campaign dispatched before `§203` chose its target by the column that looked worst,
+ * and the two readings are not the same reading. `durable-miss` needs the **other** arm to be right every
+ * time; the score is absolute, so a question this arm never answers costs a point whether or not the control
+ * answers it. `neverRight` is that second population, and its `control` tag is the only thing that separates
+ * "a fix is demonstrated able to reach this" from "no pipeline in this repository gets it".
+ */
+describe('the questions answered wrongly in every repetition', () => {
+  const never = () =>
+    summarisePaired([
+      // The control answers it every time: a fix is demonstrated possible.
+      ...block(2, 'durableMiss', true, false),
+      // The control answers it in one repetition of two: still demonstrated, at half the evidence.
+      ...Array.from({ length: 1 }, (_, i) => ({
+        index: 10 + i,
+        questionId: `controlSome-${i}`,
+        capability: 'MR',
+        gold: '3',
+        answer: '2',
+        baseline: [true, false],
+        feature: [false, false],
+      })),
+      // Neither arm ever answers it: a ceiling of the harness rather than a gap between the arms.
+      ...block(3, 'agreedWrong', false, false),
+      // And the two populations `neverRight` must NOT swallow: right in every repetition, and right in one.
+      ...block(2, 'agreedRight', true, true),
+      ...Array.from({ length: 1 }, (_, i) => ({
+        index: 20 + i,
+        questionId: `unstable-${i}`,
+        capability: 'MR',
+        gold: '3',
+        answer: '3',
+        baseline: [true, false],
+        feature: [true, false],
+      })),
+    ]).capabilities[0]!;
+
+  it('tags each one with what the control did, and keeps the reachable half separate', () => {
+    const mr = never();
+    expect(mr.neverRight).toEqual([
+      { questionId: 'durableMiss-0', control: 'every' },
+      { questionId: 'durableMiss-1', control: 'every' },
+      { questionId: 'controlSome-0', control: 'some' },
+      { questionId: 'agreedWrong-0', control: 'none' },
+      { questionId: 'agreedWrong-1', control: 'none' },
+      { questionId: 'agreedWrong-2', control: 'none' },
+    ]);
+    // Two `every`, one `some`, three `none`: the ceiling a fix could reach is 1 - 3/8, not 1 - 6/8.
+    expect(mr.neverRight.filter((row) => row.control !== 'none')).toHaveLength(3);
+  });
+
+  it('does not count a question this arm gets right in some repetition', () => {
+    // The predicate is `featureRuns === 0`, not "not durable-win": a contested question is unstable, and an
+    // unstable question is not reachable by a mechanism -- it is reachable by a repeat.
+    const mr = never();
+    expect(mr.neverRight.map((row) => row.questionId)).not.toContain('unstable-0');
+    expect(mr.contested.map((row) => row.questionId)).toContain('unstable-0');
+  });
+
+  it('partitions the population three ways with no question in two columns', () => {
+    // The identity the printed headroom table is read against: answered + unstable + never == total. A table
+    // whose columns do not add up is a table nobody counted, which is how the wrong population gets chosen.
+    const mr = summarisePaired([
+      ...block(4, 'a', true, true),
+      ...block(2, 'b', true, false),
+      ...block(3, 'c', false, false),
+    ]).capabilities[0]!;
+    const answered = mr.total - mr.contested.length - mr.neverRight.length;
+    expect(answered).toBe(4);
+    expect(answered + mr.contested.length + mr.neverRight.length).toBe(mr.total);
+    expect(mr.neverRight).toHaveLength(5);
+  });
+});
+
+/**
+ * The one list, and the projections the two removed fields used to be.
+ *
+ * `flapping.baseline` was `contested` filtered to `0 < baselineRuns < runs` and `flapping.feature` was the
+ * same predicate one field over. Three fields describing one population is three fields that can disagree,
+ * and the disagreement would be invisible: nothing compared them. The identity is asserted here instead, on
+ * a fixture that puts a question in each of the three shapes.
+ */
+describe('contested is one list, not a count and two lists', () => {
+  it('holds exactly the questions with a side strictly between none and all', () => {
+    const summary = summarisePaired([
+      ...block(2, 'both', true, true),
+      ...block(2, 'neither', false, false),
+      ...block(2, 'durableMiss', true, false),
+      ...block(2, 'durableWin', false, true),
+      ...Array.from({ length: 1 }, (_, i) => ({
+        index: 30 + i,
+        questionId: `baselineFlaps-${i}`,
+        capability: 'MR',
+        gold: '3',
+        answer: '3',
+        baseline: [true, false],
+        feature: [true, true],
+      })),
+      ...Array.from({ length: 1 }, (_, i) => ({
+        index: 31 + i,
+        questionId: `featureFlaps-${i}`,
+        capability: 'MR',
+        gold: '3',
+        answer: '3',
+        baseline: [true, true],
+        feature: [true, false],
+      })),
+    ]);
+    const reading = summary.capabilities[0]!;
+
+    expect(reading.contested).toEqual([
+      { questionId: 'baselineFlaps-0', baselineRuns: 1, featureRuns: 2 },
+      { questionId: 'featureFlaps-0', baselineRuns: 2, featureRuns: 1 },
+    ]);
+    // Every contested question has at least one side strictly between 0 and `runs`, by construction. A row
+    // that satisfied neither would belong to one of the four durable verdicts instead.
+    for (const row of reading.contested) {
+      const between = (count: number) => count > 0 && count < summary.runs;
+      expect(between(row.baselineRuns) || between(row.featureRuns)).toBe(true);
+    }
   });
 });

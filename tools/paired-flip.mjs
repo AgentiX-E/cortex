@@ -24,6 +24,13 @@
  *    twice as much, and `two-window.ts` grades both so that the second can be read beside the first.
  *    `--window N` narrows the whole reading to one of them.
  * 4. **The durable populations**, by question id, because a count without ids cannot be dispatched at.
+ * 5. **The headroom table** — answered / unstable / never, per capability, with the `never` column tagged by
+ *    whether the control answers the question at least once. This is the reading the campaign did not have
+ *    and the reason every dispatch before `§203` aimed at the wrong questions: `durable-miss` is a
+ *    **relative** population (it needs the other arm to be right every time) while the score is absolute, so
+ *    the questions a mechanism can convert are "never right", not "worse than the control". On the shipped
+ *    arm those are 26 questions, 20 of which the control never answers either, and the largest reachable
+ *    block inside them is the fourteen contested rather than the four `MR` durable misses.
  *
  * ## Why the census is imported rather than restated
  *
@@ -149,7 +156,20 @@ export function headlineIsOneRepetition(report, reading) {
   };
 }
 
-const pct = (value) => `${(value * 100).toFixed(1)}%`;
+/**
+ * How many contested questions on one side were right in some repetitions but not all.
+ *
+ * A projection of `contested` rather than a field of its own: the two were separate lists until `§203`, and
+ * two lists that must agree about the same population are two lists that can disagree. The predicate is the
+ * one the removed fields used — strictly between zero and the repetition count — read from the counts the
+ * list already carries, on the arm the printed column belongs to.
+ */
+function bySide(entry, side, runs) {
+  return entry.contested.filter((row) => {
+    const count = side === 'baseline' ? row.baselineRuns : row.featureRuns;
+    return count > 0 && count < runs;
+  }).length;
+}
 
 /**
  * A p-value at the precision a reader needs, never as `0`.
@@ -248,8 +268,8 @@ function render(reading, report, options) {
         `${String(entry.durableMiss.length).padStart(12)}  ` +
         `${String(entry.durableWin.length).padStart(11)}  ` +
         `${String(entry.agreedWrong.length).padStart(12)}  ` +
-        `${String(entry.contested).padStart(9)}  ` +
-        `${String(entry.flapping.baseline.length).padStart(6)}/${entry.flapping.feature.length}`,
+        `${String(entry.contested.length).padStart(9)}  ` +
+        `${String(bySide(entry, 'baseline', reading.runs)).padStart(6)}/${bySide(entry, 'feature', reading.runs)}`,
     );
   }
 
@@ -269,6 +289,55 @@ function render(reading, report, options) {
         `${entry.significantEveryRun ? '' : ' -- NOT below 0.05 in every repetition'}`,
     );
   }
+
+  // The population a fix can act on, per capability, which is not the same question as the gap.
+  //
+  // Every earlier round chose its target by the column that looked worst, and `§203` priced that choice:
+  // on `45760081761` the arm is short by 26 questions that nothing decides, and 20 of those the control
+  // never answers either -- so the ceiling either arm demonstrates is 96.00, the largest reachable block
+  // inside it is the 14 contested (1.40 points), and the durable misses every mechanism was aimed at are
+  // worth 1.00. A capability whose column is worst can have almost nothing under it.
+  lines.push('');
+  lines.push('headroom: what the score is short by, and what the control demonstrated about it');
+  lines.push('capability            n   answered  unstable   never  demonstrated   ceiling');
+  let suite = { n: 0, answered: 0, unstable: 0, never: 0, demonstrated: 0 };
+  for (const entry of capabilities) {
+    const rows = reading.rows.filter((row) => row.capability === entry.capability);
+    const answered = rows.filter((row) => row.featureRuns === reading.runs).length;
+    const never = rows.filter((row) => row.featureRuns === 0).length;
+    const demonstrated = entry.neverRight.filter((row) => row.control !== 'none').length;
+    const unstable = rows.length - answered - never;
+    // The ceiling is what a fix could reach **if it only did what the control already demonstrates**: every
+    // question the control answers at least once is one a mechanism can be shown to convert, and the rest is
+    // a ceiling of the harness rather than a gap. Printed as a percentage of the capability, so the five rows
+    // are comparable without a second conversion.
+    const unreachable = never - demonstrated;
+    lines.push(
+      `${entry.capability.padEnd(18)}${String(rows.length).padStart(4)}   ` +
+        `${String(answered).padStart(8)}  ${String(unstable).padStart(8)}  ` +
+        `${String(never).padStart(6)}  ${String(demonstrated).padStart(12)}   ` +
+        `${(100 * (1 - unreachable / rows.length)).toFixed(2).padStart(6)}`,
+    );
+    suite = {
+      n: suite.n + rows.length,
+      answered: suite.answered + answered,
+      unstable: suite.unstable + unstable,
+      never: suite.never + never,
+      demonstrated: suite.demonstrated + demonstrated,
+    };
+  }
+  const suiteUnreachable = suite.never - suite.demonstrated;
+  lines.push(
+    `${'suite'.padEnd(18)}${String(suite.n).padStart(4)}   ` +
+      `${String(suite.answered).padStart(8)}  ${String(suite.unstable).padStart(8)}  ` +
+      `${String(suite.never).padStart(6)}  ${String(suite.demonstrated).padStart(12)}   ` +
+      `${(100 * (1 - suiteUnreachable / suite.n)).toFixed(2).padStart(6)}`,
+  );
+  lines.push(
+    `  answered: right in every repetition. never: wrong in every repetition, so a mechanism can reach it. ` +
+      `demonstrated: the number of those the control answers at least once, so the ceiling is ` +
+      `what a fix that only did what the control already does could reach.`,
+  );
 
   if (options.census === true) {
     const byId = new Map(reading.rows.map((row) => [row.questionId, row]));
@@ -320,7 +389,9 @@ function renderWindows(cases, marker, windows, capability) {
     } catch (error) {
       // One line rather than a thrown reading: a window whose ids are absent is a fact about the
       // artifact's ids, and the other windows are still readable.
-      lines.push(`  ${window}     (no question id carries this marker: ${error.message.slice(0, 60)}...)`);
+      lines.push(
+        `  ${window}     (no question id carries this marker: ${error.message.slice(0, 60)}...)`,
+      );
       continue;
     }
     for (const entry of reading.capabilities) {
@@ -392,11 +463,11 @@ function main(argv) {
   for (const entry of reading.capabilities) {
     const classified =
       entry.durableMiss.length + entry.durableWin.length + entry.agreedWrong.length;
-    const agreedRight = entry.total - classified - entry.contested;
+    const agreedRight = entry.total - classified - entry.contested.length;
     if (agreedRight < 0) {
       process.stderr.write(
         `${entry.capability}: the verdicts sum to more than the population ` +
-          `(${classified} + ${entry.contested} > ${entry.total})\n`,
+          `(${classified} + ${entry.contested.length} > ${entry.total})\n`,
       );
       return 1;
     }
@@ -452,7 +523,7 @@ function main(argv) {
             }),
             agreedWrong: entry.agreedWrong,
             contested: entry.contested,
-            flapping: entry.flapping,
+            neverRight: entry.neverRight,
           },
         ]),
       ),

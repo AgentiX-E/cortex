@@ -91,6 +91,21 @@ type PairedRow = PairedCase & {
   readonly featureRuns: number;
 };
 
+/** One question the code did not decide, with the repetition count that makes it one. */
+type ContestedQuestion = {
+  readonly questionId: string;
+  /** Between `1` and `runs - 1` on at least one side, by the definition of `contested`. */
+  readonly baselineRuns: number;
+  readonly featureRuns: number;
+};
+
+/** What the other arm did with a question this arm never answers. */
+type NeverRightQuestion = {
+  readonly questionId: string;
+  /** `every`: the control was right in all repetitions; `none`: in none; `some`: in between. */
+  readonly control: 'every' | 'some' | 'none';
+};
+
 type CapabilityPaired = {
   readonly capability: string;
   readonly total: number;
@@ -124,17 +139,37 @@ type CapabilityPaired = {
   readonly durableMiss: readonly string[];
   readonly durableWin: readonly string[];
   readonly agreedWrong: readonly string[];
-  readonly contested: number;
   /**
-   * Questions whose verdict is not constant on that side, with the count of repetitions it was right.
+   * Every question the code did not decide, with both sides' repetition counts.
    *
-   * Keyed by question id so the same question appears once however many times it swings — the
-   * distinction `featureByCapability`'s `{min, avg, max}` cannot make.
+   * A **list** rather than a count, because a count cannot be dispatched at. `§203` reads this one to name
+   * the twelve `MR` questions whose two byte-identical prompts produced two verdicts, and a reader holding
+   * `12` has to go back to the artifact to find out which twelve — which is the round trip that made every
+   * mechanism before it aim at the four durable misses instead.
+   *
+   * It is also the only place the two side-wise lists live now. `flapping.baseline` was
+   * `contested` filtered to `0 < baselineRuns < runs` and `flapping.feature` was the same predicate one
+   * field over, so three fields were one list and two projections of it — and three fields that must agree
+   * are three fields that can disagree. The projections are cheap at the call site and impossible to get
+   * inconsistent here.
    */
-  readonly flapping: {
-    readonly baseline: readonly { readonly questionId: string; readonly runs: number }[];
-    readonly feature: readonly { readonly questionId: string; readonly runs: number }[];
-  };
+  readonly contested: readonly ContestedQuestion[];
+  /**
+   * Questions this arm answered **wrongly in every repetition**: the population a mechanism can convert.
+   *
+   * This is the reading the campaign did not have, and the reason every previous round aimed at the wrong
+   * questions. `durableMiss` is a *relative* population — it needs the other arm to be right every time —
+   * while the score is absolute: a question this arm never gets costs a point whether or not the control
+   * gets it. `§203` read the two together on `45760081761` and found **26** questions never right, of which
+   * **20** the control never answers either; the ceiling those 26 define is `96.00` on the 500, and the
+   * largest block inside it is not the durable misses but the **contested** set, worth `1.40` points if
+   * every one of them were decided.
+   *
+   * Tagged with what the control did, because the two halves are priced differently: `'every'` means a fix
+   * is *demonstrated* able to reach it, `'none'` means no pipeline in this repository gets it, and that half
+   * is a ceiling of the harness rather than a gap between the arms.
+   */
+  readonly neverRight: readonly NeverRightQuestion[];
 };
 
 type PairedReading = {
@@ -269,15 +304,19 @@ export function summarisePaired(cases: readonly PairedCase[]): PairedReading {
         agreedWrong: group
           .filter((row) => row.verdict === 'agreed-wrong')
           .map((row) => row.questionId),
-        contested: group.filter((row) => row.verdict === 'contested').length,
-        flapping: {
-          baseline: group
-            .filter((row) => row.baselineRuns > 0 && row.baselineRuns < runs)
-            .map((row) => ({ questionId: row.questionId, runs: row.baselineRuns })),
-          feature: group
-            .filter((row) => row.featureRuns > 0 && row.featureRuns < runs)
-            .map((row) => ({ questionId: row.questionId, runs: row.featureRuns })),
-        },
+        contested: group
+          .filter((row) => row.verdict === 'contested')
+          .map((row) => ({
+            questionId: row.questionId,
+            baselineRuns: row.baselineRuns,
+            featureRuns: row.featureRuns,
+          })),
+        neverRight: group
+          .filter((row) => row.featureRuns === 0)
+          .map((row) => ({
+            questionId: row.questionId,
+            control: row.baselineRuns === runs ? 'every' : row.baselineRuns === 0 ? 'none' : 'some',
+          })),
       };
     });
 
