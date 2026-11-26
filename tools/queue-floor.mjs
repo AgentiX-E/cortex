@@ -274,9 +274,153 @@ export function decay(groups, byId) {
   return { capability, population, rows };
 }
 
+/**
+ * Price every row of the queue against the floor its own reading uses, from a frozen census.
+ *
+ * ## Why a census file and not the artifact
+ *
+ * `--artifact --groups` needs the per-question rows, which means a 60 MB piece of evidence, which
+ * means the pricing happens when somebody remembers to fetch it. The census is the same information
+ * reduced to counts -- class x route -- frozen beside the run and arm that produced it, so the queue
+ * can be priced in CI and a row cannot be quietly re-priced by editing prose.
+ *
+ * ## What it refuses, and why an empty class is a refusal rather than a zero
+ *
+ * A target whose class is empty is not "a queue item worth zero points"; it is **a mechanism with
+ * nothing to act on**, and it is the shape this campaign paid for most recently: the delivery lever
+ * on the three short routes was dispatched against a class that was empty before the run and stayed
+ * empty after it, lost nine questions and gained twenty-two points of gold coverage
+ * (`PREREG-TRUNCATION-SHORT-ROUTES.md` section 7). The tool that prices the queue must therefore say
+ * `empty` and exit non-zero, or the next reader prices a phantom again.
+ *
+ * Two internal identities are checked before any row is priced, because a census that does not add
+ * up is a census nobody counted: the routes must sum to `questionCount`, and the classes must sum to
+ * `questionCount - correct`.
+ *
+ * Returns `{ rows, failures, empty, refused }`; each row carries the ceiling, the class count, the
+ * population and the verdict.
+ */
+export function census(table) {
+  const questionCount = table?.questionCount;
+  if (!Number.isInteger(questionCount) || questionCount < 1) {
+    throw new Refusal('the census does not name its question count');
+  }
+  const routes = table?.routes ?? {};
+  let counted = 0;
+  let correct = 0;
+  for (const [name, row] of Object.entries(routes)) {
+    if (!Number.isInteger(row?.n) || !Number.isInteger(row?.correct)) {
+      throw new Refusal(`route ${name} carries no n/correct pair`);
+    }
+    if (row.correct > row.n) throw new Refusal(`route ${name} is more correct than it is large`);
+    counted += row.n;
+    correct += row.correct;
+  }
+  if (counted !== questionCount) {
+    throw new Refusal(
+      `the routes sum to ${counted} questions and the census names ${questionCount}; ` +
+        'a census that does not add up is a census nobody counted',
+    );
+  }
+  const classes = table?.classes ?? {};
+  let classified = 0;
+  for (const [name, row] of Object.entries(classes)) {
+    if (!Number.isInteger(row?.count) || row.count < 0) {
+      throw new Refusal(`class ${name} carries no count`);
+    }
+    classified += row.count;
+  }
+  const failures = questionCount - correct;
+  if (classified !== failures) {
+    throw new Refusal(
+      `the classes sum to ${classified} failures and the routes imply ${failures}; ` +
+        'an uncounted failure is a class the queue cannot see',
+    );
+  }
+  const populations = table?.populations ?? {};
+  const rows = [];
+  for (const target of table?.targets ?? []) {
+    const routeNames = populations[target.population];
+    if (!Array.isArray(routeNames)) {
+      throw new Refusal(`target ${target.name} names an unknown population ${target.population}`);
+    }
+    let population = 0;
+    for (const name of routeNames) {
+      const row = routes[name];
+      if (row === undefined) throw new Refusal(`population ${target.population} names unknown route ${name}`);
+      population += row.n;
+    }
+    // `taxonomy` is the eight names the classifier can emit, so that "this class has no members"
+    // (priced at zero, and printed as `empty`) is distinguishable from "this name is not a class".
+    // Without it the census cannot represent the one row that matters most -- `text-absent` is
+    // absent from `classes` on this arm because there are none of them.
+    const taxonomy = Array.isArray(table?.taxonomy) ? table.taxonomy : [];
+    let classN = 0;
+    for (const name of target.classes ?? []) {
+      const row = classes[name];
+      if (row === undefined) {
+        if (taxonomy.includes(name)) continue;
+        throw new Refusal(`target ${target.name} names unknown class ${name}`);
+      }
+      for (const [route, count] of Object.entries(row.routes ?? {})) {
+        if (routeNames.includes(route)) classN += count;
+      }
+    }
+    const losses = Number(target.losses ?? 0);
+    const verdict =
+      classN === 0 ? 'empty' : decide({ classN, population, losses });
+    rows.push({
+      id: target.id,
+      name: target.name,
+      classN,
+      population,
+      populationName: target.population,
+      losses,
+      ceiling: classN === 0 ? 0 : verdict.ceiling,
+      floor: classN === 0 ? pairedFloor(losses) : verdict.floor,
+      floorPoints: classN === 0 ? classCeiling(pairedFloor(losses), population) : verdict.floorPoints,
+      verdict: classN === 0 ? 'empty' : verdict.certifiable ? 'certifiable' : 'refused',
+    });
+  }
+  return {
+    rows,
+    failures,
+    empty: rows.filter((row) => row.verdict === 'empty').length,
+    refused: rows.filter((row) => row.verdict === 'refused').length,
+  };
+}
+
+/** The census table, in the shape the decay table prints: one row per target, verdict last. */
+export function renderCensus(table, reading) {
+  const lines = [];
+  lines.push(
+    `${table.run ?? 'unnamed run'}: ${table.arm ?? 'unnamed arm'}, ${table.questionCount} questions, ` +
+      `${reading.failures} failures`,
+  );
+  lines.push('');
+  lines.push(
+    'target                                       id        class  pop  ceiling  gains  floor  verdict',
+  );
+  for (const row of reading.rows) {
+    lines.push(
+      `${row.name.slice(0, 44).padEnd(44)} ${String(row.id).padEnd(8)} ` +
+        `${String(row.classN).padStart(5)} ${String(row.population).padStart(4)} ` +
+        `${row.ceiling.toFixed(2).padStart(8)} ${String(row.floor).padStart(6)} ` +
+        `${row.floorPoints.toFixed(2).padStart(6)} ${row.verdict.padStart(11)}`,
+    );
+  }
+  lines.push('');
+  lines.push(
+    '`empty` is a refusal: a class with no members cannot certify a mechanism, and the last dispatch ' +
+      'aimed at one lost nine questions while gaining twenty-two points of coverage. `refused` is the ' +
+      'floor: no mechanism, however perfect, can certify on a class smaller than six.',
+  );
+  return lines;
+}
+
 const USAGE =
   'usage: queue-floor.mjs --self-test | --artifact <report.json> --groups <groups.json> [--accuracy p] | ' +
-  '--class <n> --population <n> [--losses <c>] [--accuracy p]\n';
+  '--class <n> --population <n> [--losses <c>] [--accuracy p] | --census <census.json>\n';
 
 function renderDecay({ capability, population, rows }, accuracy) {
   const lines = [];
@@ -448,6 +592,16 @@ function main(argv) {
           `verdict: ${result.certifiable ? 'certifiable' : 'refused'}\n`,
       );
       return result.certifiable ? 0 : 1;
+    }
+
+    const censusPath = flag('--census', undefined);
+    if (censusPath !== undefined) {
+      const table = JSON.parse(readFileSync(censusPath, 'utf8'));
+      const reading = census(table);
+      process.stdout.write(`${renderCensus(table, reading).join('\n')}\n`);
+      // A refused *or* an empty target is a queue item that cannot be dispatched. Exit 1 so a
+      // document that quotes this table cannot be built from a queue nobody priced.
+      return reading.empty > 0 || reading.refused > 0 ? 1 : 0;
     }
 
     const artifact = flag('--artifact', undefined);

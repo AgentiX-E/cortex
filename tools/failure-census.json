@@ -1,0 +1,219 @@
+{
+  "note": "The shipped arm's failures, frozen by class and route, so that the queue can be priced without an artifact. `tools/failure-classes.mjs --json` produced the counts; this file adds only the provenance it cannot know (which dispatch, which arm) and the targets the queue reads. Regenerate with `node tools/failure-classes.mjs <merged.json> --json` and replace `routes`/`classes` verbatim. `taxonomy` is the eight class names `tools/failure-classes.mjs` can emit; a class with no members is absent from `classes` and priced at zero, while a name outside the taxonomy is refused rather than read as zero.",
+  "run": "45543010618",
+  "arm": "resolution: layered, ask: verbatim-acts (the arm the product ships)",
+  "artifact": "cortex-docs evidence/longmemeval/merged-45543010618-readings.json, rebuilt after the census-key fix",
+  "questionCount": 500,
+  "runs": 2,
+  "taxonomy": [
+    "empty",
+    "declined",
+    "preference",
+    "derived-number",
+    "number-absent",
+    "number-misselected",
+    "text-absent",
+    "text-misselected"
+  ],
+  "routes": {
+    "multi-session": {
+      "n": 121,
+      "correct": 108
+    },
+    "temporal": {
+      "n": 127,
+      "correct": 122
+    },
+    "flat": {
+      "n": 94,
+      "correct": 87
+    },
+    "knowledge-update": {
+      "n": 72,
+      "correct": 65
+    },
+    "abstention": {
+      "n": 30,
+      "correct": 30
+    },
+    "assistant": {
+      "n": 56,
+      "correct": 54
+    }
+  },
+  "classes": {
+    "derived-number": {
+      "count": 9,
+      "routes": {
+        "multi-session": 6,
+        "knowledge-update": 2,
+        "temporal": 1
+      },
+      "coverage": 0.9444444444444444
+    },
+    "number-absent": {
+      "count": 3,
+      "routes": {
+        "multi-session": 3
+      },
+      "coverage": 1
+    },
+    "number-misselected": {
+      "count": 7,
+      "routes": {
+        "multi-session": 3,
+        "knowledge-update": 1,
+        "assistant": 1,
+        "temporal": 1,
+        "flat": 1
+      },
+      "coverage": 0.7222222222222222
+    },
+    "preference": {
+      "count": 6,
+      "routes": {
+        "flat": 6
+      },
+      "coverage": 0.43333333333333335
+    },
+    "empty": {
+      "count": 2,
+      "routes": {
+        "knowledge-update": 1,
+        "multi-session": 1
+      },
+      "coverage": 0.6875
+    },
+    "text-misselected": {
+      "count": 7,
+      "routes": {
+        "knowledge-update": 3,
+        "temporal": 3,
+        "assistant": 1
+      },
+      "coverage": 0.5833333333333334
+    }
+  },
+  "populations": {
+    "suite": [
+      "multi-session",
+      "temporal",
+      "flat",
+      "knowledge-update",
+      "abstention",
+      "assistant"
+    ],
+    "multi-session": [
+      "multi-session"
+    ],
+    "TR+IE+KU": [
+      "temporal",
+      "flat",
+      "assistant",
+      "knowledge-update"
+    ],
+    "knowledge-update": [
+      "knowledge-update"
+    ],
+    "flat": [
+      "flat"
+    ]
+  },
+  "targets": [
+    {
+      "id": "12",
+      "name": "delivery on TR/IE/KU",
+      "classes": [
+        "number-absent",
+        "text-absent"
+      ],
+      "population": "TR+IE+KU"
+    },
+    {
+      "id": "12",
+      "name": "delivery, suite",
+      "classes": [
+        "number-absent",
+        "text-absent"
+      ],
+      "population": "suite"
+    },
+    {
+      "id": "12",
+      "name": "delivery, multi-session",
+      "classes": [
+        "number-absent",
+        "text-absent"
+      ],
+      "population": "multi-session"
+    },
+    {
+      "id": "numeric",
+      "name": "numeric institution, bundled (suite)",
+      "classes": [
+        "derived-number",
+        "number-misselected",
+        "number-absent"
+      ],
+      "population": "suite"
+    },
+    {
+      "id": "numeric",
+      "name": "numeric institution, bundled (MR)",
+      "classes": [
+        "derived-number",
+        "number-misselected",
+        "number-absent"
+      ],
+      "population": "multi-session"
+    },
+    {
+      "id": "numeric",
+      "name": "derived-number alone (suite)",
+      "classes": [
+        "derived-number"
+      ],
+      "population": "suite"
+    },
+    {
+      "id": "5",
+      "name": "text-misselected (KU)",
+      "classes": [
+        "text-misselected"
+      ],
+      "population": "knowledge-update"
+    },
+    {
+      "id": "5",
+      "name": "text-misselected (suite)",
+      "classes": [
+        "text-misselected"
+      ],
+      "population": "suite"
+    },
+    {
+      "id": "16",
+      "name": "preference (flat)",
+      "classes": [
+        "preference"
+      ],
+      "population": "flat"
+    },
+    {
+      "id": "16",
+      "name": "preference (suite)",
+      "classes": [
+        "preference"
+      ],
+      "population": "suite"
+    },
+    {
+      "id": "empty",
+      "name": "empty reply (suite)",
+      "classes": [
+        "empty"
+      ],
+      "population": "suite"
+    }
+  ]
+}
