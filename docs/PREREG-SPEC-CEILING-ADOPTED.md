@@ -1,9 +1,10 @@
 # The ceiling of `reviewPass: 'spec'` on the arm that ships, registered before it is measured
 
-**Status:** pending. Registered and unmeasured: the ceiling run costs zero model calls and zero
-CNY, and the dispatch it prices is `reviewPass: 'spec'`, one field, read against the shipped arm at
-the same load. The result is written into section 7 once the run exists, and the four criteria in
-section 3 are what it will be judged by.
+**Status:** decided. Measured on `45754372668`: the question vocabulary reaches **5 of the 11**
+questions the pass would run on, against a bar of ten, and reading the five plans says **at most
+three** are ones a reader could have written. The dispatch this file prices is **not bought**;
+`reviewPass: 'spec'` is closed. The reading, the per-plan verdicts and the two failures that preceded
+it are in `docs/MEASURE-SPEC-CEILING-ADOPTED.md`.
 
 ## 0. In one paragraph
 
@@ -152,3 +153,31 @@ the reading says, the next increment is the membership adjudicator and not a fou
 - Floor: `docs/AUDIT-QUEUE-FLOOR.md` 1, computed by `tools/queue-floor.mjs`.
 - Result: written into this file as §7 once the run exists, with the per-question plan beside the
   per-question gold.
+
+## 7. Result
+
+Written after the run, against the criteria in section 3 rather than beside them.
+
+| | question vocabulary | history vocabulary |
+| --- | --- | --- |
+| grammar ceiling | **5 / 12** | 10 / 12 |
+| questions the pass runs on | 11 | 11 |
+| **grammar, gated** | **5 / 11** | 10 / 11 |
+| plans searched per question | 207 – 616 | 12,561 – 23,000 |
+
+- **C1 arithmetic: failed.** `grammarOfEligible` is 5 against a bar of 10, and below the six the
+  paired floor certifies.
+- **C2 semantic: failed, and independently of C1.** Reading each hit's plan, two of the five question
+  hits are accidents (`sum("mak","cup") → 1` against a gold of 4, `sum("free","pro") → 100` against a
+  gold of 100), and **all ten** history hits are fragments (`count("1920")`, `sum("1603-1868","hours")`,
+  `count("000-")`, `sum("10m28s-20m4s","%")`). `g_semantic` is at most 3.
+- **C3 denominator: 11, not 12.** `a1cc6108` is a derivation question and the pass never runs on it.
+
+The verdict is the third row of section 3's outcome table — *"the grammar cannot reach the floor even
+at 100% conversion"* — and it is closed rather than deferred. The residual is the membership
+institution (`AUDIT-NUMERIC-MEMBERSHIP.md` 1: ten of twelve decided before any arithmetic), not a
+wider plan language.
+
+Four dispatches produced this: `45748211939` died on a path, `45750764632` on a type, `45752498631`
+returned a denominator of nine because three golds are spelled out, and `45754372668` is the reading.
+Each repair has a test that fails without it. The full account is `docs/MEASURE-SPEC-CEILING-ADOPTED.md`.

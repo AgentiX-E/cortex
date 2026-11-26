@@ -1,0 +1,219 @@
+{
+  "capability": null,
+  "vocabulary": "history",
+  "population": "tools/spec-ceiling-population.json",
+  "summaries": [
+    {
+      "questionId": "gpt4_15e38248",
+      "question": "How many pieces of furniture did I buy, assemble, sell, or fix in the past few months?",
+      "gold": "4",
+      "goldNumbers": [
+        4
+      ],
+      "copyCeiling": true,
+      "grammarCeiling": true,
+      "tallyEligible": true,
+      "matchingPlans": 7,
+      "plansTried": 13920,
+      "planShare": 0.0005028735632183908,
+      "bestPlan": "count(\"1920\") → 4",
+      "ledgerSteps": 470,
+      "keywordsTried": 240
+    },
+    {
+      "questionId": "gpt4_a56e767c",
+      "question": "How many movie festivals that I attended?",
+      "gold": "I attended four movie festivals.",
+      "goldNumbers": [
+        4
+      ],
+      "copyCeiling": true,
+      "grammarCeiling": true,
+      "tallyEligible": true,
+      "matchingPlans": 12,
+      "plansTried": 14036,
+      "planShare": 0.0008549444286121402,
+      "bestPlan": "sum(\"1603-1868\",\"hours\") → 4",
+      "ledgerSteps": 477,
+      "keywordsTried": 242
+    },
+    {
+      "questionId": "bf659f65",
+      "question": "How many music albums or EPs have I purchased or downloaded?",
+      "gold": "3",
+      "goldNumbers": [
+        3
+      ],
+      "copyCeiling": true,
+      "grammarCeiling": true,
+      "tallyEligible": true,
+      "matchingPlans": 20,
+      "plansTried": 14640,
+      "planShare": 0.001366120218579235,
+      "bestPlan": "sum(\"15-30\",\"mm\") → 3",
+      "ledgerSteps": 516,
+      "keywordsTried": 240
+    },
+    {
+      "questionId": "gpt4_731e37d7",
+      "question": "How much total money did I spend on attending workshops in the last four months?",
+      "gold": "$720",
+      "goldNumbers": [
+        720
+      ],
+      "copyCeiling": false,
+      "grammarCeiling": false,
+      "tallyEligible": true,
+      "matchingPlans": 0,
+      "plansTried": 17181,
+      "planShare": 0,
+      "bestPlan": null,
+      "ledgerSteps": 525,
+      "keywordsTried": 249
+    },
+    {
+      "questionId": "gpt4_31ff4165",
+      "question": "How many health-related devices do I use in a day?",
+      "gold": "4",
+      "goldNumbers": [
+        4
+      ],
+      "copyCeiling": true,
+      "grammarCeiling": true,
+      "tallyEligible": true,
+      "matchingPlans": 2,
+      "plansTried": 12871,
+      "planShare": 0.000155388081734131,
+      "bestPlan": "sum(\"3-year\",\"stars\") → 4",
+      "ledgerSteps": 457,
+      "keywordsTried": 211
+    },
+    {
+      "questionId": "3a704032",
+      "question": "How many plants did I acquire in the last month?",
+      "gold": "3",
+      "goldNumbers": [
+        3
+      ],
+      "copyCeiling": true,
+      "grammarCeiling": true,
+      "tallyEligible": true,
+      "matchingPlans": 13,
+      "plansTried": 16146,
+      "planShare": 0.0008051529790660225,
+      "bestPlan": "sum(\"--stylize\",\"test\") → 3",
+      "ledgerSteps": 479,
+      "keywordsTried": 234
+    },
+    {
+      "questionId": "gpt4_ab202e7f",
+      "question": "How many kitchen items did I replace or fix?",
+      "gold": "I replaced or fixed five items: the kitchen faucet, the kitchen mat, the toaster, the coffee maker, and the kitchen shelves.",
+      "goldNumbers": [
+        5
+      ],
+      "copyCeiling": true,
+      "grammarCeiling": true,
+      "tallyEligible": true,
+      "matchingPlans": 11,
+      "plansTried": 13052,
+      "planShare": 0.0008427827152926755,
+      "bestPlan": "sum(\"12-cup\",\"large\") → 5",
+      "ledgerSteps": 481,
+      "keywordsTried": 251
+    },
+    {
+      "questionId": "gpt4_7fce9456",
+      "question": "How many properties did I view before making an offer on the townhouse in the Brookside neighborhood?",
+      "gold": "I viewed four properties before making an offer on the townhouse in the Brookside neighborhood. The reasons I didn't make an offer on them were: the kitchen of the bungalow needed serious renovation, the property in Cedar Creek was out of my budget, the noise from the highway was a deal-breaker for the 1-bedroom condo, and my offer on the 2-bedroom condo was rejected due to a higher bid.",
+      "goldNumbers": [
+        1,
+        2,
+        4
+      ],
+      "copyCeiling": true,
+      "grammarCeiling": true,
+      "tallyEligible": true,
+      "matchingPlans": 260,
+      "plansTried": 12561,
+      "planShare": 0.02069898893400207,
+      "bestPlan": "count(\"000-\") → 1",
+      "ledgerSteps": 497,
+      "keywordsTried": 237
+    },
+    {
+      "questionId": "gpt4_2f8be40d",
+      "question": "How many weddings have I attended in this year?",
+      "gold": "I attended three weddings. The couples were Rachel and Mike, Emily and Sarah, and Jen and Tom.",
+      "goldNumbers": [
+        3
+      ],
+      "copyCeiling": true,
+      "grammarCeiling": true,
+      "tallyEligible": true,
+      "matchingPlans": 6,
+      "plansTried": 18900,
+      "planShare": 0.00031746031746031746,
+      "bestPlan": "count(\"18th\") → 3",
+      "ledgerSteps": 474,
+      "keywordsTried": 252
+    },
+    {
+      "questionId": "d851d5ba",
+      "question": "How much money did I raise for charity in total?",
+      "gold": "$3,750",
+      "goldNumbers": [
+        3750
+      ],
+      "copyCeiling": false,
+      "grammarCeiling": false,
+      "tallyEligible": true,
+      "matchingPlans": 0,
+      "plansTried": 23000,
+      "planShare": 0,
+      "bestPlan": null,
+      "ledgerSteps": 533,
+      "keywordsTried": 250
+    },
+    {
+      "questionId": "9ee3ecd6",
+      "question": "How many points do I need to earn to redeem a free skincare product at Sephora?",
+      "gold": "100",
+      "goldNumbers": [
+        100
+      ],
+      "copyCeiling": true,
+      "grammarCeiling": true,
+      "tallyEligible": true,
+      "matchingPlans": 29,
+      "plansTried": 19250,
+      "planShare": 0.0015064935064935064,
+      "bestPlan": "sum(\"10m28s-20m4s\",\"%\") → 100",
+      "ledgerSteps": 476,
+      "keywordsTried": 250
+    },
+    {
+      "questionId": "a1cc6108",
+      "question": "How old was I when Alex was born?",
+      "gold": "11",
+      "goldNumbers": [
+        11
+      ],
+      "copyCeiling": true,
+      "grammarCeiling": true,
+      "tallyEligible": false,
+      "matchingPlans": 2,
+      "plansTried": 18750,
+      "planShare": 0.00010666666666666667,
+      "bestPlan": "count(\"aim\") → 11",
+      "ledgerSteps": 492,
+      "keywordsTried": 250
+    }
+  ],
+  "copy": 10,
+  "grammar": 10,
+  "numeric": 12,
+  "eligible": 11,
+  "grammarOfEligible": 9,
+  "planShareMedian": 0.0008051529790660225
+}

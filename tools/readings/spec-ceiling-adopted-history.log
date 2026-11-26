@@ -1,0 +1,29 @@
+
+> @agentix-e/cortex-memory@0.1.0 measure:spec-ceiling /home/runner/work/cortex/cortex/packages/cortex-memory
+> node --import tsx bench/measure-spec-ceiling.ts "--" "--dataset" "/home/runner/work/cortex/cortex/data/longmemeval_s_cleaned.json" "--population" "tools/spec-ceiling-population.json" "--keywords" "history" "--max-keywords" "200" "--json" "/home/runner/work/cortex/cortex/spec-ceiling-history.json"
+
+vocabulary: history
+population: tools/spec-ceiling-population.json
+questions: 12  with a numeric gold: 12
+copy ceiling   : 10/12
+grammar ceiling: 10/12
+pass-eligible  : 11/12
+grammar, gated : 9/11
+median plan share, gated: 0.08%
+registered     : numericGold 12  floor 4.96  required 50%
+
+id            gate  copy  grammar  plans  share   gold
+gpt4_15e38248   yes   yes       yes      7/13920   0.05%  4
+gpt4_a56e767c   yes   yes       yes     12/14036   0.09%  I attended four movie festivals.
+bf659f65   yes   yes       yes     20/14640   0.14%  3
+gpt4_731e37d7   yes    no        no      0/17181   0.00%  $720
+gpt4_31ff4165   yes   yes       yes      2/12871   0.02%  4
+3a704032   yes   yes       yes     13/16146   0.08%  3
+gpt4_ab202e7f   yes   yes       yes     11/13052   0.08%  I replaced or fixed five items: the 
+gpt4_7fce9456   yes   yes       yes    260/12561   2.07%  I viewed four properties before maki
+gpt4_2f8be40d   yes   yes       yes      6/18900   0.03%  I attended three weddings. The coupl
+d851d5ba   yes    no        no      0/23000   0.00%  $3,750
+9ee3ecd6   yes   yes       yes     29/19250   0.15%  100
+a1cc6108    no   yes       yes      2/18750   0.01%  11
+
+wrote /home/runner/work/cortex/cortex/spec-ceiling-history.json
