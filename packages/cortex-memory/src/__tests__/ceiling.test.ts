@@ -165,6 +165,35 @@ describe('a sum whose unit the ledger carries', () => {
     expect(reading.bestPlan).toContain('sum');
   });
 
+  it('reads a gold the corpus spells out in words, which is how three of the twelve state it', () => {
+    // `I attended four movie festivals`, `I replaced or fixed five items`, `I attended three
+    // weddings` -- transcribed as digits in the audit and spelled out in the corpus. A parser that
+    // read only Arabic numerals dropped three of twelve out of the denominator, which is the one
+    // direction a denominator must never move.
+    const spelled = measure(
+      { ...TWO_BOOKS, answer: 'I attended four movie festivals.' },
+      'question',
+    );
+    expect(spelled.goldNumbers).toEqual([4]);
+    expect(spelled.grammarCeiling).toBe(false);
+
+    const hedged = measure(
+      { ...TWO_BOOKS, answer: 'I replaced or fixed five items: the faucet and four others.' },
+      'question',
+    );
+    expect(hedged.goldNumbers).toEqual([5, 4]);
+  });
+
+  it('does not invent a count out of an article', () => {
+    // `a book` and `a couple of` are not quantities. The word list is deliberately the one that
+    // names a number on its own, because a parser that guessed would raise the ceiling by guessing.
+    const article = measure(
+      { ...TWO_BOOKS, answer: 'I bought a book, and a couple more.' },
+      'question',
+    );
+    expect(article.goldNumbers).toEqual([]);
+  });
+
   it('accepts a gold that hedges between two numbers', () => {
     // `5 days. 6 days (including the last day) is also acceptable.` is a real gold shape in this
     // corpus, and a parser that read only the first number would report an unreachable question

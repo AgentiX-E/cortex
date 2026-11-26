@@ -181,6 +181,54 @@ function sessionsOf(question: DatasetQuestion): string[][] {
   });
 }
 
+/**
+ * The number words a gold spells out, because a third of this population states its gold that way.
+ *
+ * `AUDIT-NUMERIC-MEMBERSHIP.md` transcribes `gpt4_a56e767c`'s gold as `four`, `gpt4_ab202e7f`'s as
+ * `5` and `gpt4_2f8be40d`'s as `3`; the corpus spells all three out -- *"I attended four movie
+ * festivals"*, *"I replaced or fixed five items"*, *"I attended three weddings"*. A parser that read
+ * only Arabic numerals therefore dropped **three of the twelve** out of the denominator, and a
+ * ceiling over nine questions read as a ceiling over twelve. That is the direction a denominator must
+ * never move: down.
+ *
+ * Only the words that name a quantity on their own are here. `a`, `an` and `couple` are not, because
+ * `a book` is not a count and the parser would rather miss a gold than invent one.
+ */
+const NUMBER_WORDS: Readonly<Record<string, number>> = {
+  one: 1,
+  two: 2,
+  three: 3,
+  four: 4,
+  five: 5,
+  six: 6,
+  seven: 7,
+  eight: 8,
+  nine: 9,
+  ten: 10,
+  eleven: 11,
+  twelve: 12,
+  thirteen: 13,
+  fourteen: 14,
+  fifteen: 15,
+  sixteen: 16,
+  seventeen: 17,
+  eighteen: 18,
+  nineteen: 19,
+  twenty: 20,
+  thirty: 30,
+  forty: 40,
+  fifty: 50,
+  sixty: 60,
+  seventy: 70,
+  eighty: 80,
+  ninety: 90,
+  hundred: 100,
+  thousand: 1000,
+};
+
+/** A number word standing on its own, which is the only place one names a quantity. */
+const NUMBER_WORD = new RegExp(`\\b(${Object.keys(NUMBER_WORDS).join('|')})\\b`, 'gi');
+
 /** Every number a gold answer would accept, so `5 days. 6 days ...` accepts both. */
 function numbersInGold(gold: string | number): number[] {
   // A count question's gold is a number in the corpus and a string in the audit's tables; both are
@@ -190,6 +238,10 @@ function numbersInGold(gold: string | number): number[] {
   for (const match of gold.matchAll(/-?\d[\d,]*(?:\.\d+)?/g)) {
     const value = Number(match[0].replaceAll(',', ''));
     if (Number.isFinite(value)) found.push(value);
+  }
+  for (const match of gold.matchAll(NUMBER_WORD)) {
+    const value = NUMBER_WORDS[(match[1] as string).toLowerCase()];
+    if (value !== undefined) found.push(value);
   }
   return found;
 }
