@@ -1,6 +1,6 @@
 # The multi-step retrieval probe, dispatched by hand and never by a commit.
 #
-# `packages/cortex-eval/bench/probe-multi-step.ts` answers one question and only one: does a reader
+# `packages/cortex-memory/bench/probe-multi-step.ts` answers one question and only one: does a reader
 # that chooses its own evidence find gold turns the single-shot seed search does not? It is the
 # cheap arm -- one decision call per question, ~1.5k prompt characters, no answer call -- and its
 # whole purpose is to decide whether the expensive two-step arm is worth buying. The reading it
@@ -142,10 +142,10 @@ jobs:
           set -o pipefail
           # The output path is absolute on purpose. `pnpm --filter` runs the script with the
           # package directory as its working directory, so a relative `--out` lands in
-          # `packages/cortex-eval/` -- one level below the paths `upload-artifact` resolves against
+          # `packages/cortex-memory/` -- one level below the paths `upload-artifact` resolves against
           # the workspace root. Run `44867629266` did exactly that: the probe succeeded, the log was
           # uploaded, and the per-case JSON silently was not, because `if-no-files-found` was `warn`.
-          pnpm --filter @agentix-e/cortex-eval probe:multi-step -- \
+          pnpm --filter @agentix-e/cortex-memory probe:multi-step -- \
             --steps "$PROBE_STEPS" \
             --capability "$PROBE_CAPABILITY" \
             --limit "$PROBE_LIMIT" \

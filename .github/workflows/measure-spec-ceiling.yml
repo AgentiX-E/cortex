@@ -1,0 +1,176 @@
+# The specification grammar's ceiling on the arm that ships, measured with no model call.
+#
+# `bench/measure-spec-ceiling.ts` answers one question: is there any plan in `reviewPass: 'spec'`'s
+# grammar that produces the gold answer for each question the arm still fails? A **no** is decisive --
+# no specifier could have succeeded -- and a **yes** is permission to spend a dispatch. The run costs
+# wall clock and no money: the search executes plans over a programme-built ledger and never consults
+# a model, which is why this workflow carries no `DEEPSEEK_API_KEY` even though it dispatches the same
+# arm the paid runs do.
+#
+# ## Why the population is a file and not a report
+#
+# `docs/MEASURE-SPEC-CEILING.md` measured the ceiling over the failing set of `42533236864`, which was
+# the control at the time. Eight mechanisms have landed since. Most of those ids now pass, so
+# re-running the same measurement over the same report would print a ceiling over a population that no
+# longer fails -- a number that reads low for a reason that has nothing to do with the grammar. The
+# population this run measures is the twelve numeric failures of the adopted arm `45543010618`, named
+# one by one in `docs/AUDIT-NUMERIC-MEMBERSHIP.md` and frozen in
+# `tools/spec-ceiling-population.json` **before** this dispatch exists. A list edited after a reading
+# is a population chosen by its result.
+#
+# ## Why this is a workflow and not a local command
+#
+# The corpus is 100+ MB, served from a moving branch of a HuggingFace dataset, and the only
+# credentials in this repository are organisation secrets that exist on a runner. The download step
+# below is a copy of `benchmark.yml`'s rather than a paraphrase of it: two workflows that download the
+# corpus different ways produce two populations and no comparison.
+#
+# ## Why it is not wired to `push`
+#
+# `verify.yml` runs on push and runs `pnpm check`. This workflow measures a ceiling against the real
+# corpus, which is minutes of runner time and a 100 MB download per push for a number nobody asked
+# for. It is dispatched by hand, and its reading is archived under `tools/readings/`.
+name: Specification ceiling
+
+on:
+  workflow_dispatch:
+    inputs:
+      population:
+        description: 'Frozen population file, relative to the repository root (empty = the registered twelve)'
+        required: false
+        default: 'tools/spec-ceiling-population.json'
+        type: string
+      corpus_sha256:
+        description: 'Expected SHA-256 of longmemeval_s_cleaned.json (empty = accept whatever the branch serves)'
+        required: false
+        default: ''
+        type: string
+
+permissions:
+  contents: read
+
+env:
+  # No API key on purpose: this job makes zero model calls, and a workflow that carries a credential
+  # it never uses is a credential that leaks the day someone copies the file.
+  HF_TOKEN: ${{ secrets.HF_TOKEN }}
+
+jobs:
+  ceiling:
+    name: Grammar ceiling (multi-session numeric failures)
+    runs-on: ubuntu-latest
+    # The full 121-question population searched over both vocabularies took under three minutes on a
+    # laptop; an hour is the point at which a hung socket has to become a failed run.
+    timeout-minutes: 60
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 9.15.0
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Build packages
+        run: pnpm build
+
+      - name: Download LongMemEval-S
+        env:
+          CORPUS_SHA_INPUT: ${{ github.event.inputs.corpus_sha256 }}
+        run: |
+          mkdir -p "${{ github.workspace }}/data"
+          curl -fL --retry 3 --retry-delay 5 \
+            -H "Authorization: Bearer ${HF_TOKEN}" \
+            -o "${{ github.workspace }}/data/longmemeval_s_cleaned.json" \
+            "https://huggingface.co/datasets/xiaowu0162/longmemeval-cleaned/resolve/main/longmemeval_s_cleaned.json"
+          ACTUAL_SHA="$(sha256sum "${{ github.workspace }}/data/longmemeval_s_cleaned.json" | cut -d' ' -f1)"
+          echo "corpus sha256: $ACTUAL_SHA"
+          echo "corpus bytes : $(stat -c%s "${{ github.workspace }}/data/longmemeval_s_cleaned.json")"
+          EXPECTED="$CORPUS_SHA_INPUT"
+          if [ -n "$EXPECTED" ] && [ "$EXPECTED" != "$ACTUAL_SHA" ]; then
+            echo "::error::corpus hash mismatch: expected $EXPECTED, got $ACTUAL_SHA"
+            exit 1
+          fi
+          printf '%s  longmemeval_s_cleaned.json\n' "$ACTUAL_SHA" > "${{ github.workspace }}/spec-ceiling-corpus.sha256"
+
+      - name: Measure the grammar ceiling
+        # Dispatch inputs reach the shell through `env`, never through string interpolation: an input
+        # is user-controlled and interpolation into a command is how an input becomes code.
+        env:
+          LONGMEMEVAL_PATH: ${{ github.workspace }}/data/longmemeval_s_cleaned.json
+          POPULATION: ${{ github.event.inputs.population }}
+        run: |
+          set -o pipefail
+          # Both vocabularies, because they answer different questions. `question` is the one a
+          # specifier could actually reason from -- it may name a filter only out of the words the
+          # question used -- and it is the reading the registration is judged on. `history` is an
+          # allowance the model does not get: it selects on any word the history uses, so it is an
+          # upper bound on what a reader that had already read every row could reach.
+          for MODE in question history; do
+            pnpm --filter @agentix-e/cortex-memory measure:spec-ceiling -- \
+              --dataset "$LONGMEMEVAL_PATH" \
+              --population "$POPULATION" \
+              --keywords "$MODE" \
+              --json "$GITHUB_WORKSPACE/spec-ceiling-$MODE.json" 2>&1 | tee "spec-ceiling-$MODE.log"
+          done
+
+          # The step summary is what a reader sees without downloading anything, and the criterion is
+          # printed beside the reading so the decision does not have to be looked up in a document
+          # that may have moved. It is not a gate: a ceiling below the floor is a finding, and a red
+          # run for a clean negative would train the reader to re-dispatch until the number looked
+          # better.
+          GRAMMAR="$(python3 -c "import json;print(json.load(open('$GITHUB_WORKSPACE/spec-ceiling-question.json'))['grammar'])")"
+          NUMERIC="$(python3 -c "import json;print(json.load(open('$GITHUB_WORKSPACE/spec-ceiling-question.json'))['numeric'])")"
+          GATED="$(python3 -c "import json;print(json.load(open('$GITHUB_WORKSPACE/spec-ceiling-question.json'))['eligible'])")"
+          GATED_HITS="$(python3 -c "import json;print(json.load(open('$GITHUB_WORKSPACE/spec-ceiling-question.json'))['grammarOfEligible'])")"
+          {
+            echo '### Specification grammar ceiling'
+            echo ''
+            echo '```'
+            cat spec-ceiling-question.log
+            echo '```'
+            echo ''
+            echo '```'
+            cat spec-ceiling-history.log
+            echo '```'
+            echo ''
+            echo "Question vocabulary reaches **${GRAMMAR} of ${NUMERIC}**, of which"
+            echo "**${GATED}** are questions the pass would run on, and **${GATED_HITS}** of those"
+            echo "are reachable."
+            echo ''
+            echo 'Registered criteria (`docs/PREREG-SPEC-CEILING-ADOPTED.md` 3):'
+            echo ''
+            echo '- C1 arithmetic: `grammarOfEligible >= 10` of 12 dispatches `reviewPass: spec`; the'
+            echo '  instrument it replaces converted 0 of 10, so ten reachable is the smallest count'
+            echo '  that clears the six-question paired floor at the best conversion rate this arm has'
+            echo '  ever observed.'
+            echo '- C2 semantic: every hit is read beside its question, and a coincidental hit is'
+            echo '  subtracted from C1. The plan share is printed and NOT gated, because nothing'
+            echo '  measures how a plan share maps to a reader chance of finding it.'
+            echo '- C3 denominator: the bar is `ceil(0.6 x eligible)` and never fewer than six.'
+            echo ''
+            echo 'A run that prints a number without that reading is a number, not a decision.'
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Upload the reading
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: spec-ceiling
+          path: |
+            spec-ceiling-question.json
+            spec-ceiling-history.json
+            spec-ceiling-question.log
+            spec-ceiling-history.log
+            spec-ceiling-corpus.sha256
+          # `error`, not `warn`: a reading whose per-question rows are missing is a summary, and a
+          # summary cannot be re-derived into the table a registration reads.
+          if-no-files-found: error

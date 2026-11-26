@@ -1,5 +1,5 @@
 /**
- * The ceiling of the specification grammar, measured offline before anything is dispatched.
+ * The command line that runs the specification ceiling over a corpus, before anything is dispatched.
  *
  * ## The question this answers, and why it has to be asked before the run
  *
@@ -13,286 +13,60 @@
  *
  * > **Is there any plan in this grammar that produces the gold answer?**
  *
- * This tool answers it by search rather than by opinion. For each failed question it enumerates every
- * plan the grammar can express over the vocabulary *the question itself supplies* -- one text keyword
- * from the question, one unit from the ledger's own vocabulary, `count` or `sum` -- executes each one
- * with the real executor, and reports whether any of them lands on a number the gold accepts.
+ * The search itself is `src/aggregation/ceiling.ts`, which is where it can be measured and where the
+ * caller census can see a production caller. This file does three things and no arithmetic: it reads
+ * a corpus, it reads a population, and it prints a table.
  *
- * ## What a ceiling of N means, and what it does not
+ * ## Two ways to name the population, and why the second exists
  *
- * It is an **upper bound**, and a generous one: the search is allowed to try every keyword and every
- * unit, including the correct one, which a model writing a plan from the question alone would have to
- * guess. So a failure here is stronger than a failure in a run -- if no plan exists, no specifier,
- * however good, could have produced the answer from this ledger. That is the finding worth having.
+ * `--artifact` reads a benchmark report and selects its failing questions. That is the right
+ * population when the report is the arm being extended, and it is how `docs/MEASURE-SPEC-CEILING.md`
+ * was measured.
  *
- * It is not a prediction of accuracy. Reaching the gold requires the model to *choose* the plan that
- * does, and a plan that reaches the gold on one question may be one of forty that all do. The tool
- * prints how many plans reached it, because a gold reachable by forty plans is a different
- * proposition from one reachable by a single plan.
+ * `--population` reads a frozen list of ids from a registered file. It exists because a *control*
+ * report's failing set is not the failing set of the arm that ships: after eight mechanisms landed,
+ * the ids that failed under `42533236864` are mostly passing, and a ceiling computed over them reads
+ * low for a reason that has nothing to do with the grammar. Measuring "what the grammar could reach
+ * among what still fails" therefore needs the ids named by hand, frozen in `docs/` against a written
+ * audit, and checked against the corpus rather than trusted.
  *
- * ## The two ceilings
+ * A population file also carries the arithmetic it is read against -- `numericGold`, `floor`,
+ * `required` -- so a run prints the bar beside the reading. A ceiling printed without its floor is a
+ * number that has to be looked up in a document, and the document may have moved.
  *
- * `grammar` is the number above. `copy` is weaker and reported beside it: does any single row carry a
- * number the gold accepts? A question with no copy and no plan is not a specification problem at all,
- * and counting it against the grammar would misdirect the next increment.
+ * ## What this refuses to do
+ *
+ * It will not skip a question that is missing from the corpus. A population id the corpus does not
+ * carry is a **failed reading**, not a question to drop: dropping it would lower the denominator and
+ * raise the ceiling, which is the one direction a ceiling must never move by accident. The command
+ * exits non-zero after printing the table, so the rows are still there to read.
  *
  * Usage:
  *   node --import tsx bench/measure-spec-ceiling.ts \
  *     --dataset /workspace/data/longmemeval_s_cleaned.json \
  *     --artifact /workspace/art-42533236864/benchmark-cortex-memory-ablation-report.json \
  *     [--capability MR] [--all] [--json out.json]
+ *
+ *   node --import tsx bench/measure-spec-ceiling.ts \
+ *     --dataset /workspace/data/longmemeval_s_cleaned.json \
+ *     --population tools/spec-ceiling-population.json \
+ *     [--keywords question|history] [--max-keywords 600] [--json out.json]
  */
 
 import { readFileSync, writeFileSync } from 'node:fs';
+import { pathToFileURL } from 'node:url';
 
-import { buildLedger, ledgerVocabulary, type Ledger } from '../src/aggregation/ledger.js';
-import { questionKeywords } from '../src/aggregation/keywords.js';
-import { executeSpec } from '../src/aggregation/execute.js';
-import { renderAggregate } from '../src/aggregation/render.js';
-import type { EventSpec } from '../src/aggregation/spec.js';
+import {
+  measure,
+  selectPopulation,
+  summarise,
+  type ArtifactQuestion,
+  type DatasetQuestion,
+  type PopulationFile,
+  type SpecSummary,
+} from '../src/aggregation/ceiling.js';
 
-/** Words that carry no filter, because they are in every sentence of the corpus. */
-const STOPWORDS = new Set([
-  'the',
-  'and',
-  'for',
-  'how',
-  'many',
-  'much',
-  'did',
-  'does',
-  'was',
-  'were',
-  'have',
-  'has',
-  'had',
-  'what',
-  'which',
-  'when',
-  'where',
-  'who',
-  'whom',
-  'that',
-  'this',
-  'these',
-  'those',
-  'with',
-  'from',
-  'been',
-  'being',
-  'there',
-  'their',
-  'about',
-  'into',
-  'over',
-  'total',
-  'altogether',
-  'combined',
-  'most',
-  'least',
-  'number',
-  'times',
-  'last',
-  'past',
-  'week',
-  'weeks',
-  'month',
-  'months',
-  'year',
-  'years',
-  'day',
-  'days',
-  'you',
-  'your',
-  'can',
-  'could',
-  'would',
-  'should',
-  'tell',
-  'give',
-  'list',
-  'name',
-]);
-
-type DatasetQuestion = {
-  question_id: string;
-  question_type: string;
-  question: string;
-  answer: string;
-  haystack_dates: string[];
-  haystack_sessions: { role: string; content: string }[][];
-};
-
-type ArtifactQuestion = {
-  questionId: string;
-  question: string;
-  capability: string;
-  groundTruth: string;
-  correct: boolean;
-};
-
-type SpecSummary = {
-  questionId: string;
-  question: string;
-  gold: string;
-  goldNumbers: number[];
-  copyCeiling: boolean;
-  grammarCeiling: boolean;
-  matchingPlans: number;
-  bestPlan: string | null;
-  ledgerSteps: number;
-  keywordsTried: number;
-};
-
-/** The turn shape the pipeline renders, so the ledger sees what the reader saw. */
-function sessionsOf(question: DatasetQuestion): string[][] {
-  return question.haystack_sessions.map((session, index) => {
-    const date = question.haystack_dates[index] ?? '';
-    return session.map((turn) => `[${date}] ${turn.role}: ${turn.content}`);
-  });
-}
-
-/** Every number a gold answer would accept, so `5 days. 6 days ...` accepts both. */
-function numbersInGold(gold: string): number[] {
-  const found: number[] = [];
-  for (const match of gold.matchAll(/-?\d[\d,]*(?:\.\d+)?/g)) {
-    const value = Number(match[0].replaceAll(',', ''));
-    if (Number.isFinite(value)) found.push(value);
-  }
-  return found;
-}
-
-/**
- * Every content word the history itself uses, which is the widest vocabulary a plan could select on.
- *
- * Rarest first and capped, because the search is quadratic in the vocabulary and a word in half the
- * rows cannot be the discriminating one. The cap is a search budget and is reported with the result,
- * so a ceiling measured under it is not read as a ceiling over the whole vocabulary.
- */
-function historyKeywords(ledger: Ledger): string[] {
-  const counts = new Map<string, number>();
-  for (const row of ledger.rows) {
-    for (const word of new Set(
-      row.text
-        .toLowerCase()
-        .replaceAll(/[^a-z0-9\s-]/g, ' ')
-        .split(/\s+/),
-    )) {
-      if (word.length < 4 || STOPWORDS.has(word)) continue;
-      counts.set(word, (counts.get(word) ?? 0) + 1);
-    }
-  }
-  // A word in more than a fifth of the rows selects almost everything, and a stem of it selects more.
-  const ceiling = Math.max(2, Math.floor(ledger.steps / 5));
-  return [...counts.entries()]
-    .filter(([, seen]) => seen <= ceiling)
-    .sort((left, right) => left[1] - right[1] || left[0].localeCompare(right[0]))
-    .slice(0, Number(flag('max-keywords') ?? 600))
-    .map(([word]) => word);
-}
-
-/**
- * A keyword's stems, so a history vocabulary can reach an inflected form.
- *
- * `sold` has no stem that reaches `sell`, and no rule can invent the pair: that gap is why the
- * vocabulary a plan may choose from is measured twice rather than once.
- */
-function withStems(words: readonly string[]): string[] {
-  return [...new Set(words.flatMap((word) => [word, word.replace(/(?:ing|ed|es|s)$/, '')]))].filter(
-    (word) => word.length >= 3,
-  );
-}
-
-/** Whether a computed value is one the gold accepts. */
-function accepts(
-  goldNumbers: readonly number[],
-  value: number | string | readonly string[] | Readonly<Record<string, number>>,
-): boolean {
-  if (typeof value !== 'number') return false;
-  return goldNumbers.some((gold) => Math.abs(gold - value) < 1e-6);
-}
-
-/** The plans a question's own vocabulary can express over this ledger. */
-function plansFor(
-  ledger: Ledger,
-  keywords: readonly string[],
-  units: readonly (string | null)[],
-): EventSpec[] {
-  const plans: EventSpec[] = [];
-  const scope: readonly [number, number] = [0, ledger.steps - 1];
-  for (const keyword of keywords) {
-    plans.push({
-      scope,
-      predicates: [{ field: 'text', op: 'contains', value: keyword }],
-      operation: 'count',
-    });
-    for (const unit of units) {
-      plans.push({
-        scope,
-        predicates:
-          unit === null
-            ? [{ field: 'text', op: 'contains', value: keyword }]
-            : [
-                { field: 'text', op: 'contains', value: keyword },
-                { field: 'number', op: 'unit-is', value: unit },
-              ],
-        operation: 'sum',
-      });
-    }
-  }
-  return plans;
-}
-
-/** Whether any single row already carries an acceptable number. */
-function copyCeiling(ledger: Ledger, goldNumbers: readonly number[]): boolean {
-  return ledger.rows.some((row) =>
-    row.numbers.some((number) => accepts(goldNumbers, number.value)),
-  );
-}
-
-/** Measure one question. */
-function measure(
-  question: ArtifactQuestion,
-  dataset: DatasetQuestion,
-  vocabularyMode: 'question' | 'history',
-): SpecSummary {
-  const ledger = buildLedger(sessionsOf(dataset));
-  const vocabulary = ledgerVocabulary(ledger);
-  const units: (string | null)[] = [null, ...vocabulary.units];
-  const keywords =
-    vocabularyMode === 'history'
-      ? withStems(historyKeywords(ledger))
-      : questionKeywords(question.question);
-  const goldNumbers = numbersInGold(question.groundTruth);
-
-  const hitting: string[] = [];
-  for (const plan of plansFor(ledger, keywords, units)) {
-    const result = executeSpec(ledger, plan);
-    const rendered = renderAggregate(result);
-    if (rendered === null) continue;
-    if (result.kind !== 'value') continue;
-    if (accepts(goldNumbers, result.value)) {
-      hitting.push(
-        `${plan.operation}(${plan.predicates.map((predicate) => JSON.stringify(predicate.value)).join(',')}) → ${rendered}`,
-      );
-    }
-  }
-
-  return {
-    questionId: question.questionId,
-    question: question.question,
-    gold: question.groundTruth,
-    goldNumbers,
-    copyCeiling: copyCeiling(ledger, goldNumbers),
-    grammarCeiling: hitting.length > 0,
-    matchingPlans: hitting.length,
-    bestPlan: hitting[0] ?? null,
-    ledgerSteps: ledger.steps,
-    keywordsTried: keywords.length,
-  };
-}
-
-/** Read `--flag value` pairs, which is all this tool's command line needs. */
+/** Read `--flag value` pairs, which is all this command line needs. */
 function flag(name: string): string | null {
   const index = process.argv.indexOf(`--${name}`);
   return index === -1 || index === process.argv.length - 1
@@ -303,54 +77,69 @@ function flag(name: string): string | null {
 function main(): void {
   const datasetPath = flag('dataset');
   const artifactPath = flag('artifact');
-  if (datasetPath === null || artifactPath === null) {
+  const populationPath = flag('population');
+  if (datasetPath === null || (artifactPath === null) === (populationPath === null)) {
     console.error(
-      'usage: --dataset <path> --artifact <path> [--capability MR] [--all] [--json out.json]',
+      'usage: --dataset <path> (--artifact <path> | --population <path>) [--capability MR] [--all] [--keywords question|history] [--max-keywords 600] [--json out.json]',
     );
     process.exit(2);
   }
   const capability = flag('capability');
   const includeCorrect = process.argv.includes('--all');
   const vocabularyMode = flag('keywords') === 'history' ? 'history' : 'question';
+  const maxKeywords = Number(flag('max-keywords') ?? 600);
 
   const dataset = JSON.parse(readFileSync(datasetPath, 'utf8')) as DatasetQuestion[];
-  const artifact = JSON.parse(readFileSync(artifactPath, 'utf8')) as {
-    questions: ArtifactQuestion[];
-  };
-  const byId = new Map(dataset.map((question) => [question.question_id, question]));
+  const artifact =
+    artifactPath === null
+      ? null
+      : (JSON.parse(readFileSync(artifactPath, 'utf8')) as { questions: ArtifactQuestion[] });
+  const population =
+    populationPath === null
+      ? null
+      : (JSON.parse(readFileSync(populationPath, 'utf8')) as PopulationFile);
 
-  const selected = artifact.questions.filter(
-    (question) =>
-      (capability === null || question.capability === capability) &&
-      (includeCorrect || !question.correct),
-  );
+  const { selected, missing } = selectPopulation({
+    dataset,
+    artifact,
+    population,
+    capability,
+    includeCorrect,
+  });
 
   const summaries: SpecSummary[] = [];
-  for (const question of selected) {
-    const source = byId.get(question.questionId);
-    if (source === undefined) {
-      console.error(`missing from the dataset: ${question.questionId}`);
-      continue;
-    }
-    summaries.push(measure(question, source, vocabularyMode));
+  for (const entry of selected) {
+    summaries.push(measure(entry.corpus, vocabularyMode, maxKeywords, entry.gold));
   }
 
-  const numeric = summaries.filter((summary) => summary.goldNumbers.length > 0);
-  const reachable = numeric.filter((summary) => summary.grammarCeiling);
-  const copied = numeric.filter((summary) => summary.copyCeiling);
+  const reading = summarise(summaries, vocabularyMode);
 
   console.log(`vocabulary: ${vocabularyMode}`);
-  console.log(`questions: ${summaries.length}  with a numeric gold: ${numeric.length}`);
-  console.log(`copy ceiling   : ${copied.length}/${numeric.length}`);
-  console.log(`grammar ceiling: ${reachable.length}/${numeric.length}`);
+  if (populationPath !== null) console.log(`population: ${populationPath}`);
+  console.log(`questions: ${reading.questions}  with a numeric gold: ${reading.numeric}`);
+  console.log(`copy ceiling   : ${reading.copy}/${reading.numeric}`);
+  console.log(`grammar ceiling: ${reading.grammar}/${reading.numeric}`);
+  console.log(`pass-eligible  : ${reading.eligible}/${reading.numeric}`);
+  console.log(`grammar, gated : ${reading.grammarOfEligible}/${reading.eligible}`);
+  console.log(`median plan share, gated: ${(reading.planShareMedian * 100).toFixed(2)}%`);
+  if (population?.numericGold !== undefined) {
+    console.log(
+      `registered     : numericGold ${String(population.numericGold)}  floor ${String(population.floor ?? '?')}  required ${((population.required ?? 0) * 100).toFixed(0)}%`,
+    );
+  }
+  if (missing.length > 0) {
+    console.error(`missing from the corpus: ${missing.join(', ')}`);
+    process.exitCode = 1;
+  }
   console.log('');
-  console.log('id            copy  grammar  plans  gold');
+  console.log('id            gate  copy  grammar  plans  share   gold');
   for (const summary of summaries) {
+    const gate = summary.tallyEligible ? ' yes' : '  no';
     const copy = summary.goldNumbers.length === 0 ? ' n/a' : summary.copyCeiling ? ' yes' : '  no';
     const grammar =
       summary.goldNumbers.length === 0 ? '     ' : summary.grammarCeiling ? '     yes' : '      no';
     console.log(
-      `${summary.questionId}  ${copy}  ${grammar}  ${String(summary.matchingPlans).padStart(5)}  ${summary.gold.slice(0, 44).replaceAll('\n', ' ')}`,
+      `${summary.questionId}  ${gate}  ${copy}  ${grammar}  ${String(summary.matchingPlans).padStart(5)}/${String(summary.plansTried).padEnd(5)} ${(summary.planShare * 100).toFixed(2).padStart(6)}%  ${summary.gold.slice(0, 36).replaceAll('\n', ' ')}`,
     );
   }
 
@@ -362,10 +151,14 @@ function main(): void {
         {
           capability,
           vocabulary: vocabularyMode,
+          population: populationPath,
           summaries,
-          copy: copied.length,
-          grammar: reachable.length,
-          numeric: numeric.length,
+          copy: reading.copy,
+          grammar: reading.grammar,
+          numeric: reading.numeric,
+          eligible: reading.eligible,
+          grammarOfEligible: reading.grammarOfEligible,
+          planShareMedian: reading.planShareMedian,
         },
         null,
         2,
@@ -375,4 +168,6 @@ function main(): void {
   }
 }
 
-main();
+// Guarded so nothing runs on import: the search moved to `src/`, and a command line that executed
+// when a test imported its module would be the defect `tools/queue-floor.mjs` records.
+if (import.meta.url === pathToFileURL(process.argv[1] ?? '').href) main();

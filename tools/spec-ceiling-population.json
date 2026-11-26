@@ -1,0 +1,55 @@
+{
+  "note": "The twelve numeric multi-session failures of the adopted arm `45543010618` (500 questions, two repetitions, `layered` + `verbatim-acts`), named by `docs/AUDIT-NUMERIC-MEMBERSHIP.md` 1. This file exists because `--artifact` selects the failing set of the report it is handed, and the report this arm's ceiling has to be read against is not a report -- it is a written audit of twelve replies, read one by one in the reader's own words. The arithmetic below is that audit's table, repeated here so a run prints its bar beside its reading instead of referring to a document that may have moved. Frozen before the dispatch it prices; an id added after a reading exists would be a population chosen by its result.",
+  "source": {
+    "measuredBy": "packages/cortex-memory/bench/measure-spec-ceiling.ts",
+    "run": "45543010618",
+    "arm": "layered + verbatim-acts, reviewPass none",
+    "capability": "MR",
+    "failing": 121,
+    "numericFailures": 12,
+    "audit": "docs/AUDIT-NUMERIC-MEMBERSHIP.md",
+    "queue": "docs/AUDIT-QUEUE-FLOOR.md",
+    "corpus": "longmemeval_s_cleaned.json, rebuilt from every haystack session -- the whole history, not the arm window, so both ceilings are upper bounds on what a windowed pass could reach"
+  },
+  "numericGold": 12,
+  "floor": 4.96,
+  "required": 0.5,
+  "groups": [
+    {
+      "name": "membership-dropped",
+      "what": "a member the gold keeps was dropped by an invented evidentiary bar, an over-merge or an over-strict period; six of the twelve, and the institution `docs/AUDIT-NUMERIC-MEMBERSHIP.md` 3 says the next mechanism has to be",
+      "ids": [
+        "gpt4_15e38248",
+        "gpt4_a56e767c",
+        "bf659f65",
+        "gpt4_731e37d7",
+        "gpt4_31ff4165",
+        "3a704032"
+      ]
+    },
+    {
+      "name": "membership-kept",
+      "what": "a member the gold drops was kept: one object stated twice, one replacement counted as two rows, a boundary the question states in words, and an amount the event raised rather than the user",
+      "ids": ["gpt4_ab202e7f", "gpt4_7fce9456", "gpt4_2f8be40d", "d851d5ba"]
+    },
+    {
+      "name": "not-membership",
+      "what": "the two the audit excludes from the membership institution: a stated value picked wrongly, and a derived value that needs a second fact the history never states",
+      "ids": ["9ee3ecd6", "a1cc6108"]
+    }
+  ],
+  "ids": [
+    "gpt4_15e38248",
+    "gpt4_a56e767c",
+    "bf659f65",
+    "gpt4_731e37d7",
+    "gpt4_31ff4165",
+    "3a704032",
+    "gpt4_ab202e7f",
+    "gpt4_7fce9456",
+    "gpt4_2f8be40d",
+    "d851d5ba",
+    "9ee3ecd6",
+    "a1cc6108"
+  ]
+}

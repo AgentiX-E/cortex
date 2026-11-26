@@ -1,8 +1,8 @@
 {
  "note": "Debt ledger for `node tools/export-census.mjs --check`. Records the exports that had no non-test caller when the gate was introduced. This is NOT an allowlist of acceptable orphans: it is a snapshot of an unresolved backlog. The gate fails on any orphan ABSENT from this file, so its only job is to stop new ones appearing silently. Removing an entry requires deleting the export or giving it a caller; adding one requires a reason recorded here. `knownOrphans` holds `pkg: name` keys WITHOUT line numbers, because a line number changes when any unrelated line above it moves; this is the list the checker consults. `locations` maps each key to every file:line that declares it. `groups` carries the rationale, and its `declarationSites` are counted per site, so their total exceeds `knownOrphans.length` by the number of TypeScript overloads: one name, several declaration lines, one identity. `totals.referencedLocally` and `totals.unreferenced` split the orphan count by whether the declaring file still mentions the symbol. They sum to `totals.orphaned`. `orphanClass` maps each key to its class: `referenced-locally` means the symbol has a live call site and only the `export` keyword is unnecessary, `unreferenced` means nothing mentions it anywhere and it is a dead-code candidate. The ledger was rebuilt once to correct the caller matcher, and the size of that correction is the reason it is recorded here. The matcher used to test a symbol's name against each file's raw text, so a name written in a comment counted as a call: `referencedLocally`/`unreferenced` moved 185/48 from 196/16 and 21 exports entered the list the moment comments stopped counting. Every one of the 21 had ONLY comment matches outside its declaring file -- verified by diffing raw-text matches against comment-stripped matches for each. The worst part of the old behaviour was its direction: documenting a symbol silently retired its finding, so the report looked cleanest on the code someone had taken most trouble to explain. `stripComments` in `export-census.ts` now blanks comments before matching while copying string and template literals through verbatim, because template literals hold real calls (`hashText` is called six times that way). TWO FURTHER REBUILDS, and both were instrument defects rather than code changes. **String bodies stopped counting.** A tool that prints the sentence \"Comparability is a five-tuple...\" retired the `Comparability` type from this population -- 396 to 395 -- while no source file imported it: the census matched a symbol's name against raw text, and a printed sentence is text. `stripStringContent` now blanks string bodies and keeps `${...}` substitutions, because a substitution is a call: `hashText` is invoked six times inside template literals and would otherwise read as dead. The six names whose last apparent caller was prose came back -- `Comparability`, `covers`, `Arm`, `Ablation`, `unrun`, `TransformersEmbedding` -- and each is named here so the next reader can check the claim instead of trusting the count. **The line grid was not the file's.** `stripComments` blanked the newlines inside a block comment, so its output carried a different line grid from the file it came from: measured on `export-census.ts`, 909 lines read as 511. Every symbol carries a 1-based line that is read back out of that output, so each line-keyed judgement became a guess -- including the declaration span that decides which lines are allowed to count as a reference, and an out-of-range guard that answered \"no local reference\" for any declaration past the shortened grid. Against the previous ledger 91 of 396 entries changed class, 62 from `unreferenced` to `referenced-locally` and 29 the other way; `referencedLocally`/`unreferenced` moved from 329/66 to 366/36. Four were verified by hand in each direction before the diff was accepted: `clampAwayFromZero` (called at stats.ts:282-294) and `identifierPattern` (called at export-census.ts:344 and :410) are genuinely used inside their own files, while `sinkhorn` (its only in-file mentions are two thrown message strings), `findContradictions`, `consolidate` and `l2Distance` are declared and never used, so their `export` keyword is the only thing to remove. The census now asserts both properties: `stripStringContent` keeps substitutions, and `stripComments` keeps the line count. A THIRD REBUILD, and it moved the population in both directions for the first time in three rounds. Two entries left and each names the import that explains it: `cortex-memory: DECLINE_TOKEN` and `cortex-eval: classifyAggregationKind` are now imported by `tools/mr-failure-census.mjs`, which reads the arm's declines through the product's own predicate and cross-checks the arm's question classifier against the reference pipeline's. One entry arrived, `cortex-memory: ASK_CHANGES_WHEN_DERIVATION`, and it names the same-named thing that used to hide it: nothing did -- it is new, and its reader is `ask-changes.test.ts`. Totals 914 -> 917 exports, 512 -> 516 with a caller, 402 -> 401 orphan sites, 366 -> 364 local, 36 -> 37 nowhere; every one of the five differences is accounted for above, which is the check `13.158.4` asks for before a diff is read. AN ENTRY LEFT, for the first time in four rounds on purpose rather than by rebuild: `cortex-ai: DEFAULT_RETRY_TIMEOUT_MS` was an orphan until §13.227 moved the reader's transport decisions into their own module, which made `cortex-eval` a caller of it -- the deadline the retry budget has to exceed is now read from the package that owns it instead of being copied. Totals 964 -> 964 exports, 549 -> 550 with a caller, 415 -> 414 orphan sites, 375 -> 374 local, 40 nowhere. Every difference is the one symbol, which is the check 13.158.4 asks for before a baseline diff is accepted. ONE ENTRY LEFT AND FIVE ARRIVED, ALL WITH CALLERS (round 91, the per-turn window). `cortex-memory: truncateCodePointSafe` left this ledger because `excerpt.ts` calls it: the window rule needs the same code-point-safe cut for its own fallbacks, so the helper moved out of `prompt.ts` instead of being copied, and `prompt.ts` re-exports it so every existing importer keeps the path it had. A helper two modules call is not an orphan and the census says so. The five new exports -- `excerptAround`, `ELISION`, `TurnWindow`, `contentTokens`, `ContentToken` -- are called by `prompt.ts`, `memory.ts`, `types.ts`, `index.ts` and the two new test files, so none of them enters this list: totals 1166 -> 1171 exports, 700 -> 706 with a caller, 466 -> 465 orphan sites, 420 -> 419 local, 46 nowhere.  ONE ROUND LATER, TWO FEWER EXPORTS AND NO NEW ORPHANS (round 92, the admission census). `cortex-memory: evaluateTurns` and `cortex-memory: ADMISSION_DISTINCT_CAP` were written in this round and removed from the export surface in the same one: the sink travels inside `AdmissionOptions`, so `admitTurns` already returns the turns and writes the counts, and a second entry point returning both would be a second definition of what an admission is. Both were reported as orphans by this gate on the day they were written and neither had a caller outside its own test file, which is the gate doing exactly what it says. The cap stayed as a module-level constant because `distinctSaturated` is the fact a caller needs and the number is documentation. Totals 1171 -> 1173 exports, 706 -> 708 with a caller, 465 orphan sites unchanged, and every difference is accounted for: `AdmissionCensus` and `AdmissionCensusBuilder` arrived because `memory.ts` reads the first as a return type and constructs the second once per instance, so both have a caller; `evaluateTurns` and `ADMISSION_DISTINCT_CAP` never reached a baseline because they were removed in the round that wrote them. THREE NEW EXPORTS AND NO NEW ORPHANS (round 93, the route and the role census). `cortex-memory: RoleCensus` is the return type of `lastRoleCensus()` and the payload the artifact serialises; `cortex-eval: DeliveredRoleCensus` is its structural mirror in the package that cannot import it, read by `benchmark.ts`, `question-record.ts` and `types.ts`; `cortex-eval: RetrievalCaptureVectors` is the intersection `evaluateWithScorerDetailed` returns and `ablation.ts` forwards into `AblationResult`. All three have callers, so none enters this list: totals 1173 -> 1176 exports, 708 -> 711 with a caller, 465 orphan sites unchanged, 419 local, 46 nowhere, and every difference is the three names. A fourth export was written and withdrawn in the same round -- `RetrievalCapture`, the payload a capture hands the callback -- because this gate reported it as an orphan within the hour: the callback type that names it is module-private, so nothing outside needed to name the payload either. Twice in two rounds the gate has now caught an export written in the round that wrote it, which is the argument for running it before a commit rather than after a dispatch. The semantic fact source (§13.375) adds four: `semanticUpdateFrom`, `renderSemanticUpdate`, `updateAppliesTo` and the `SemanticUpdate` type, all consumed by `memory.ts`; totals 1176 -> 1180 exports, 711 -> 715 with a caller, 465 orphan sites unchanged, 419 local, 46 nowhere. Three more exports were written in that round and withdrawn before the commit, again because this gate reported them: `SemanticUpdateInput` (the parameter type of a function whose callers never name it), `AuthorisedRecord` and `SupersessionAuthorisation` (both reached only through `SupersessionVerdict`, whose consumers destructure the fields rather than name the types). Three in one round, after two in the two before it -- the gate is now the single most productive reader in this repository. E2 moved the semantic block's public surface without changing any total: `renderSemanticUpdate` left and `assembleSemanticUpdate` arrived (it renders through `assemble` rather than beside it, so the renderer is reached through the exit), 1180 exports and 715 callers either way, 465 orphan sites unchanged. One more export was written and withdrawn before the commit, and this gate is what reported it: `SemanticBlock`, the return type of that function, which no caller names. That is the fourth round running in which the census caught a symbol the author had just declared. ONE ENTRY LEFT AND TWO ARRIVED, AND THE DEPARTURE IS THE POINT (round 98, E3). `cortex-core: MemoryType` leaves this ledger because `cortex-memory/src/retention.ts` now **reads** it: the eviction ranks a bounded store by `type`, so `semantic` entries are kept by the windows that carried them and `episodic` ones by when they were recorded. Until this round the union had three members, one code path wrote `'episodic'` as a literal, and nothing compared the field — which is why the census listed it here as `referenced-locally` while the package's own docs claimed a taxonomy. The two arrivals, `memoryForUpdate` and `leastRetained`, are called by `memory.ts`, so neither enters this list. Totals 1180 -> 1182 exports, 715 -> 718 with a caller, 465 -> 464 orphan sites, 419 -> 418 local, 46 nowhere; every one of the four differences is accounted for by those three names, which is the check 13.158.4 asks for before a baseline diff is read. `retentionRank` and `Retainable` were written in this round and withdrawn from the export surface in the same one — the first because the ranking and the choice it feeds are one decision, the second because nothing outside names the parameter type — and this gate is what reported both. That is the fifth round running in which the census caught a symbol the author had just declared. ONE FILE MOVED AND NOT ONE TOTAL DID (round 100, the domain placement). `cortex-memory: retention.ts` became `cortex-core: domain/retention.ts`, so `leastRetained` changed package without changing its caller: `packages/cortex-memory/src/memory.ts` still imports it, now through the barrel. Totals 1182 exports, 718 with a caller, 464 orphan sites, 418 local, 46 nowhere -- unchanged on every one of the five. What made the move possible is `MemoryValue.reads`, a required field that gives the rule's second rank element a home in the domain; without it the signature had to carry `{ memory, reads }`, and no census would have noticed, because a parameter is not an export. `semantic-facts.ts` was asked the same question and stayed: it imports `SupersessionVerdict` from `./supersede.js`, whose producer calls a model, so moving it would have put an LLM interface inside the zero-I/O package. Both adjudications are in `docs/AUDIT-SEMANTIC-REACH.md` 14.2 and 14.6, recorded there because the next reader will ask again. TWO NEW CALLERS, AND THE BASELINE MOVED BY EXACTLY TWO (round 102, E6's arm). `applyRequirements` (called by `tools/acceptance-check.mjs`) and `SemanticCarryCensus` (used by `bench-memory-arm.ts`'s fold) are the first exports this ledger has gained without gaining an orphan: 1182 to 1184, 718 to 720, 464 and 418 and 46 unchanged on every other line. The count that did not move is the point. The alternative -- exporting the entry shape `applyRequirements` returns -- was written first, was counted as an orphan within the same round, and was un-exported rather than ledgered, because an export with no caller is a defect unless a roadmap owns it. TWO NEW CALLERS AND NO NEW ORPHANS (round 106, S10's counter). `cortex-memory: TurnWindowCensus` is the return type of `lastTurnWindowCensus()` and the payload `AssembledPrompt.turnWindow` carries; `cortex-eval: DeliveredTurnWindowCensus` is its structural mirror in the package that cannot import it, read by `benchmark.ts` and summed by `bench-memory-arm.ts`. Both have callers: totals 1191 -> 1193 exports, 727 -> 729 with a caller, 464 / 418 / 46 unchanged on every other line, and every difference is the two names. A third export was written and withdrawn in the same round -- `TurnWindowTally`, the mutable accumulator `contentFor` charges -- because it is module-private by construction: a caller that could supply a tally could make the census describe a rendering the reader never saw. THREE ARRIVED AND THREE LEFT IN ONE ROUND, AND THE DEPARTURES ARE THE INTERESTING HALF (round 113, the inline superseded mark). The three that arrived are the mechanism's own surface and each has a reader that the census cannot count: `SUPERSEDED_MARKER` and `SUPERSEDED_COLLAPSED` are the exact strings the acceptance arithmetic is written against -- a run's prompt must be longer than its control's by the first one's length per marked turn -- so a test that restated them would be asserting a copy of the product's decision rather than the decision; `SupersededTurn` is the shape `supersededTurns` returns and no caller names it, because the memory maps it straight into `SupersededMarks`. All three are `referenced-locally`: the module uses them in the function that is its entry point. The three that left are the reason the orphan count did not move: `conflictStatements`, `valueSignature` and `ConflictOptions` had no caller outside `conflict.ts` and its test until `superseded.ts` read them, which is the whole argument for deriving the mark from the statement selection rather than re-selecting beside it -- two selections would have been two populations, and the side block would have printed a pair the mark did not mark. Every difference is accounted for and the totals say so: 1208 -> 1215 exports, 719 -> 726 with a caller, and 489 / 438 / 51 unchanged on every orphan line, which is the check 13.158.4 asks for before a baseline diff is accepted. TWO ARRIVED AND NEITHER IS AN ORPHAN (round 120, the exhausted-quota class). `cortex-ai: isQuotaExhausted` and `cortex-ai: EmbeddingQuotaExhaustedError` are the pair that lets a caller tell 'the provider is busy' from 'the account cannot pay' -- the distinction run `43866639154` needed and could not make, having retried `code 1113` seven times over 127 seconds before throwing away two hours of graded answers. Both are called from `packages/cortex-ai/src/embedding/openai.ts`, so the orphan count does not move: totals 1219 -> 1221 exports, 723 -> 725 with a caller, and 496 / 443 / 53 unchanged on every orphan line, which is the check 13.158.4 asks for before a baseline diff is accepted. The one place the policy can be stated -- `SearchIndexOptions.onEmbedFailure` -- is a field rather than an export, which is why this round moves the surface by two instead of three. FOUR ENTRIES CHANGED PACKAGE AND NOT ONE TOTAL DID (round 121, `#25`, the paired statistics). `cortex-core/src/math/stats.ts` moved to `cortex-eval/src/stats.ts` because the product called one of its twelve functions -- `kahanSum`, through `norm` -- and the harness called the other eleven: the barrel was advertising a paired t-test the product never ran. The four that appear in this ledger are the ones the move had to keep recorded, `clampAwayFromZero`, `degenerateDfPValue`, `logGamma` and `studentTCdf`, each `referenced-locally`: called inside the file that declares them and nowhere else. Their keys changed package while their class and their count did not. The other eight (`mean`, `variance`, `stddev`, `welchTTest`, `binomialCdf`, `wilsonScoreInterval`, `ConfidenceInterval` and the `kahanSum` that stayed behind) had real callers in `cortex-eval` before the move and the same callers after it, which is why they were never here. Totals 1221 exports, 725 with a caller, 496 orphan sites, 443 local, 53 nowhere -- unchanged on every one of the five, and every difference is accounted for by those four keys, which is the check 13.158.4 asks for before a baseline diff is accepted. `kahanSum` did not move: `vector.ts` reduces a magnitude with it, so it stayed at `cortex-core/src/math/kahan.ts` and the moved file imports it rather than carrying a second implementation of one numerical routine. ONE ARRIVED AND IT IS NOT AN ORPHAN (round 124, the registered room default). `cortex-memory: REGISTERED_ROOMS` is the table `assembleMemory` now defaults to, re-exported from the barrel so a deployment can read the budget it is spending and state it explicitly; `assemble.ts` imports it and `assemble-rooms.test.ts` pins it to `tools/arm-config-baseline.json`, so it has callers on both sides. Totals 1221 -> 1222 exports, 725 -> 726 with a caller, and 496 / 443 / 53 unchanged on every orphan line, which is the check 13.158.4 asks for before a baseline diff is accepted. The field that could have been a second export -- a `roomFor(route)` accessor -- was not written: the tests assert the assembled prompt instead, because a public method that exists for a test is a method the product has to keep. TWO ARRIVED AND NEITHER IS AN ORPHAN (round 126, the expansion's route to the product). `cortex-eval: expansionQueryPlan` is what turns the phrases §13.97 already produced into the product's `queryPlan`, and `cortex-eval: assertExpansionReachesRanking` refuses an expansion beside a signal that scores no query against a turn; the first is called by `bench/run-ablation.ts` and the second by the same file, so both have callers. Totals 1224 -> 1226 exports, 726 -> 728 with a caller, and 498 / 445 / 53 unchanged on every orphan line, which is the check 13.158.4 asks for before a baseline diff is accepted. Two more symbols were written and NOT exported: `assertQueryExpansionReached` is called once, from inside `runCortexMemoryArm`, and `ExpansionReach` -- a mutable `{ searched, expanded }` counter -- was removed outright, because the receipt that matters is the product's own `selfIndex.queries` and a second tally would have been free to disagree with it while both looked plausible. The gate reported the first as an orphan within the round that wrote it, which is the seventh time it has done that. The 127th round added seven exports and needed no exception: `OFFLINE_INSTRUMENT_REPLY`, `OFFLINE_INSTRUMENT_VARIABLE`, `OFFLINE_INSTRUMENT_VERDICT`, `offlineInstrumentRequested`, `assertOfflineInstrumentConfiguration` and `assertOfflineInstrumentReached` are called from `llm-factory.ts` and `bench/run-ablation.ts`, and `offlineInstrument` is called by the factory branch that hands it out. Totals 1226 -> 1233 exports, 728 -> 735 with a caller, 498 / 445 / 53 unchanged, and the gate reported two orphans within the round that wrote them: `OfflineInstrument` (a type only the module itself names) was un-exported, and `OFFLINE_INSTRUMENT_VARIABLE` was wired into the banner `bench/run-ablation.ts` prints rather than exempted -- a constant that names the switch belongs in the line that says the switch is on. The 128th round added one export and needed no exception: `TermWeight` is `lexicalRelevance`'s third parameter's type and `SearchIndex` passes one, so it has a caller on the day it is written. Totals 1233 -> 1234 exports, 735 -> 736 with a caller, 498 / 445 / 53 unchanged. The gate refused the round's other new name: `LexicalWeighting` was exported for a caller that turns out not to exist -- every call site writes the literal `'idf'` or `'flat'` -- so it is module-local, the same ruling `WidthPlanReason` is under, and the option's `.d.ts` still states the union. THE 129TH ROUND ADDED ONE EXPORT AND NEEDED NO EXCEPTION: `assertLexicalWeighting` is the refusal `CortexMemory` now makes at assembly as well as inside `SearchIndex`, so it has a caller on the day it is written and the orphan count does not move. Totals 1234 -> 1235 exports, 736 -> 737 with a caller, and 498 / 445 / 53 unchanged on every orphan line, which is the check 13.158.4 asks for before a baseline diff is accepted. It is exported at all because of the finding that produced it: the refusal used to live only in `SearchIndex`'s constructor, and since the index is built per question, a documented option misspelt as `'tf-idf'` surfaced after the first `remember()` -- on a store that may already hold a user's data -- while the typo sat in the `assembleMemory` call two lines above it. Two tests pin the pair: `lexical-weighting-shipped.test.ts` builds both weightings through the public entry point and asserts which turn reaches the reader, and asserts the refusal at assembly. This census also moved 1235 -> 1236 exports with 737 -> 738 callers and the three orphan counts unchanged, on the round that shipped `annotateSessionBoundaries` (13.386): it has a product caller on day one (`CortexMemory`'s multi-session path), so it is the shape the ledger wants -- a capability whose only question is whether the reach is real, not whether anything calls it. THE 134TH ROUND ADDED THREE EXPORTS AND WITHDREW FOUR IN THE ROUND THAT WROTE THEM (C7, resolution layering). `cortex-memory: resolveCappedTurn`, `cortex-memory: DATELINE` and `cortex-memory: ResolutionMode` arrived with callers on day one -- `prompt.ts` renders every capped turn through the first, reads the second to find the dateline it must preserve, and `types.ts`, `assemble.ts` and `index.ts` name the third -- so totals 1236 -> 1239 exports and 738 -> 741 with a caller, with 498 / 445 / 53 unchanged on every orphan line, which is the check 13.158.4 asks for before a baseline diff is accepted. The four that never reached a baseline -- `EvidenceForm`, `ResolutionPlan`, `resolveTurn` and `ResolutionOptions` -- were written as the mechanism's first shape and un-exported in the round that wrote them because this gate reported them: the plan is simply what `resolveCappedTurn` returns and no caller names it, `EvidenceForm` is an internal tag the census never sees, and the ceiling override `ResolutionOptions` carried was deleted along with the export, since a caller able to pass its own ceiling could make the budget describe a rendering the renderer would not produce -- the same ruling `TurnWindowTally` and `SemanticUpdateInput` are under. That is the eighth round running in which the census caught a symbol the author had just declared. THE 135TH ROUND ADDED THREE EXPORTS, ALL WITH CALLERS ON THE DAY THEY WERE WRITTEN (the embedding quota latch). `cortex-eval: latchQuota` is called by the factory that installs it on both backends, `cortex-eval: quotaLatchReading` by the failure path of the memory-arm entry point, and `cortex-eval: EmbeddingLatchReading` is named by `describeFailure`'s signature and by the package index -- so totals 1239 -> 1242 exports, 741 -> 744 with a caller, and 498 / 445 / 53 unchanged on every orphan line. That last number is the one this diff exists to keep still: the latch publishes a reading instead of returning it because the failure record is written outside the scope where the client was built, and a reading is state that cannot be re-derived the way the provenance can. The alternative -- module state read by nobody -- would have shown up here as three orphans, which is how the ninth round running finds a symbol its author had just declared. THE 136TH ROUND ADDED ONE EXPORT AND WITHDREW TWO IN THE ROUND THAT WROTE THEM (the per-form census). `cortex-memory: EvidenceForm` is named by `prompt.ts`'s `chargeTurn` and by the census it produces, so it has a caller on the day it is written: totals 1242 -> 1243 exports, 744 -> 745 with a caller, and 498 / 445 / 53 unchanged on every orphan line, which is the check 13.158.4 asks for before a baseline diff is accepted. The two that never reached a baseline -- `EvidenceFormCensus` and `EvidenceForms` -- were exported for one hour and un-exported when this gate reported them: they are the field types of `TurnWindowCensus.forms`, no caller names them, and the structure is still published through the field that uses it. `cortex-eval`'s mirrors `DeliveredFormCensus` and `DeliveredEvidenceForms` were written module-private in the same round for the same reason, before the gate could ask. That is the tenth round running in which the census found a symbol its author had just declared. THE 138TH ROUND ADDED ONE EXPORT AND IT HAS THREE CALLERS ON THE DAY IT IS WRITTEN (the ordering's precision). `cortex-memory: orderableRelevance` is called by `prompt.ts` twice and by `sessionize.ts` once -- every comparator that orders candidates by the injected relevance signal -- so totals 1243 -> 1244 exports and 745 -> 746 with a caller, with 498 / 445 / 53 unchanged on every orphan line, which is the check 13.158.4 asks for before a baseline diff is accepted. The constant the function rounds to was exported first and this gate reported it within the round: nothing outside the module names the grid, so it is module-local and the resolution is still pinned from the behaviour (`orderableRelevance(1) - orderableRelevance(0)` is 10,000). That is the eleventh round running in which the census found a symbol its author had just declared. THE 145TH ROUND ADDED FOUR EXPORTS AND WITHDREW TWO BEFORE THE BASELINE WAS REBUILT (the artifact's revision). `cortex-eval: readRevision` is called by `bench/run-ablation.ts` and `cortex-eval: RunRevision` is named by `AblationReport.revision` and by the arm's own option type, so both have callers on the day they are written: totals 1250 -> 1252 exports and 754 -> 756 with a caller, with 496 / 443 / 53 unchanged on every orphan line. The two that never reached a baseline -- `compareRevisions` and `RevisionComparison` -- were written as the criterion's implementation and withdrawn when the comparison's home turned out to be `tools/expansion-reading.py`, where the criteria live: a second implementation with no product caller would have been a second place for the three verdicts to drift apart, and this gate is what asked the question. The gate has now reported a symbol its author had just declared in twelve of the last thirteen rounds. THE 150TH ROUND ADDED 25 EXPORTS, ALL WITH CALLERS, AND ONE ENTRY LEFT BECAUSE IT FOUND A CALLER (multi-step retrieval). The new package `cortex-agent` publishes ten functions and fifteen types, and every one of them is referenced from a non-test file on the day it is written: the loop, the parser, the stop rule, the composition and the probe are called by each other and by `packages/cortex-agent/bench/probe-multi-step.ts`, and the option and result types are the declared types of the values those files build. One name left this ledger without any code being deleted: `cortex-memory: SearchHit` was recorded here as an export nothing outside its module names, and `cortex-agent/src/tools.ts` now returns it, so the product's index and the loop's tool agree on one type instead of two structural copies. Totals 1252 -> 1277 exports, 756 -> 782 with a caller, 496 -> 495 orphan sites, 443 -> 442 local, 53 nowhere; every one of the five differences is accounted for by those two facts, which is the check 13.158.4 asks for before a baseline diff is accepted. Nothing was written and withdrawn this round, which is the first time in fourteen rounds: the interface forced the surface to be decided before it was declared, because a type named in a public signature cannot be un-exported without breaking the declaration emit that names it. One correction afterwards, recorded because a ledger that changes without a reason is the defect it exists to catch: `ProviderUsage` was exported from `packages/cortex-eval/src/competitor.ts` and called from `harness.ts`, which moved `totalSymbols` 1282 -> 1283 and left `orphanCount` at 495. That commit did not update the baseline, so the test that recomputes these four numbers had been failing since -- found while verifying an unrelated change under `tools/`, fixed by correcting the number rather than by weakening the check. THE 161ST ROUND ADDED TWO EXPORTS, ONE WITH A CALLER AND ONE WITHOUT, AND THE LEDGER GAINS EXACTLY ONE LINE (the competitor table's shipped row). `cortex-memory: CortexProductProvider` is constructed by `tools/competitor-product.mjs`, which `tools/competitor-harness.mjs` imports, so the class has a non-test caller on the day it is written and does not enter this list. `CortexProductProviderOptions` does: it is the constructor's parameter type, every call site writes an object literal and lets inference name the type, and no file outside the package names it -- the same shape `CortexSessionProviderOptions` has been in since the first adapter. It stays exported because a deployment that stores its wiring in a typed field has to be able to name it, and the census is a snapshot of a backlog rather than a licence to un-export a public option type. Measured after the round: 1285 exported symbols, 795 with a non-test caller, 490 orphan sites -- the two new names and the one new caller are this round's whole difference, and the ledger gained one line rather than two because the class found its caller.",
  "totals": {
-  "exports": 1316,
-  "withCaller": 820,
+  "exports": 1323,
+  "withCaller": 827,
   "orphaned": 496,
   "referencedLocally": 444,
   "unreferenced": 52
@@ -185,13 +185,13 @@
     "cortex-core: sinkhorn (packages/cortex-core/src/math/ot.ts:25)",
     "cortex-core: splitSentences (packages/cortex-core/src/triage/claims.ts:136)",
     "cortex-core: squaredEuclideanCostMatrix (packages/cortex-core/src/math/ot.ts:102)",
-    "cortex-memory: ASK_CHANGES (packages/cortex-memory/src/prompt.ts:457)",
-    "cortex-memory: ASK_CHANGES_WHEN_DERIVATION (packages/cortex-memory/src/prompt.ts:2139)",
-    "cortex-memory: ASK_CONTROLS (packages/cortex-memory/src/prompt.ts:391)",
-    "cortex-memory: ASK_ROUTES (packages/cortex-memory/src/prompt.ts:154)",
+    "cortex-memory: ASK_CHANGES (packages/cortex-memory/src/prompt.ts:476)",
+    "cortex-memory: ASK_CHANGES_WHEN_DERIVATION (packages/cortex-memory/src/prompt.ts:2350)",
+    "cortex-memory: ASK_CONTROLS (packages/cortex-memory/src/prompt.ts:405)",
+    "cortex-memory: ASK_ROUTES (packages/cortex-memory/src/prompt.ts:163)",
     "cortex-memory: AnswerRequest (packages/cortex-memory/src/tally.ts:49)",
-    "cortex-memory: AssembleOptions (packages/cortex-memory/src/assemble.ts:92)",
-    "cortex-memory: AssemblyProfile (packages/cortex-memory/src/assemble.ts:90)",
+    "cortex-memory: AssembleOptions (packages/cortex-memory/src/assemble.ts:99)",
+    "cortex-memory: AssemblyProfile (packages/cortex-memory/src/assemble.ts:97)",
     "cortex-memory: CORPUS_SCHEMA (packages/cortex-memory/src/corpus.ts:54)",
     "cortex-memory: CheckOptions (packages/cortex-memory/src/disclosure/session.ts:119)",
     "cortex-memory: ConflictStatement (packages/cortex-memory/src/conflict.ts:74)",
@@ -199,12 +199,12 @@
     "cortex-memory: CorpusErrorCode (packages/cortex-memory/src/corpus.ts:129)",
     "cortex-memory: CorpusOptions (packages/cortex-memory/src/corpus.ts:112)",
     "cortex-memory: CorpusSessionRow (packages/cortex-memory/src/corpus.ts:103)",
-    "cortex-memory: CortexProductProviderOptions (packages/cortex-memory/src/product-provider.ts:68)",
+    "cortex-memory: CortexProductProviderOptions (packages/cortex-memory/src/product-provider.ts:76)",
     "cortex-memory: CortexSessionProviderOptions (packages/cortex-memory/src/provider.ts:116)",
-    "cortex-memory: DEFAULT_MAX_PROMPT_CHARS (packages/cortex-memory/src/prompt.ts:1010)",
-    "cortex-memory: DEFAULT_PROMPT_CONTRACT (packages/cortex-memory/src/prompt.ts:62)",
+    "cortex-memory: DEFAULT_MAX_PROMPT_CHARS (packages/cortex-memory/src/prompt.ts:1063)",
+    "cortex-memory: DEFAULT_PROMPT_CONTRACT (packages/cortex-memory/src/prompt.ts:71)",
     "cortex-memory: DisclosureSessionOptions (packages/cortex-memory/src/disclosure/session.ts:54)",
-    "cortex-memory: PROMPT_CONTRACTS (packages/cortex-memory/src/prompt.ts:47)",
+    "cortex-memory: PROMPT_CONTRACTS (packages/cortex-memory/src/prompt.ts:56)",
     "cortex-memory: ParsedSpec (packages/cortex-memory/src/aggregation/spec.ts:78)",
     "cortex-memory: ProviderTurn (packages/cortex-memory/src/provider.ts:60)",
     "cortex-memory: QueryPlan (packages/cortex-memory/src/retrieval/search-index.ts:116)",
@@ -224,7 +224,7 @@
     "cortex-memory: buildPlanTable (packages/cortex-memory/src/aggregation/plan-prompt.ts:72)",
     "cortex-memory: classifyAnswerRequest (packages/cortex-memory/src/tally.ts:66)",
     "cortex-memory: contentTerms (packages/cortex-memory/src/conflict.ts:238)",
-    "cortex-memory: formatEvidence (packages/cortex-memory/src/prompt.ts:2855)",
+    "cortex-memory: formatEvidence (packages/cortex-memory/src/prompt.ts:3080)",
     "cortex-memory: renderConflicts (packages/cortex-memory/src/conflict.ts:564)",
     "cortex-memory: turnId (packages/cortex-memory/src/corpus.ts:142)",
     "cortex-storage: PgStorage (packages/cortex-storage/src/storage/pg.ts:83)",
@@ -336,7 +336,7 @@
   },
   {
    "category": "eval-harness-surface",
-   "count": 151,
+   "count": 156,
    "rationale": "Evaluation harness internals. This is the largest bucket and the one most likely to hold genuine defects: most of the repository's orphaned exports are here. Some are reached only through indirection the census does not follow (dynamic property access, options objects passed as data). Triaged entry by entry: 221 of 277 were referenced inside their own declaring file and NOT ONE was unreferenced everywhere, so this bucket contains no dead code and its members are unnecessary `export` keywords, not deletions. The gate's value is preventing growth, not certifying this snapshot. `PositionEffect` (step 20) joins for the same reason as the other shapes: `positionEffect` returns it and `tools/a3-review.mjs` prints it, but a type named only in a signature has no caller to count. It is recorded rather than inlined because the return shape is the thing being asserted in its six tests. `cortex-eval: traceReviewMechanisms` and `cortex-eval: ReviewMechanismTrace` JOINED this ledger at 13.155, and they are the clearest case in it for a TEST SEAM: the wrapper is exported so a fixture whose state is `#private` can drive it, and that is the only kind of fixture which could have expressed the defect it was fixed for. Every plain-object fake in the arm's suite passed against the broken version -- `bind` on an arrow function is a no-op -- and `run 40984213349` died on question one for the want of a system with real private state. They are locally referenced (the arm calls the wrapper) and exported only because TypeScript has no package-private visibility, which is the same shape as the census module's own group above.",
    "declarationSites": [
     "cortex-eval: A3Arm (packages/cortex-eval/src/a3.ts:36)",
@@ -347,13 +347,18 @@
     "cortex-eval: A3Result (packages/cortex-eval/src/a3.ts:75)",
     "cortex-eval: A3Trial (packages/cortex-eval/src/a3.ts:41)",
     "cortex-eval: A3Verdict (packages/cortex-eval/src/a3.ts:72)",
-    "cortex-eval: AblationReportOptions (packages/cortex-eval/src/report.ts:1750)",
+    "cortex-eval: AblationReportOptions (packages/cortex-eval/src/report.ts:1779)",
     "cortex-eval: AbstainReason (packages/cortex-eval/src/natural-language-memory.ts:66)",
     "cortex-eval: BenchmarkRunnerOptions (packages/cortex-eval/src/runner.ts:90)",
     "cortex-eval: BuildCost (packages/cortex-eval/src/competitor.ts:107)",
     "cortex-eval: CAPABILITY_PROBES (packages/cortex-eval/src/model-portability.ts:117)",
     "cortex-eval: CONJUNCTION_ABS_CONTROLS (packages/cortex-eval/src/runner.ts:1144)",
     "cortex-eval: CONJUNCTION_ABS_TARGET (packages/cortex-eval/src/runner.ts:1142)",
+    "cortex-eval: CacheCreditFit (packages/cortex-eval/src/cache-credit.ts:103)",
+    "cortex-eval: CacheCreditModelFit (packages/cortex-eval/src/cache-credit.ts:89)",
+    "cortex-eval: CacheCreditPrompt (packages/cortex-eval/src/cache-credit.ts:67)",
+    "cortex-eval: CacheCreditRow (packages/cortex-eval/src/cache-credit.ts:80)",
+    "cortex-eval: CacheCreditVariant (packages/cortex-eval/src/cache-credit.ts:63)",
     "cortex-eval: CapabilityDimension (packages/cortex-eval/src/model-portability.ts:83)",
     "cortex-eval: CapabilityScore (packages/cortex-eval/src/harness.ts:105)",
     "cortex-eval: Classification (packages/cortex-eval/src/model-portability.ts:440)",
@@ -364,8 +369,8 @@
     "cortex-eval: ConfigCell (packages/cortex-eval/src/model-portability.ts:255)",
     "cortex-eval: CortexMemoryArmEnv (packages/cortex-eval/src/bench-memory-arm.ts:114)",
     "cortex-eval: CortexMemoryArmOptions (packages/cortex-eval/src/bench-memory-arm.ts:143)",
-    "cortex-eval: CortexMemoryArmResult (packages/cortex-eval/src/bench-memory-arm.ts:3836)",
-    "cortex-eval: CortexMemoryArmRunOptions (packages/cortex-eval/src/bench-memory-arm.ts:3663)",
+    "cortex-eval: CortexMemoryArmResult (packages/cortex-eval/src/bench-memory-arm.ts:3908)",
+    "cortex-eval: CortexMemoryArmRunOptions (packages/cortex-eval/src/bench-memory-arm.ts:3735)",
     "cortex-eval: Criterion (packages/cortex-eval/src/acceptance.ts:136)",
     "cortex-eval: DEFAULT_DEEPSEEK_BASE_URL (packages/cortex-eval/src/reader-provider.ts:84)",
     "cortex-eval: DEFAULT_DEEPSEEK_MODEL (packages/cortex-eval/src/reader-provider.ts:85)",
@@ -386,7 +391,7 @@
     "cortex-eval: EmbeddingMemorySystemOptions (packages/cortex-eval/src/embedding-memory.ts:14)",
     "cortex-eval: EmbeddingSourceStats (packages/cortex-eval/src/retrieval.ts:151)",
     "cortex-eval: EmbeddingWithProvenance (packages/cortex-eval/src/embedding-factory.ts:52)",
-    "cortex-eval: Evaluation (packages/cortex-eval/src/acceptance.ts:1981)",
+    "cortex-eval: Evaluation (packages/cortex-eval/src/acceptance.ts:2027)",
     "cortex-eval: EvidenceScope (packages/cortex-eval/src/model-portability.ts:252)",
     "cortex-eval: FactMemorySystem (packages/cortex-eval/src/fact-memory.ts:16)",
     "cortex-eval: FactMemorySystemOptions (packages/cortex-eval/src/fact-memory.ts:9)",
@@ -397,7 +402,7 @@
     "cortex-eval: MemoryTurn (packages/cortex-eval/src/competitor.ts:35)",
     "cortex-eval: NaturalLanguageMemorySystemOptions (packages/cortex-eval/src/natural-language-memory.ts:109)",
     "cortex-eval: PORTABILITY_MATRIX (packages/cortex-eval/src/model-portability.ts:299)",
-    "cortex-eval: PROMPT_CONTRACTS (packages/cortex-eval/src/bench-memory-arm.ts:1599)",
+    "cortex-eval: PROMPT_CONTRACTS (packages/cortex-eval/src/bench-memory-arm.ts:1649)",
     "cortex-eval: PairedResult (packages/cortex-eval/src/paired-test.ts:31)",
     "cortex-eval: PairedRow (packages/cortex-eval/src/paired-readout.ts:50)",
     "cortex-eval: PortabilityBucket (packages/cortex-eval/src/model-portability.ts:241)",
@@ -410,13 +415,13 @@
     "cortex-eval: RerankArmOptionsInput (packages/cortex-eval/src/bench-arm-options.ts:17)",
     "cortex-eval: RerankEnv (packages/cortex-eval/src/rerank-factory.ts:48)",
     "cortex-eval: RerankFallbackReport (packages/cortex-eval/src/runner.ts:52)",
-    "cortex-eval: Resolvers (packages/cortex-eval/src/acceptance.ts:2019)",
+    "cortex-eval: Resolvers (packages/cortex-eval/src/acceptance.ts:2065)",
     "cortex-eval: RetrievalMode (packages/cortex-eval/src/harness.ts:52)",
     "cortex-eval: RetryAblationReport (packages/cortex-eval/src/runner.ts:914)",
-    "cortex-eval: RetryFireCounts (packages/cortex-eval/src/report.ts:1572)",
+    "cortex-eval: RetryFireCounts (packages/cortex-eval/src/report.ts:1601)",
     "cortex-eval: ReviewCard (packages/cortex-eval/src/review-page.ts:32)",
     "cortex-eval: ReviewCardsFile (packages/cortex-eval/src/review-page.ts:122)",
-    "cortex-eval: ReviewMechanismTrace (packages/cortex-eval/src/bench-memory-arm.ts:3913)",
+    "cortex-eval: ReviewMechanismTrace (packages/cortex-eval/src/bench-memory-arm.ts:3985)",
     "cortex-eval: ReviewPageArgs (packages/cortex-eval/src/review-page.ts:83)",
     "cortex-eval: ReviewPageInput (packages/cortex-eval/src/review-page.ts:40)",
     "cortex-eval: ReviewPair (packages/cortex-eval/src/review-page.ts:55)",
@@ -487,7 +492,7 @@
     "cortex-eval: timelineFor (packages/cortex-eval/src/fact-store.ts:25)",
     "cortex-eval: toSessions (packages/cortex-eval/src/competitor.ts:240)",
     "cortex-eval: tokenize (packages/cortex-eval/src/fact-memory.ts:72)",
-    "cortex-eval: traceReviewMechanisms (packages/cortex-eval/src/bench-memory-arm.ts:4039)",
+    "cortex-eval: traceReviewMechanisms (packages/cortex-eval/src/bench-memory-arm.ts:4111)",
     "cortex-eval: truncateSession (packages/cortex-eval/src/natural-language-memory.ts:2820)",
     "cortex-eval: truncateText (packages/cortex-eval/src/natural-language-memory.ts:2716)"
    ]
@@ -574,18 +579,6 @@
     "cortex-core: StorageEmbeddingCache (packages/cortex-core/src/cache/storage-embedding-cache.ts:93)",
     "cortex-core: StorageEmbeddingCacheOptions (packages/cortex-core/src/cache/storage-embedding-cache.ts:71)",
     "cortex-core: StorageEmbeddingCacheReport (packages/cortex-core/src/cache/storage-embedding-cache.ts:86)"
-   ]
-  },
-  {
-   "category": "cache-credit-reading-shape",
-   "count": 5,
-   "rationale": "The cache-credit instrument's reading shape. `fitCacheCreditModels` and `renderCacheCreditReport` have callers (the probe and `tools/cache-credit-arithmetic.mjs`); these five are the types their signatures name, and TypeScript cannot emit a declaration for an exported function whose return type is private. They are not dead: removing one makes the module uncompilable. Recorded here rather than wired to a fake caller, because a caller that exists only to satisfy this gate is the gate measuring itself.",
-   "declarationSites": [
-    "cortex-eval: CacheCreditVariant (packages/cortex-eval/src/cache-credit.ts:63)",
-    "cortex-eval: CacheCreditPrompt (packages/cortex-eval/src/cache-credit.ts:67)",
-    "cortex-eval: CacheCreditRow (packages/cortex-eval/src/cache-credit.ts:80)",
-    "cortex-eval: CacheCreditModelFit (packages/cortex-eval/src/cache-credit.ts:89)",
-    "cortex-eval: CacheCreditFit (packages/cortex-eval/src/cache-credit.ts:103)"
    ]
   }
  ],
@@ -786,6 +779,11 @@
   "cortex-eval: CONJUNCTION_ABS_TARGET",
   "cortex-eval: COST_BY_CAPABILITY_POLICY",
   "cortex-eval: COST_REFUSALS",
+  "cortex-eval: CacheCreditFit",
+  "cortex-eval: CacheCreditModelFit",
+  "cortex-eval: CacheCreditPrompt",
+  "cortex-eval: CacheCreditRow",
+  "cortex-eval: CacheCreditVariant",
   "cortex-eval: CandidateCluster",
   "cortex-eval: CandidateInput",
   "cortex-eval: CandidateVerdict",
@@ -1080,12 +1078,7 @@
   "cortex-storage: ensurePgSchema",
   "cortex-storage: openBrowserStorage",
   "cortex-storage: openOpfsStorage",
-  "cortex-storage: parseTags",
-  "cortex-eval: CacheCreditFit",
-  "cortex-eval: CacheCreditModelFit",
-  "cortex-eval: CacheCreditPrompt",
-  "cortex-eval: CacheCreditRow",
-  "cortex-eval: CacheCreditVariant"
+  "cortex-storage: parseTags"
  ],
  "orphanClass": {
   "cortex-ai: AvailabilityReport": "referenced-locally",
@@ -1284,6 +1277,11 @@
   "cortex-eval: CONJUNCTION_ABS_TARGET": "referenced-locally",
   "cortex-eval: COST_BY_CAPABILITY_POLICY": "referenced-locally",
   "cortex-eval: COST_REFUSALS": "referenced-locally",
+  "cortex-eval: CacheCreditFit": "referenced-locally",
+  "cortex-eval: CacheCreditModelFit": "referenced-locally",
+  "cortex-eval: CacheCreditPrompt": "referenced-locally",
+  "cortex-eval: CacheCreditRow": "referenced-locally",
+  "cortex-eval: CacheCreditVariant": "referenced-locally",
   "cortex-eval: CandidateCluster": "referenced-locally",
   "cortex-eval: CandidateInput": "referenced-locally",
   "cortex-eval: CandidateVerdict": "referenced-locally",
@@ -1578,12 +1576,7 @@
   "cortex-storage: ensurePgSchema": "unreferenced",
   "cortex-storage: openBrowserStorage": "unreferenced",
   "cortex-storage: openOpfsStorage": "referenced-locally",
-  "cortex-storage: parseTags": "referenced-locally",
-  "cortex-eval: CacheCreditFit": "referenced-locally",
-  "cortex-eval: CacheCreditModelFit": "referenced-locally",
-  "cortex-eval: CacheCreditPrompt": "referenced-locally",
-  "cortex-eval: CacheCreditRow": "referenced-locally",
-  "cortex-eval: CacheCreditVariant": "referenced-locally"
+  "cortex-storage: parseTags": "referenced-locally"
  },
  "locations": {
   "cortex-ai: AvailabilityReport": [
@@ -2124,7 +2117,7 @@
    "packages/cortex-eval/src/assumption-ablation.ts:69"
   ],
   "cortex-eval: AblationReportOptions": [
-   "packages/cortex-eval/src/report.ts:1750"
+   "packages/cortex-eval/src/report.ts:1779"
   ],
   "cortex-eval: AblationRow": [
    "packages/cortex-eval/src/assumption-ablation.ts:780"
@@ -2173,6 +2166,21 @@
   ],
   "cortex-eval: COST_REFUSALS": [
    "packages/cortex-eval/src/cost-per-capability.ts:167"
+  ],
+  "cortex-eval: CacheCreditFit": [
+   "packages/cortex-eval/src/cache-credit.ts:103"
+  ],
+  "cortex-eval: CacheCreditModelFit": [
+   "packages/cortex-eval/src/cache-credit.ts:89"
+  ],
+  "cortex-eval: CacheCreditPrompt": [
+   "packages/cortex-eval/src/cache-credit.ts:67"
+  ],
+  "cortex-eval: CacheCreditRow": [
+   "packages/cortex-eval/src/cache-credit.ts:80"
+  ],
+  "cortex-eval: CacheCreditVariant": [
+   "packages/cortex-eval/src/cache-credit.ts:63"
   ],
   "cortex-eval: CandidateCluster": [
    "packages/cortex-eval/src/candidate-context.ts:176"
@@ -2244,10 +2252,10 @@
    "packages/cortex-eval/src/bench-memory-arm.ts:143"
   ],
   "cortex-eval: CortexMemoryArmResult": [
-   "packages/cortex-eval/src/bench-memory-arm.ts:3836"
+   "packages/cortex-eval/src/bench-memory-arm.ts:3908"
   ],
   "cortex-eval: CortexMemoryArmRunOptions": [
-   "packages/cortex-eval/src/bench-memory-arm.ts:3663"
+   "packages/cortex-eval/src/bench-memory-arm.ts:3735"
   ],
   "cortex-eval: CostArtifactShape": [
    "packages/cortex-eval/src/cost-per-capability.ts:178"
@@ -2358,7 +2366,7 @@
    "packages/cortex-eval/src/embedding-factory.ts:52"
   ],
   "cortex-eval: Evaluation": [
-   "packages/cortex-eval/src/acceptance.ts:1981"
+   "packages/cortex-eval/src/acceptance.ts:2027"
   ],
   "cortex-eval: EvidenceScope": [
    "packages/cortex-eval/src/model-portability.ts:252"
@@ -2397,7 +2405,7 @@
    "packages/cortex-eval/src/model-portability.ts:299"
   ],
   "cortex-eval: PROMPT_CONTRACTS": [
-   "packages/cortex-eval/src/bench-memory-arm.ts:1599"
+   "packages/cortex-eval/src/bench-memory-arm.ts:1649"
   ],
   "cortex-eval: PairedEvidence": [
    "packages/cortex-eval/src/efficiency-frontier.ts:238"
@@ -2484,7 +2492,7 @@
    "packages/cortex-eval/src/assumption-ablation.ts:614"
   ],
   "cortex-eval: Resolvers": [
-   "packages/cortex-eval/src/acceptance.ts:2019"
+   "packages/cortex-eval/src/acceptance.ts:2065"
   ],
   "cortex-eval: RetrievalDiagnostic": [
    "packages/cortex-eval/src/retrieval-diagnostics.ts:41"
@@ -2499,7 +2507,7 @@
    "packages/cortex-eval/src/runner.ts:914"
   ],
   "cortex-eval: RetryFireCounts": [
-   "packages/cortex-eval/src/report.ts:1572"
+   "packages/cortex-eval/src/report.ts:1601"
   ],
   "cortex-eval: ReviewCard": [
    "packages/cortex-eval/src/review-page.ts:32"
@@ -2508,7 +2516,7 @@
    "packages/cortex-eval/src/review-page.ts:122"
   ],
   "cortex-eval: ReviewMechanismTrace": [
-   "packages/cortex-eval/src/bench-memory-arm.ts:3913"
+   "packages/cortex-eval/src/bench-memory-arm.ts:3985"
   ],
   "cortex-eval: ReviewPageArgs": [
    "packages/cortex-eval/src/review-page.ts:83"
@@ -2862,7 +2870,7 @@
    "packages/cortex-eval/src/fact-memory.ts:72"
   ],
   "cortex-eval: traceReviewMechanisms": [
-   "packages/cortex-eval/src/bench-memory-arm.ts:4039"
+   "packages/cortex-eval/src/bench-memory-arm.ts:4111"
   ],
   "cortex-eval: truncateSession": [
    "packages/cortex-eval/src/natural-language-memory.ts:2820"
@@ -2871,25 +2879,25 @@
    "packages/cortex-eval/src/natural-language-memory.ts:2716"
   ],
   "cortex-memory: ASK_CHANGES": [
-   "packages/cortex-memory/src/prompt.ts:457"
+   "packages/cortex-memory/src/prompt.ts:476"
   ],
   "cortex-memory: ASK_CHANGES_WHEN_DERIVATION": [
-   "packages/cortex-memory/src/prompt.ts:2139"
+   "packages/cortex-memory/src/prompt.ts:2350"
   ],
   "cortex-memory: ASK_CONTROLS": [
-   "packages/cortex-memory/src/prompt.ts:391"
+   "packages/cortex-memory/src/prompt.ts:405"
   ],
   "cortex-memory: ASK_ROUTES": [
-   "packages/cortex-memory/src/prompt.ts:154"
+   "packages/cortex-memory/src/prompt.ts:163"
   ],
   "cortex-memory: AnswerRequest": [
    "packages/cortex-memory/src/tally.ts:49"
   ],
   "cortex-memory: AssembleOptions": [
-   "packages/cortex-memory/src/assemble.ts:92"
+   "packages/cortex-memory/src/assemble.ts:99"
   ],
   "cortex-memory: AssemblyProfile": [
-   "packages/cortex-memory/src/assemble.ts:90"
+   "packages/cortex-memory/src/assemble.ts:97"
   ],
   "cortex-memory: CORPUS_SCHEMA": [
    "packages/cortex-memory/src/corpus.ts:54"
@@ -2913,22 +2921,22 @@
    "packages/cortex-memory/src/corpus.ts:103"
   ],
   "cortex-memory: CortexProductProviderOptions": [
-   "packages/cortex-memory/src/product-provider.ts:68"
+   "packages/cortex-memory/src/product-provider.ts:76"
   ],
   "cortex-memory: CortexSessionProviderOptions": [
    "packages/cortex-memory/src/provider.ts:116"
   ],
   "cortex-memory: DEFAULT_MAX_PROMPT_CHARS": [
-   "packages/cortex-memory/src/prompt.ts:1010"
+   "packages/cortex-memory/src/prompt.ts:1063"
   ],
   "cortex-memory: DEFAULT_PROMPT_CONTRACT": [
-   "packages/cortex-memory/src/prompt.ts:62"
+   "packages/cortex-memory/src/prompt.ts:71"
   ],
   "cortex-memory: DisclosureSessionOptions": [
    "packages/cortex-memory/src/disclosure/session.ts:54"
   ],
   "cortex-memory: PROMPT_CONTRACTS": [
-   "packages/cortex-memory/src/prompt.ts:47"
+   "packages/cortex-memory/src/prompt.ts:56"
   ],
   "cortex-memory: ParsedSpec": [
    "packages/cortex-memory/src/aggregation/spec.ts:78"
@@ -2988,7 +2996,7 @@
    "packages/cortex-memory/src/conflict.ts:238"
   ],
   "cortex-memory: formatEvidence": [
-   "packages/cortex-memory/src/prompt.ts:2855"
+   "packages/cortex-memory/src/prompt.ts:3080"
   ],
   "cortex-memory: renderConflicts": [
    "packages/cortex-memory/src/conflict.ts:564"
@@ -3058,21 +3066,6 @@
   ],
   "cortex-storage: parseTags": [
    "packages/cortex-storage/src/storage/sql.ts:198"
-  ],
-  "cortex-eval: CacheCreditVariant": [
-   "packages/cortex-eval/src/cache-credit.ts:63"
-  ],
-  "cortex-eval: CacheCreditPrompt": [
-   "packages/cortex-eval/src/cache-credit.ts:67"
-  ],
-  "cortex-eval: CacheCreditRow": [
-   "packages/cortex-eval/src/cache-credit.ts:80"
-  ],
-  "cortex-eval: CacheCreditModelFit": [
-   "packages/cortex-eval/src/cache-credit.ts:89"
-  ],
-  "cortex-eval: CacheCreditFit": [
-   "packages/cortex-eval/src/cache-credit.ts:103"
   ]
  }
 }

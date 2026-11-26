@@ -32,7 +32,7 @@
  * is its text.
  */
 import { describe, it, expect } from 'vitest';
-import { readFileSync } from 'node:fs';
+import { readdirSync, readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 
 const REPO_ROOT = resolve(__dirname, '../../../..');
@@ -607,5 +607,82 @@ describe('a guard script cannot exist without running in the check chain', () =>
     // remaining mechanism by the floor in this file; a floor that is not computed on every push is
     // a number in a document.
     expect(rootPackage().scripts['check']).toContain('pnpm guard:queue-floor');
+  });
+});
+
+describe('a workflow cannot call a package script that does not exist', () => {
+  /**
+   * The failure this is built for is not hypothetical and it is not cheap.
+   *
+   * A dispatch is the only way to run a paid measurement, and it is the only environment where a
+   * misspelled script name is discovered. `pnpm --filter <pkg> <script>` that names a script the
+   * package does not declare fails **after** the checkout, the install and the 100 MB corpus
+   * download, so the cost of the typo is a full dispatch and a reading that has to be re-run. The
+   * repository has eighteen workflows and five packages; nothing else checks this seam, because a
+   * workflow is not compiled and a `package.json` does not know who calls it.
+   */
+  it('resolves every `pnpm --filter <package> <script>` in every workflow', () => {
+    const workflowDir = resolve(REPO_ROOT, '.github/workflows');
+    const manifests = new Map<string, PackageJson>();
+    for (const dir of readdirSync(resolve(REPO_ROOT, 'packages'))) {
+      const manifest = JSON.parse(
+        readFileSync(resolve(REPO_ROOT, 'packages', dir, 'package.json'), 'utf8'),
+      ) as PackageJson & { readonly name?: string };
+      if (manifest.name !== undefined) manifests.set(manifest.name, manifest);
+    }
+
+    const calls: string[] = [];
+    for (const name of readdirSync(workflowDir).filter((entry) => entry.endsWith('.yml'))) {
+      const body = readFileSync(resolve(workflowDir, name), 'utf8');
+      for (const match of body.matchAll(/pnpm --filter (\S+) (\S+)/g)) {
+        const pkg = match[1] as string;
+        const script = match[2] as string;
+        // `pnpm --filter ... --` is a turbo fan-out rather than a script call, and the `--` is the
+        // argument separator; every other filtered call names a script this test has to resolve.
+        if (script.startsWith('-')) continue;
+        calls.push(`${name} → ${pkg} ${script}`);
+        const manifest = manifests.get(pkg);
+        expect(manifest, `${name} filters ${pkg}, which is not a workspace package`).toBeDefined();
+        expect(
+          manifest?.scripts[script],
+          `${name} runs \`${pkg} ${script}\`, and no such script exists`,
+        ).toBeDefined();
+      }
+    }
+    expect(calls.length).toBeGreaterThan(0);
+  });
+});
+
+describe('the specification ceiling is measured without a model, and says so in the file', () => {
+  const body = readFileSync(
+    resolve(REPO_ROOT, '.github/workflows/measure-spec-ceiling.yml'),
+    'utf8',
+  );
+
+  it('carries no model credential, because the search executes plans and never consults a reader', () => {
+    // A workflow that carries a key it never uses is a key that leaks the day someone copies the
+    // file, and it is also a claim that the run costs money -- which would make a zero-cost
+    // measurement look like something to avoid dispatching.
+    //
+    // Read as an *assignment to a secret*, not as the string: the file explains in prose why it has
+    // no key, and a check that refused the word would forbid the sentence that documents the rule.
+    const keyed = [...body.matchAll(/(DEEPSEEK_API_KEY|ZHIPU_API_KEY)\s*:\s*\$\{\{/g)].map(
+      (match) => match[1],
+    );
+    expect(keyed).toEqual([]);
+  });
+
+  it('measures the registered population rather than the failing set of whatever report is at hand', () => {
+    // `--artifact` would select the failures of the arm that ran last, and the twelve questions this
+    // registration is written against are named in `docs/AUDIT-NUMERIC-MEMBERSHIP.md`, not derived
+    // from a report. A run that silently fell back to the report would publish a ceiling over a
+    // different population with the same name.
+    expect(body).toContain('--population');
+    expect(body).toContain('spec-ceiling-population.json');
+  });
+
+  it('searches both vocabularies, because the question vocabulary is the reading and the history one is the bound', () => {
+    expect(body).toContain('--keywords "$MODE"');
+    expect(body).toContain('for MODE in question history');
   });
 });
