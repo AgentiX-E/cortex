@@ -26,19 +26,36 @@ Zhipu GLM embedding-3, temperature 0, full N=500, 4 interleaved runs.
 defect. The two are kept side by side rather than by rewriting the anchor: a baseline that moves with the
 code is not a baseline.
 
-**Current position, measured on `44017278305`** (the arm `S16`; 500 questions, 4 repetitions,
-`--registration` reports every field matching):
+**Current position, measured on `45760081761`** (the arm `S18`; 500 questions, 2 repetitions,
+`resolution: layered` declared as the one departure from the registration):
 
 | item | value |
 | --- | --- |
-| `feature.metrics.correct` (repetition 1) | **456 / 500 = 91.20%** |
-| `featureAggregate` (four passes) | mean **91.25%**, min 90.80, max 91.60, median 91.30 |
-| per capability (repetition 1) | `IE` 137/150 = 91.33 · `MR` 102/121 = 84.30 · `KU` 67/72 = 93.06 · `TR` 120/127 = 94.49 · `ABS` 30/30 = 100.00 |
+| `feature.metrics.correct` (repetition 1) | **465 / 500 = 93.00%** |
+| `featureAggregate` (two passes) | mean **93.40%**, min 93.00, max 93.80 |
+| per capability (repetition 1) | `IE` 143/150 = 95.33 · `MR` 105/121 = 86.78 · `KU` 67/72 = 93.06 · `TR` 120/127 = 94.49 · `ABS` 30/30 = 100.00 |
 | reader | `deepseek:deepseek-chat`, `thinking = enabled on multi-session+temporal`, `temperature 0` |
 | budget | `abstention 24,000 · assistant 24,000 · flat 24,000 · knowledge-update 24,000 · multi-session 48,460 · temporal 24,000`, `maxTurnChars 400` on `multi-session,temporal`, `turnCutMarker none` |
-| prompt tokens per question | **7,447.8** on the roster |
+| prompt tokens per question | **7,346** (7,866 per correct answer) |
 | ranking | `self-index`, `relevanceTopK 256`, `relevanceUnits turn` |
 | embedding | `openai-compatible/embedding-3`, 1024 |
+| bill | prompt 9,810,118 (92.65% prefix-cached) · completion 970,343 · 3,219 calls with a `usage` block, 0 retries, 0 throttling |
+
+This table used to state `44017278305` (`S16`) as the current position — **91.20% at four repetitions** —
+and that number was the **control's**, not the shipped arm's. `S16` rendered every capped turn whole
+(`resolution: raw`); the arm the product ships resolves `layered` (`assemble.ts` defaults it from
+`REGISTERED_ARM`, adopted on `45543010618`). Two dispatches of the shipped rendering now exist and they
+agree: `45543010618` read **93.50%** at two repetitions and **7,224** prompt tokens per question,
+`45760081761` reads **93.40%** at two repetitions and **7,346**. Four passes over the two therefore span
+**93.00–93.80 with mean 93.45**, and they are reported as a distribution rather than merged, because the
+two dispatches differ by 1.7% in prompt tokens and byte-identity of their prompts was not compared
+question by question.
+
+The two are 0.10 points apart, which is the arm's own run-to-run spread at two passes, and that is worth
+stating precisely: it is smaller than any mechanism this campaign has tried to certify (the smallest
+certifiable effect at `c = 0` is six questions, 1.2 points), so a *level* stated to one decimal is a level
+stated to inside its own noise. What is not inside the noise is the rendering: `raw` 91.20 against
+`layered` 93.40 is 2.2 points on the same 500 questions and the same reader.
 
 This section used to state `90.15%` from run `41546569106` as the current position. It was the current
 position when it was written and it has not been the current position since `S16`: the per-route budget
@@ -46,24 +63,39 @@ table, the `self-index` ranking signal and `ask: verbatim-acts` all landed after
 **90.15 → 91.20** on the same 500 questions. The `90.15` row is kept in `docs/COMMITTED-READINGS.md`
 because a superseded reading is still a reading; what is not kept is the word **current** in front of it.
 
-Two measurements sit on top of 91.20 and neither is in this number:
+One measurement sits on top of this number and it is not in it:
 
 | mechanism | reading | why it is not added here |
 | --- | --- | --- |
 | `single-session preference` route | **+7 of 10** treated questions converted, twice, the same seven both draws (§`PREREGISTRATION-PREFERENCE-ROUTE.md` §9) | measured on `IE`'s 150 questions only; the other 350 were not re-run, so the roster projection (+0.9 points) is not a measurement |
-| `resolution: layered` | `MR` **+6.20 points** on the third replication (`45543010618`, 500 questions, `R1`-`R4` all cleared: `MR` up-down `+8`, combined `p = 0.0452`, prompt bill `+0.07%`) | the default is still `raw`, and now for a **cost** reason rather than a significance one: the same run's cache-adjusted price is **1.55×** the baseline (`usageBySide` sums: 2,148,498 uncached prompt tokens against 228,105), which `R3`'s registered clause — a token ratio — cannot see |
 
-Both are **reachable from the product today** — the first by default, the second as an option — and the
-difference between them is that the first is what the shipped arm reads and the second is a configuration
-nobody has dispatched at 500 questions since it was measured.
+`resolution: layered` was the second row here, and two things had to move for it to leave: the product
+stopped defaulting `raw` (`assemble.ts` resolves the registered arm, and `resolution-default.test.ts`
+holds the two layers apart), and the **cost objection was withdrawn** — the 1.55x cache-adjusted price is
+`docs/AUDIT-CACHE-CREDIT.md`'s subject, and it credits 96.4% of prompts whose bytes permit 1.4% of reuse,
+so the credit tracks *when a call arrived* rather than what the prompt contains (`45574814660` measured a
+byte-identical repeat at 82.7%). `tools/arm-adoptions.json` carries the adoption and states the
+withdrawal.
 
-The third replication is also the round that made the second row's caveat precise. Its eight shards
+**The measurement default is still `raw`, and deliberately so.** `bench-memory-arm.ts`'s
+`DEFAULT_RESOLUTION` is the *renderer's* record: every archived prompt was rendered whole, and a default
+that moved would make each of them unreproducible from the code. A dispatch that names no rendering is
+therefore a dispatch of the control, which is why `tools/dispatch-cortex-memory-ab.py` prints
+`CORTEX_MEMORY_RESOLUTION = raw` on every run it does not override, and why
+`tools/paired-delta-census.mjs` refuses to compare two artifacts whose renderings differ. The gap that
+remains is that the *default* is the control while the *shipped* arm is the treatment — a dispatch that
+forgets the variable measures an arm the product does not ship. `45636994046` is that mistake, and it
+charged an ask with a rendering worth +7 `MR` questions.
+
+The third replication is also the round that made that cost objection precise. Its eight shards
 answered the whole population and were refused by `tools/merge-ablation.mjs`, because `selfIndex` — the
 product's own embedding bill, counted after the questions — was being compared across shards as if it
 were configuration. The reading was recovered from the archived artifacts rather than re-bought, the
 artifact now declares which of its fields are readings (`memoryArmConfig.censusKeys`), and the bill's
-two readings print together: **+0.07% in tokens and 1.55× in price**. A mechanism is not free because
-the instrument it was registered against counts the wrong quantity.
+two readings printed together: **+0.07% in tokens and 1.55x in price**. Both are true and the second one
+is not about the mechanism: `AUDIT-CACHE-CREDIT.md` shows the credit tracks arrival time, not prompt
+content, and the probe that repeated one call byte for byte read 82.7% — so a price ratio assembled from
+`usageBySide` sums is a measurement of the scheduler, not of the arm.
 
 ### 0.1 Where that sits, corrected against the published field
 
