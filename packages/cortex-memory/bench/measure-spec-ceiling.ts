@@ -53,8 +53,9 @@
  *     [--keywords question|history] [--max-keywords 600] [--json out.json]
  */
 
-import { readFileSync, writeFileSync } from 'node:fs';
-import { pathToFileURL } from 'node:url';
+import { existsSync, readFileSync, writeFileSync } from 'node:fs';
+import { dirname, isAbsolute, join } from 'node:path';
+import { fileURLToPath, pathToFileURL } from 'node:url';
 
 import {
   measure,
@@ -65,6 +66,38 @@ import {
   type PopulationFile,
   type SpecSummary,
 } from '../src/aggregation/ceiling.js';
+
+/**
+ * The repository root, found by walking up for the workspace manifest rather than by counting `..`.
+ *
+ * The first dispatch of this workflow (`45748211939`) failed on exactly this: `--population
+ * tools/spec-ceiling-population.json` was resolved against the package directory, because
+ * `pnpm --filter` runs a package script with the package as its working directory, and the runner
+ * has no `packages/cortex-memory/tools/`. A relative path in a command line is a path relative to
+ * whatever the caller's working directory happens to be, and the caller here is a package manager.
+ */
+function repoRoot(): string {
+  let directory = dirname(fileURLToPath(import.meta.url));
+  for (;;) {
+    if (existsSync(join(directory, 'pnpm-workspace.yaml'))) return directory;
+    const parent = dirname(directory);
+    if (parent === directory) throw new Error('no pnpm-workspace.yaml above the bench directory');
+    directory = parent;
+  }
+}
+
+/**
+ * A path as written on the command line, resolved against the repository rather than the caller.
+ *
+ * Every path this tool *reads* is a file the repository registers -- the corpus is passed by the
+ * workflow as an absolute path, and a population is a checked-in document -- so resolving against
+ * the repository is what makes the same command line work from the repository root and from a
+ * package directory. `--json` is the exception and is resolved against the working directory,
+ * because where a reading is written is the caller's decision and not the repository's.
+ */
+function inputPath(path: string): string {
+  return isAbsolute(path) ? path : join(repoRoot(), path);
+}
 
 /** Read `--flag value` pairs, which is all this command line needs. */
 function flag(name: string): string | null {
@@ -89,15 +122,17 @@ function main(): void {
   const vocabularyMode = flag('keywords') === 'history' ? 'history' : 'question';
   const maxKeywords = Number(flag('max-keywords') ?? 600);
 
-  const dataset = JSON.parse(readFileSync(datasetPath, 'utf8')) as DatasetQuestion[];
+  const dataset = JSON.parse(readFileSync(inputPath(datasetPath), 'utf8')) as DatasetQuestion[];
   const artifact =
     artifactPath === null
       ? null
-      : (JSON.parse(readFileSync(artifactPath, 'utf8')) as { questions: ArtifactQuestion[] });
+      : (JSON.parse(readFileSync(inputPath(artifactPath), 'utf8')) as {
+          questions: ArtifactQuestion[];
+        });
   const population =
     populationPath === null
       ? null
-      : (JSON.parse(readFileSync(populationPath, 'utf8')) as PopulationFile);
+      : (JSON.parse(readFileSync(inputPath(populationPath), 'utf8')) as PopulationFile);
 
   const { selected, missing } = selectPopulation({
     dataset,
