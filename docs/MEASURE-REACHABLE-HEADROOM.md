@@ -52,7 +52,13 @@ Four things follow, and each of them contradicts something this campaign believe
 **The ceiling is 96.00, not 100.** Twenty of the twenty-six questions this arm never answers are
 questions the reference pipeline never answers either. They are a ceiling of the *harness* — a
 retrieval reach, a gold nobody can decide, or a corpus fact that is not in the corpus — and no amount of
-work on this arm moves them. A projection that quotes `100` as the ceiling of a 500-question benchmark is
+work on this arm moves them.
+
+That last sentence is **one witness's** statement and it was read as the only one. `tools/ceiling-witnesses.mjs`
+(`§205`) counts the second: of the same twenty-six, **nine** had their gold's operand delivered into this
+arm's own prompt and **one** has no searchable operand at all, so the prompt's ceiling is `96.60` and the
+eight questions on which the two witnesses disagree are questions the evidence *reached*. What survives is
+weaker and still true: neither witness promises a mechanism. A projection that quotes `100` as the ceiling of a 500-question benchmark is
 quoting the corpus, not the system.
 
 **The largest reachable block is not the one every mechanism was aimed at.** Fourteen unstable questions
@@ -105,11 +111,19 @@ is the pass the artifact's `questions` array describes:
 | class | n | routes |
 | --- | ---: | --- |
 | `derived-number` | 10 | multi-session 8, temporal 1, knowledge-update 1 |
-| `text-misselected` | 8 | temporal 4, knowledge-update 2, multi-session 1, assistant 1 |
 | `number-misselected` | 7 | multi-session 3, temporal 2, flat 1, knowledge-update 1 |
+| `text-misselected` | 5 | temporal 2, knowledge-update 2, multi-session 1 |
 | `preference` | 5 | flat 5 |
 | `number-absent` | 3 | multi-session 3 |
+| `text-absent` | 3 | temporal 2, assistant 1 |
 | `declined` | 2 | multi-session 1, knowledge-update 1 |
+
+**Corrected in `§205`.** This table first read `text-misselected 8` and no `text-absent` at all, because
+`failure-classes.mjs` decided the `absent` / `misselected` split on `goldOverlap.goldTurns`, which
+`question-record.ts` writes as *"the text of every gold turn, delivered or not"*. Three questions whose gold
+the window dropped were filed as a **decision** fault, and the class that names the delivery institution —
+`text-absent` — could not fire. `docs/MEASURE-TWO-WITNESSES.md` §1 records the defect and §3 the two queue
+verdicts it was holding up.
 
 And read by hand, the twenty-six are four shapes rather than twenty-six stories:
 

@@ -19,8 +19,9 @@ That ceiling says *"no pipeline in this repository answers it"*; the artifact ha
 consulted the second one.
 
 And restated in the units of the test every dispatch is actually read by, the queue is smaller than it
-looked: **five of its six mechanisms cannot reach the rejection region at any conversion rate**, and the
-sixth was dispatched twice and read 5 up, 5 down against a bar of 88%.
+looked: **five of its seven mechanisms cannot reach the rejection region at any conversion rate**; of the
+two that can, one was dispatched twice and read 5 up, 5 down against a bar of 88%, and the other — the
+delivery institution — became visible only once §1's split was drawn on the right text.
 
 ## 1. The split, drawn on text the reader never saw
 
@@ -120,6 +121,42 @@ parts rather than a third number. The four refusals are asserted too: a record w
 record whose delivery map disagrees with its turns, an artifact with no per-repetition masks, and a usage
 error.
 
+### The reading, on `45760081761`
+
+```
+ceiling: what a mechanism can reach, by the control and by this arm's own prompt
+capability          n  never  control  shown  unknown  ceiling(c)  ceiling(s)
+ABS                30      0        0      0        0      100.00      100.00
+IE                150      6        0      2        0       96.00       97.33
+KU                 72      5        0      3        1       93.06       97.22
+MR                121     10        5      2        0       95.87       93.39
+TR                127      5        1      2        0       96.85       97.64
+suite             500     26        6      9        1       96.00       96.60
+the two witnesses disagree about 8 of the 26 never-right questions: the prompt carried the gold and the
+control never answered it.
+```
+
+The control column reproduces `96.00` exactly, which is the check that says this instrument is reading the
+same artifact the published ceiling was taken from.
+
+Three things follow, and the third is the one that matters.
+
+**The two witnesses are almost disjoint.** Of the six questions the control demonstrates and the nine this
+arm's prompt delivered, **one** is in both. Eight of the nine the control has never answered. So "a pipeline
+in this repository can answer it" and "the evidence arrived" are not two measurements of one set — they are
+two different sets, and a ceiling built on either alone is a ceiling over half the reachable questions.
+
+**The second witness is not uniformly larger.** It adds `4.16` points on `KU`, `1.33` on `IE` and `0.79` on
+`TR`, and it **subtracts `2.48` on `MR`**: of `MR`'s ten never-right questions the control demonstrates five
+and this arm's prompt delivers the gold to two. That is the route every mechanism in this campaign was aimed
+at, and on it the delivery story is *worse* than the control story. It is also the arithmetic behind `§203`'s
+finding that `MR` holds four convertible questions: the prompt does not carry what the control can find.
+
+**`KU` is where the gap is.** Its control ceiling is `93.06` — the lowest of the five, and the one the queue
+was built on — and its prompt ceiling is `97.22`, a `4.16`-point difference on five questions where the gold
+was delivered three times and the control answered none. `KU` is also the home of the queue's only certifiable
+mechanism (§3), which is a coincidence this round did not plan and cannot yet explain.
+
 ## 3. The bar, in the units of the test that is actually run
 
 Round `§204`'s detectability table compared each mechanism's **ceiling in points** against a **floor in
@@ -138,20 +175,49 @@ significant at 80% power when `P(Bin(R, q) >= 6) >= 0.8`.
 | --- | --- | ---: | ---: | --- |
 | stale-value + the decline (`H2`) | `KU` | 7.00 | **88.0%** | dispatched twice: **5 up, 5 down** |
 | stale-value (`H2`) alone | `KU` | 6.00 | **96.3%** | the same dispatch, read without the decline |
+| delivery institution | suite | 6.00 | **96.3%** | invisible before §1: the class read empty |
 | under-count repair | `MR` | 3.00 reachable of 6.00 | — | cancelled on reach before it was priced |
 | entity grouping (`H3`) | `MR` | 4.00 | — | not dispatched |
 | decline repair (`E3.2`) | `MR` | 3.75 | — | not dispatched |
 | deterministic summation | `MR` | 2.25 | — | not dispatched |
 
-Five of the six cannot reach the rejection region **at any conversion rate**: `Bin(R, q) >= 6` is false at
+Five of the seven cannot reach the rejection region **at any conversion rate**: `Bin(R, q) >= 6` is false at
 `q = 1` when `R < 6`, so no outcome of those dispatches could have produced `p <= 0.05` whatever the
 mechanism did. That is a fact about the class size and not a power calculation, and it is the sharper
 version of what `§204` was reaching for.
 
-The sixth is the one that matters, because it *was* certifiable and it was **dispatched twice**. It needed
-88% conversion of seven questions; it converted five and broke five. And the noise floor of this population
+Of the two that clear the bar, one is `H2` on `KU` and it *was* certifiable and it was **dispatched twice**.
+It needed 88% conversion of seven questions; it converted five and broke five. And the noise floor of this population
 under a byte-identical prompt is already **5 of 121 questions** (`MEASURE-PAIRED-POWER.md` §1), so a
 five-question movement in the right direction would not have been distinguishable from nothing.
+
+### What the corrected split does to the census
+
+The fix in §1 is not cosmetic, and the re-frozen census says how much. On `45760081761`:
+
+| class | before | after | what moved |
+| --- | ---: | ---: | --- |
+| `text-misselected` | 8 | **5** | three questions whose gold the window dropped |
+| `text-absent` | **0** | **3** | the same three, arriving in the class that means *"the reader never saw it"* |
+| `number-misselected` | 7 | 7 | unchanged: every one of the seven had its number in a turn that was carried |
+
+`text-absent` was **absent from the census entirely** — a class the taxonomy names, that the tool could not
+emit, and that `AUDIT-FAILURE-CLASSES.md` §5 concluded was empty: *"the delivery institution is empty on this
+arm under both renderings, so the queue's remaining..."*. It held three questions. The route they live on is
+`temporal 2, assistant 1` — not `multi-session`, which is where every mechanism has been aimed.
+
+Two rows of the queue change verdict, and both were **asserted in `tools/__tests__/test_queue_census.py`**:
+
+| row | before | after | why |
+| --- | --- | --- | --- |
+| `delivery on TR/IE/KU` | `empty` | **`refused`** | three members on 349 questions is 0.86 points against a floor of 1.72 — still refused, but refused **by the floor** rather than for having nothing to reach |
+| `delivery, suite` | `refused` | **`certifiable`** | six members on 500 is `1.20` against a floor of `1.20`: exactly the rejection region, and not one question more |
+
+A test that pins a verdict inherits the instrument that produced the verdict. Those two assertions were
+green, passing and wrong for as long as the classifier decided delivery on undelivered text — the same shape
+as the `declined` fixture that fed a token into a field `parseAnswer` maps to `null`. They are rewritten in
+this round to assert the corrected reading and to say in their docstrings that they were the defect's
+signature rather than its detector.
 
 **What this changes.** `§204` read the nineteen nulls as evidence that the instrument could not see, and
 apologised for them. Under the criterion the campaign is registered on, five of the six queue rows could not
@@ -180,10 +246,11 @@ and for the same reason.
 - **It does not say the ceiling is 96.00 or that it is not.** §2 gives a second witness and its count; the
   control witness's `96.00` stands as the control witness's statement. A larger second ceiling is a *bound*
   under the assumption that a decision the reader can be made to get right exists, not a measurement of one.
-- **It does not reprice the delivery split's counts.** The class counts in `tools/failure-census.json` move
-  only when the census is regenerated from a merged artifact, and that artifact is 63 MB over a proxy that
-  moves at about 10 KB/s. The counts are therefore **stale at the time of writing** and this note claims
-  nothing about their new values. `AUDIT-FAILURE-CLASSES.md`'s per-class table is stale for the same reason.
+- **It does not rewrite `AUDIT-FAILURE-CLASSES.md` §2's table.** That table is a reading of `45543010618`,
+  an earlier arm, and the artifact for it is not in this checkout; rewriting a record of a run this round
+  cannot re-read would be inventing it. What is written instead is an amendment against the run this round
+  *can* read, and the census `tools/failure-census.json` is re-frozen against `45760081761` with the
+  artifact's SHA-256 unchanged.
 - **It does not fix `unpairedFloor`'s formula, and the defect is real.** `tools/queue-floor.mjs`'s
   `unpairedFloor` is documented as *"the unpaired **two-proportion** minimum detectable effect"* but computes
   `2.8016 * sqrt(p(1-p)/n)`, which is the **one-sample** form; two independent samples of size `n` have

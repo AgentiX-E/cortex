@@ -190,3 +190,34 @@ members cannot win, whatever it does to coverage.
 | mutation check | changing the copied `ABSTAIN_TOKEN` by one character turns `repo-gates.test.ts` red (1 of 29 failing), then green on restore — the copy gate has discriminating power |
 | `repo-gates.test.ts` | new describe: the tool prints `TURN_CAP_ROUTES` in the product's order, and its abstain token equals `parse.ts`'s |
 | classification of the adopted arm | 34 of 34 failures assigned; **0 unclassified**, **0 refusals** |
+
+## 8. Amendment (`§205`): the delivery institution was not empty, and this note's own table could not say so
+
+`§2`'s table is a reading of `45543010618` and it is left as it was read — the artifact for that run is not in
+this checkout, and rewriting a record of a run nobody can re-read is inventing it. What follows is measured on
+`45760081761`, the arm the product ships, and it contradicts two sentences above.
+
+`§71`'s claim that **"the delivery institution is nearly empty on this arm"** and `§163`'s stronger *"the
+delivery institution is empty on this arm under both renderings"* are artefacts of a defect in the instrument,
+not readings of the arm. `failure-classes.mjs` decided the `absent` / `misselected` split by searching
+`goldOverlap.goldTurns`, which `question-record.ts:1160` writes as *"the text of every gold turn, **delivered
+or not**"* — the restore counterfactual's input, not a record of what the prompt carried. A question whose
+gold the window dropped was therefore filed as **`text-misselected`**, a decision fault, and `text-absent` —
+the class that names the delivery institution — could not fire at all.
+
+| class, `45760081761` | as this note's instrument read it | with the delivery map |
+| --- | ---: | ---: |
+| `text-misselected` | 8 | **5** |
+| `text-absent` | **0** | **3** (temporal 2, assistant 1) |
+| `number-misselected` | 7 | 7 |
+
+Three questions moved, and where they moved matters more than how many: they are on `temporal` and `assistant`,
+which is **not** the route every mechanism in the queue has been aimed at. The census in
+`tools/failure-census.json` is re-frozen against `45760081761` (artifact SHA-256 unchanged,
+`5e08f353…f30a1`) and two of its queue rows change verdict — `delivery on TR/IE/KU` from `empty` to `refused`,
+`delivery, suite` from `refused` to `certifiable` at exactly the floor. Both were asserted the other way round
+in `tools/__tests__/test_queue_census.py`, which is the part worth recording: **a test can only be as right as
+the instrument under it.**
+
+The repair, the second reachability witness this unlocks, and the restatement of the queue's bar in the units
+of the test that is actually run are in `docs/MEASURE-TWO-WITNESSES.md`.

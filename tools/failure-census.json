@@ -71,14 +71,13 @@
       "coverage": 1
     },
     "text-misselected": {
-      "count": 8,
+      "count": 5,
       "routes": {
         "multi-session": 1,
-        "temporal": 4,
-        "knowledge-update": 2,
-        "assistant": 1
+        "temporal": 2,
+        "knowledge-update": 2
       },
-      "coverage": 0.6666666666666667
+      "coverage": 0.9333333333333333
     },
     "preference": {
       "count": 5,
@@ -94,80 +93,135 @@
         "knowledge-update": 1
       },
       "coverage": 0.6875
+    },
+    "text-absent": {
+      "count": 3,
+      "routes": {
+        "temporal": 2,
+        "assistant": 1
+      },
+      "coverage": 0.5
     }
   },
   "populations": {
-    "suite": ["multi-session", "temporal", "flat", "knowledge-update", "abstention", "assistant"],
-    "multi-session": ["multi-session"],
-    "TR+IE+KU": ["temporal", "flat", "assistant", "knowledge-update"],
-    "knowledge-update": ["knowledge-update"],
-    "flat": ["flat"]
+    "suite": [
+      "multi-session",
+      "temporal",
+      "flat",
+      "knowledge-update",
+      "abstention",
+      "assistant"
+    ],
+    "multi-session": [
+      "multi-session"
+    ],
+    "TR+IE+KU": [
+      "temporal",
+      "flat",
+      "assistant",
+      "knowledge-update"
+    ],
+    "knowledge-update": [
+      "knowledge-update"
+    ],
+    "flat": [
+      "flat"
+    ]
   },
   "targets": [
     {
       "id": "12",
       "name": "delivery on TR/IE/KU",
-      "classes": ["number-absent", "text-absent"],
+      "classes": [
+        "number-absent",
+        "text-absent"
+      ],
       "population": "TR+IE+KU"
     },
     {
       "id": "12",
       "name": "delivery, suite",
-      "classes": ["number-absent", "text-absent"],
+      "classes": [
+        "number-absent",
+        "text-absent"
+      ],
       "population": "suite"
     },
     {
       "id": "12",
       "name": "delivery, multi-session",
-      "classes": ["number-absent", "text-absent"],
+      "classes": [
+        "number-absent",
+        "text-absent"
+      ],
       "population": "multi-session"
     },
     {
       "id": "numeric",
       "name": "numeric institution, bundled (suite)",
-      "classes": ["derived-number", "number-misselected", "number-absent"],
+      "classes": [
+        "derived-number",
+        "number-misselected",
+        "number-absent"
+      ],
       "population": "suite"
     },
     {
       "id": "numeric",
       "name": "numeric institution, bundled (MR)",
-      "classes": ["derived-number", "number-misselected", "number-absent"],
+      "classes": [
+        "derived-number",
+        "number-misselected",
+        "number-absent"
+      ],
       "population": "multi-session"
     },
     {
       "id": "numeric",
       "name": "derived-number alone (suite)",
-      "classes": ["derived-number"],
+      "classes": [
+        "derived-number"
+      ],
       "population": "suite"
     },
     {
       "id": "5",
       "name": "text-misselected (KU)",
-      "classes": ["text-misselected"],
+      "classes": [
+        "text-misselected"
+      ],
       "population": "knowledge-update"
     },
     {
       "id": "5",
       "name": "text-misselected (suite)",
-      "classes": ["text-misselected"],
+      "classes": [
+        "text-misselected"
+      ],
       "population": "suite"
     },
     {
       "id": "16",
       "name": "preference (flat)",
-      "classes": ["preference"],
+      "classes": [
+        "preference"
+      ],
       "population": "flat"
     },
     {
       "id": "16",
       "name": "preference (suite)",
-      "classes": ["preference"],
+      "classes": [
+        "preference"
+      ],
       "population": "suite"
     },
     {
       "id": "declined",
       "name": "prose decline (suite)",
-      "classes": ["declined"],
+      "classes": [
+        "declined"
+      ],
       "population": "suite"
     }
   ]

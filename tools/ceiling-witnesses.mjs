@@ -89,7 +89,12 @@ function witnessesFor(capability, recordsById) {
     const reach = operandReach(String(record.groundTruth ?? ''), overlap, entry.questionId);
     if (reach === 'delivered') shown += 1;
     else if (reach === 'unknown') unknown += 1;
-    if (entry.control === 'every') control += 1;
+    // `at least once`, not `every repetition`: `MEASURE-REACHABLE-HEADROOM.md` §2's `demonstrated` is the
+    // number of the `never` set the control answers in **any** repetition, and a tool that reported the
+    // stricter reading would print a ceiling 0.2 points lower than the published one for a reason the reader
+    // cannot see. The strict count is `every` alone and it is one smaller; the difference is printed as part
+    // of the disagreement line rather than as a column.
+    if (entry.control !== 'none') control += 1;
     rows.push({ questionId: entry.questionId, control: entry.control, reach });
   }
   const total = capability.total;

@@ -104,14 +104,45 @@ class TestTheRowsPriceTheWayTheArgumentSays(unittest.TestCase):
         self.assertEqual(len(rows), len(table["targets"]), "every target printed one row")
         return rows
 
-    def test_the_delivery_row_is_empty_on_the_three_short_routes(self) -> None:
-        # The row two rounds kept queued: its population is 349 questions and its class is nothing.
-        self.assertEqual(self._rows()["delivery on TR/IE/KU"], "empty")
+    def test_the_delivery_row_is_not_empty_on_the_three_short_routes(self) -> None:
+        """A class the campaign called empty and left undesigned, which held three questions.
 
-    def test_the_delivery_institution_is_refused_by_the_floor(self) -> None:
+        This assertion was the other way round -- `assertEqual(..., "empty")` -- and it was green for as long
+        as `failure-classes.mjs` decided the absent/misselected split on `goldOverlap.goldTurns`, which
+        `question-record.ts` writes as *"the text of every gold turn, delivered or not"*. Three questions
+        whose gold the window dropped were therefore filed as `text-misselected`, a **decision** fault, and
+        the **delivery** institution they belong to read as empty -- on a row the roadmap kept at "~10 CNY,
+        not designed" for two more rounds precisely because it was empty.
+
+        A test can only be as right as the instrument under it. This one was green, passing and wrong, which
+        is the same shape as the `declined` fixture that fed a token into a field the parser maps to `null`.
+        """
         rows = self._rows()
-        self.assertEqual(rows["delivery, suite"], "refused")
+        # Three members on 349 questions is 0.86 points against a floor of 1.72: still refused, but for the
+        # **floor** and not for having nothing to reach.
+        self.assertEqual(rows["delivery on TR/IE/KU"], "refused")
+        self.assertEqual(_census()["classes"]["number-absent"]["routes"], {"multi-session": 3})
+        self.assertEqual(_census()["classes"]["text-absent"]["routes"], {"temporal": 2, "assistant": 1})
+
+    def test_the_delivery_institution_reaches_the_floor_rather_than_sitting_under_it(self) -> None:
+        """Six members on the suite, which is exactly the rejection region and not one question more.
+
+        `certifiable` here means `ceiling >= floor`, i.e. six conversions are available -- and six is the
+        smallest number that can reach `p = 0.03125`. It is certified only at a conversion rate of 96.3%
+        (`P(Bin(6, q) >= 6) >= 0.8`), which is the number `docs/MEASURE-TWO-WITNESSES.md` §3 puts beside this
+        row, and it is why the row is *visible* rather than *promising*.
+        """
+        rows = self._rows()
+        self.assertEqual(rows["delivery, suite"], "certifiable")
         self.assertEqual(rows["delivery, multi-session"], "refused")
+        line = next(
+            row
+            for row in _run("--census", str(CENSUS)).stdout.splitlines()
+            if row.startswith("delivery, suite".ljust(44))
+        )
+        parts = line.split()
+        # ceiling and floor are the same number: the row is at the line and not above it.
+        self.assertEqual(float(parts[-4]), float(parts[-2]))
 
     def test_the_numeric_institution_is_the_one_row_with_room(self) -> None:
         rows = self._rows()
