@@ -1003,11 +1003,23 @@ export type PromptOptions = {
 /**
  * The unit the evidence room is spent in.
  *
- * Four of these five regroup scores that were taken **per turn**; `'session-text'` is the one that scores
+ * Five of these six regroup scores that were taken **per turn**; `'session-text'` is the one that scores
  * a session as a document. The difference is not a detail of the regrouping rule — it is what the score
  * means — and it is the only difference between this arm and the `reference-pipeline`'s session route.
+ *
+ * `'turn'` and `'turn-fill'` are one unit under two search rules, exactly as `'session'` and
+ * `'session-fill'` are: the first takes the largest fitting prefix and ends the pass on a turn that does
+ * not fit, the second skips it and continues. Keeping the refuted rule reachable is the same convention
+ * `'session'` follows — a value whose meaning changed between two archived runs makes both artifacts
+ * ambiguous.
  */
-export type RelevanceUnits = 'turn' | 'session' | 'session-fill' | 'anchor-window' | 'session-text';
+export type RelevanceUnits =
+  | 'turn'
+  | 'turn-fill'
+  | 'session'
+  | 'session-fill'
+  | 'anchor-window'
+  | 'session-text';
 
 /**
  * Whether a turn the per-turn cap cut says so.
@@ -3653,6 +3665,16 @@ export function buildPrompt(
       tally: census.tally,
       recount: census.recount,
       ...(options.relevanceFor === undefined ? {} : { relevanceFor: options.relevanceFor }),
+      // Forwarded here, and the omission was a real limit rather than an oversight: this builder is
+      // handed no session boundary, so `session`, `session-fill` and `anchor-window` cannot be
+      // expressed on it and stayed inert by falling through `chooseEvidence`'s `sessionOf` guard.
+      // That guard is about **boundaries**, and the turn unit needs none -- so a rule about *how the
+      // room is spent* was unreachable on five of six routes for a reason that only applies to rules
+      // about *what the room buys*. The two turn rules are those, and `turn-fill` is only observable
+      // because this line exists: without it the unit would be configured, recorded on the artifact,
+      // and silently replaced by the prefix rule -- the §13.32 defect that produced a `session-fill`
+      // artifact describing the turn unit.
+      ...(options.relevanceUnits === undefined ? {} : { relevanceUnits: options.relevanceUnits }),
       ...(ordering === undefined ? {} : { ordering }),
     },
     maxChars,
@@ -4020,6 +4042,12 @@ function chooseEvidence(
   if (plan.relevanceFor === undefined) {
     return { evidence: truncateCodePointSafe(plan.render(plan.turns), room), carried: null };
   }
+  // Before the session branch, because this unit needs no boundary: the turn unit is spendable on
+  // every route, and routing it behind `sessionOf` would make it inert on five of six -- the exact
+  // trap `session-fill` documents from the other side.
+  if (plan.relevanceUnits === 'turn-fill') {
+    return selectByTurnFill(question, plan, plan.relevanceFor, room);
+  }
   const sessionOf = plan.sessionOf;
   if (sessionOf !== undefined) {
     // Two spellings, one rule. `'session-text'` differs from `'session'` in **how a session was scored**
@@ -4201,6 +4229,105 @@ function selectByRelevance(
   // `!` rather than a guard: `ranked` is one entry per turn of `plan.turns`, and the empty plan is answered
   // before this function is called (`NOTHING_CARRIED` in `buildPrompt`). A guard here would be a branch no
   // test could reach, and this repository deletes those rather than collecting them.
+  const best = ranked[0]!;
+  return { evidence: truncateCodePointSafe(plan.render([best.turn]), room), carried, ranking };
+}
+
+/**
+ * The same selection, spending the room on the next turn that fits instead of stopping.
+ *
+ * ## What it fixes, measured on the published artifact
+ *
+ * `selectByRelevance` returns the largest fitting **prefix**: a turn that does not fit ends the pass,
+ * so every turn ranked below it is dropped and the room it could not fill is returned to nobody. On
+ * `45760081761` that is up to **13,817 characters stranded on one question** and a mean of **1,356**
+ * on the four routes that carry no per-turn cap -- `flat` 1,398, `knowledge-update` 1,333, `assistant`
+ * 1,356, `abstention` 954 -- against 132 and 127 on the two routes where `maxTurnChars` keeps every
+ * turn small enough that the prefix lands within one turn of the room. **The hole is a function of how
+ * long a single turn can be**, which is why the two capped routes were never the ones to show it.
+ *
+ * The room is paid for either way. This spends it.
+ *
+ * ## Why the same rule was already refuted once, and only for sessions
+ *
+ * `38753835652` dispatched the session unit on the prefix rule against `§13.26`'s turn unit with
+ * nothing else moved: **+25.75pp became +17.80pp**, MR fell **42.15% to 12.40%**, 92 questions the
+ * baseline had right became wrong against zero gained, and the artifact's own median carried count
+ * (12 turns against a room holding about 23) named the mechanism -- the first session over the line
+ * ended the pass and the rest of the room was never spent. `selectBySessionFill` is the repair, and it
+ * skips. **The turn unit kept the refuted rule**, and no artifact has measured it there.
+ *
+ * ## The safety property, which is the reason this can be stated before it is dispatched
+ *
+ * **Every turn the prefix carries, this carries.** The prefix carried `0..k-1` because their rendering
+ * fits the room; the walk below starts at zero and revisits each of them in the same order with the
+ * same set they had, so it accepts each for the same reason before it reaches `k`. The carried set is
+ * therefore a **superset** of the prefix's on every question: gold delivered can go up and cannot go
+ * down, and the cost is zero because the room was already bought. `evidence-turn-fill.test.ts` asserts
+ * the containment on four corpora rather than asserting a list.
+ *
+ * ## What it does not claim
+ *
+ * Not that the extra turns help. On this artifact a question with an absent gold reads **93.64%**
+ * against **91.76%** for one whose gold arrived whole, so "more gold delivered" is not "more answers
+ * right" and only a dispatch can separate the two. That is why `'turn'` stays the registered unit and
+ * this is a sixth value beside it.
+ *
+ * ## The cost of the rule, stated rather than hidden
+ *
+ * Two costs, and the second one was found by a sweep rather than reasoned about.
+ *
+ * **`O(n)` renders instead of `O(log n)`**, because a skipped turn changes which indices the ones after
+ * it carry. The pre-filter below removes the candidates that cannot fit at all without calling the
+ * renderer -- a rendered block is never shorter than its own content plus a separator, so a turn longer
+ * than the remaining room is rejected on its length alone. That filter is what a prefix rule never
+ * needed and a filling rule cannot do without: the expensive case is exactly the one this rule exists
+ * for.
+ *
+ * **The number of turns carried is not monotone in the room.** A room large enough for a big turn buys
+ * it and can then have nothing left for the two small ones a smaller room bought instead, so raising
+ * the budget can lower the count. The prefix rule cannot do this -- `k` only grows -- and that, rather
+ * than the count itself, is what the prefix was buying. The characters delivered do not fall, and the
+ * superset property above is what makes the rule safe; `evidence-turn-fill.test.ts` asserts both the
+ * non-monotonicity and the superset, at `1,700` and at every room in the band, because a maintainer who
+ * meets the first without the second will read it as a regression and revert the rule.
+ */
+function selectByTurnFill(
+  question: string,
+  plan: EvidencePlan,
+  relevanceFor: RelevanceFor,
+  room: number,
+): { evidence: string; carried: readonly AdmittedTurn[]; ranking: readonly string[] } {
+  const ranked = rankedCandidates(question, plan.turns, relevanceFor);
+
+  const chronological = (indices: readonly number[]): AdmittedTurn[] =>
+    [...indices]
+      .sort((a, b) => ranked[a]!.arrival - ranked[b]!.arrival)
+      .map((index) => ranked[index]!.turn);
+
+  const kept: number[] = [];
+  let spent = 0;
+  for (let index = 0; index < ranked.length; index += 1) {
+    // Exact rejection without a render: `content.length + 1` is a lower bound on the block a turn
+    // contributes (its own text, a separator, and whatever index the renderer prefixes), so a turn
+    // that cannot beat the remaining room cannot fit and does not need to be measured to say so.
+    if (ranked[index]!.turn.content.length + 1 > room - spent) continue;
+    const candidate = chronological([...kept, index]);
+    const rendered = plan.render(candidate);
+    if (rendered.length > room) continue;
+    kept.push(index);
+    spent = rendered.length;
+  }
+
+  const ranking = ranked.map(({ turn: candidate }) => candidate.content);
+  const carried = chronological(kept);
+  if (carried.length > 0) return { evidence: plan.render(carried), carried, ranking };
+
+  // Not one whole turn fits, which is the one outcome filling cannot fix and the branch
+  // `selectByRelevance` reaches for the same reason: the room buys the best-ranked turn **clipped**,
+  // because "the evidence was too long to read" and "there is no evidence" are different answers and
+  // only the second one is what an empty window says. Reached identically from both rules, so the
+  // two agree on the questions where neither can fill anything.
   const best = ranked[0]!;
   return { evidence: truncateCodePointSafe(plan.render([best.turn]), room), carried, ranking };
 }

@@ -325,6 +325,11 @@ function readBudgetMs(env: NodeJS.ProcessEnv): number | undefined {
  */
 const RELEVANCE_UNIT_FORWARDING: Record<RelevanceUnits, RelevanceUnits | undefined> = {
   turn: undefined,
+  // The sixth unit, and the second time this table's compile error was the mechanism rather than a test:
+  // the row exists because the union grew. Unlike the four session-shaped units it is not restricted to
+  // one route -- `buildPrompt` forwards it now -- so a dispatch on it is a single-variable comparison
+  // against `turn` across all six capabilities.
+  'turn-fill': 'turn-fill',
   session: 'session',
   'session-fill': 'session-fill',
   'anchor-window': 'anchor-window',

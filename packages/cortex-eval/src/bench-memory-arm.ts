@@ -848,6 +848,20 @@ const DEFAULT_RELEVANCE_SIGNAL = RELEVANCE_SIGNALS.none;
 const RELEVANCE_UNITS = {
   /** The budget buys individual turns wherever they score highest. The pre-§13.27 behaviour. */
   turn: 'turn',
+  /**
+   * The same unit and the same ranking, spending the room on the next turn that fits.
+   *
+   * `MEASURE-UNSPENT-ROOM.md`. `turn` returns the largest fitting **prefix**, so a turn that does not
+   * fit ends the pass and the room behind it is returned to nobody -- a mean of 1,356 characters on the
+   * four routes with no per-turn cap, up to 13,817 on one question. The rule was refuted for sessions by
+   * `38753835652` (+25.75pp became +17.80pp) and `session-fill` is its repair; the turn unit kept it, and
+   * no artifact has measured the difference since.
+   *
+   * Read on every route, unlike the session units, because a rule about **how the room is spent** needs
+   * no session boundary -- `buildPrompt` forwards it, which is the one line that makes the unit
+   * observable on the five flat capabilities.
+   */
+  'turn-fill': 'turn-fill',
   /** The budget buys whole sessions, ordered by their best-scoring turn, on the prefix rule. */
   session: 'session',
   /** The same, skipping a session that does not fit instead of ending the pass on it. */
