@@ -56,8 +56,9 @@ capability fact twice (`RETRACTIONS` #22 is the first).
 `LLM`, and returns the ids the reader chose. It depends on `cortex-core` and nothing else, which is
 what makes it legal for an evaluation arm to call without reversing a dependency.
 
-The measurement needs one thing that does not exist yet: a way for the arm to ask **the product's own
-index** for a query, so the second look uses the registered ranking rather than a second implementation
+The measurement needs one thing that did not exist when this document was written: a way for the arm to
+ask **the product's own index** for a query, so the second look uses the registered ranking rather than a
+second implementation
 of it. The product change is one public method:
 
 ```ts
@@ -74,6 +75,14 @@ async search(query: string, options?: { readonly k?: number }): Promise<readonly
 
 `SearchHit` stays module-internal (the census already retired it as an export); the return type is
 `readonly { turn: number; score: number }[]` spelled out at the boundary.
+
+**Built later than the dispatch, and with the corpus as an argument.** The method shipped as
+`search(query, context, { k })`, not as the two-argument sketch above: `CortexMemory` receives its corpus
+per question (`answerSessions(question, sessions)`), so a `search` without one would have had to read a
+field that does not exist. The four properties the sketch was after are unchanged — the product's own
+ranking, the prompt's comparator, ids a caller can index with, and no second index built beside it — and
+`docs/DESIGN-MULTI-STEP-RETRIEVAL.md` §2.1 records what the missing entry cost the probe that ran without
+it.
 
 ## 3. The registered comparison
 

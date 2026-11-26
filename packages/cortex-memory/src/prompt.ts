@@ -4058,11 +4058,26 @@ function chooseEvidence(
  * `relevance-order.ts`: two candidates whose scores differ by less than the `1e-4` grid are a tie, and a tie
  * is decided by arrival so the order does not depend on provider noise. It is also why a rank is not a
  * position in `SearchIndex`'s own exact order, which `EvidenceOrder` documents at the field.
+ *
+ * ## Why this is exported, and to whom
+ *
+ * `CortexMemory.search()` answers "what would you show me for this query" and it has to answer with the
+ * order the prompt would have been built in, or the reader's second look would be a measurement of an order
+ * this file does not produce. There is exactly one caller outside this module and it is that method; a second
+ * comparator written there is the defect `tools/export-census.mjs` refuses as an orphan and the one §14.97.8
+ * measured at −3.75 questions when a contract met a selection it did not build.
  */
-function rankedCandidates(
+export function rankedCandidates(
   question: string,
   turns: readonly AdmittedTurn[],
-  relevanceFor: RelevanceFor,
+  /**
+   * Spelled inline rather than as `RelevanceFor`, which is this module's private alias.
+   *
+   * A declaration file cannot name a type that is not exported, so a signature carrying the alias is a
+   * build error the moment the function is exported -- and exporting the alias to satisfy it would advertise
+   * a name whose only purpose is to be a shorter spelling of the line below.
+   */
+  relevanceFor: (question: string, turn: string) => number,
 ): readonly { turn: AdmittedTurn; arrival: number; relevance: number }[] {
   return (
     turns

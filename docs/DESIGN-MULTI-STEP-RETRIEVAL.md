@@ -76,6 +76,38 @@ being housed. A subpath keeps that separation visible to a reader (`cortex-ai`'s
 reach a model") without paying a package's worth of manifests for 1,159 lines that depend on one
 interface.
 
+### 2.1 The entry that did not exist, and the probe that measured a different index
+
+`PREREGISTRATION-MULTI-STEP.md` §2 named one product change as the precondition for measuring this
+mechanism: a public method on `CortexMemory` that answers "the turns this memory would show for a
+query". It was not built. The loop was, the probe was, the ablation arm was not — and every probe run
+therefore built a `new SearchIndex()` over the same turns inside
+`packages/cortex-memory/bench/probe-multi-step.ts`.
+
+That is a measurement of a **different object**, and the difference is not cosmetic: the arm ranks
+with `self-index`, whose channel set is lexical **and** vector, while the probe's index is lexical
+only. §6.1's reading — 118 of 121 questions where the reader's action added evidence — is therefore a
+reading about a lexical retriever, and this document said so in the probe's own docstring ("adding one
+here would make the probe's numbers a property of an embedder") without saying the consequence: the
+numbers are a property of a **weaker** retriever instead.
+
+`CortexMemory.search(query, context, { k })` now exists. It spends `rankedCandidates` — the comparator
+`selectByRelevance` spends the room on — reads the write gate, returns `context` positions rather than
+filtered ones, and folds its index build into `indexCost()` while leaving the per-question census slots
+to whichever answer owns them. `search.test.ts` pins the order, the ids, the refusal cases, and the
+import that keeps one comparator rather than two.
+
+Three things follow, and none of them is a re-reading of §6.1:
+
+1. **The 118/121 stands as what it is** — a lexical-retriever reading, taken before the entry existed.
+   It is not retracted and it is not the product's number.
+2. **The next probe run should pass `memory.search`** through `indexRetrieval`'s structural seam, with
+   the arm's own `index` configured. Staying lexical survives as an explicit choice rather than as the
+   only one available, which is the difference between a declared deviation and a missing capability.
+3. **The judged ablation is still not scheduled**, for the reason §6.1 gives: 18 of 22 stable `MR`
+   failures already had their numeric gold in the prompt, so more gold is more enumeration. The entry
+   was a precondition for measuring the mechanism honestly, not evidence that measuring it would win.
+
 ## 3. The protocol
 
 One call per decision. The reader is shown the question and a **digest** — one line per held turn, an

@@ -53,7 +53,7 @@ table.
 | 25 | paired statistics, noise floor, resolution | instrument | **instrument** | ✗ | ✗ | declared: a pure function of the observations it is handed | ✗ | — | `packages/cortex-eval/src/stats.ts` |
 | 26 | competitor adapters | instrument | **instrument** | — | — | declared: wraps the product behind a MemorySystem and drives the competitor's harness against it | — | — | `tools/competitor-sut.mjs` |
 | 27 | session boundary clock | product | **product (gated)** | ✓ | ✓ | declared: dates every rendered session boundary with the range its own block states, read from the block rather than from the selection | ✓ | `packages/cortex-memory/src/memory.ts` | `packages/cortex-memory/src/turn-clock.ts` |
-| 28 | multi-step retrieval | product | **product** | ✓ | ✓ | declared: the reader's queries are matched by the product's own index and the answer prompt is composed by the product's own renderer, so every token it prints is state the product holds | ✓ | `packages/cortex-ai/src/agent/probe.ts` | `packages/cortex-ai/src/agent/loop.ts` |
+| 28 | multi-step retrieval | product | **product** | ✓ | ✓ | declared: the reader's queries are matched by the product's own index through `CortexMemory.search`, which ranks with the same `rankedCandidates` comparator the prompt spends its room on, and the answer prompt is composed by the product's own renderer, so every token it prints is state the product holds | ✓ | `packages/cortex-ai/src/agent/probe.ts` | `packages/cortex-ai/src/agent/loop.ts` |
 
 ## Summary
 

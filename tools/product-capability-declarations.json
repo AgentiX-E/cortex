@@ -258,7 +258,7 @@
       "expect": "product",
       "symbol": "retrieveStepwise",
       "site": "packages/cortex-ai/src/agent/loop.ts",
-      "d3": "declared: the reader's queries are matched by the product's own index and the answer prompt is composed by the product's own renderer, so every token it prints is state the product holds"
+      "d3": "declared: the reader's queries are matched by the product's own index through `CortexMemory.search`, which ranks with the same `rankedCandidates` comparator the prompt spends its room on, and the answer prompt is composed by the product's own renderer, so every token it prints is state the product holds"
     }
   ],
   "boundary": [

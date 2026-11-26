@@ -57,6 +57,7 @@ import {
   buildShapePrompt,
   buildSupersedePrompt,
   buildTallyPrompt,
+  rankedCandidates,
   type AssembledPrompt,
   type EvidenceOrdering,
   type TurnWindowCensus,
@@ -1775,6 +1776,86 @@ export class CortexMemory implements SessionAwareMemorySystem {
   }
 
   /**
+   * The turns this memory would show for a query, in the order it would show them.
+   *
+   * ## Why this is public, and why it was not
+   *
+   * `docs/DESIGN-MULTI-STEP-RETRIEVAL.md` builds a reader that looks twice: it answers from a window, and
+   * when its own list is short it asks a second question about the same corpus. `PREREGISTRATION-MULTI-STEP.md`
+   * §2 named this method as the one thing that did not exist yet, and it still did not: every probe over the
+   * loop built a second `SearchIndex` over the same turns, and **a probe that builds its own index measures
+   * its own index.** The registered arm ranks with `self-index`, so a second implementation of "what would
+   * you show me" is the class of defect §14.97.8 already priced at −3.75 questions, where the reference
+   * pipeline's contract met a selection it had not built.
+   *
+   * ## The order is the prompt's order, not the pool's
+   *
+   * The comparator is `rankedCandidates` — the one `selectByRelevance` spends the room on — and
+   * `relevance-order.ts` says why a rank is not `SearchIndex`'s exact order: the selector quantises scores to
+   * a `1e-4` grid and breaks ties by arrival, so an order that skipped the comparator would report ranks
+   * produced by a different rule from the ones the prompt was built with.
+   *
+   * `turn` is the turn's position in **`context`** (`AdmittedTurn.ordinal`), which is the id a caller can
+   * index its own array with and the same id `indexRetrieval` hands the loop.
+   *
+   * ## What the score means, and the one state in which it means nothing
+   *
+   * `score` is the signal's raw value, not the quantised one: a caller inspecting a boundary wants the
+   * number the signal produced, and the grid exists to order rather than to report.
+   *
+   * With **no** ranking configured — state 3 of `#relevanceFor` — the answer is arrival order with every
+   * score `0`. That is not a low score; it is the absence of one, and it is the honest answer because that
+   * configuration has no ordering of its own and this method does not invent one.
+   *
+   * ## What it refuses
+   *
+   * `k` must be a positive integer when given, or the call is refused by name: a silently clamped `k` is a
+   * caller that asked for ten ids and received eight without a way to notice. `relevanceUnits: 'session-text'`
+   * also refuses, through `#relevanceFor`, because that unit scores a **session** as one document while this
+   * method returns turn ids — the two cannot be reconciled without inventing a projection the selector does
+   * not have.
+   *
+   * ## Cost
+   *
+   * One index build per call, exactly as one `answer` costs. The embedding store is per instance
+   * (`#embedStore`), so text this instance has already vectorised is a memo hit rather than a provider call —
+   * which is what makes a loop that searches three times affordable at all. The build is folded into
+   * `indexCost()` even though it does not own the per-question slots: the bill is real whether or not the
+   * census slot is.
+   */
+  async search(
+    query: string,
+    context: readonly string[],
+    options: { readonly k?: number } = {},
+  ): Promise<readonly { readonly turn: number; readonly score: number }[]> {
+    const k = options.k;
+    if (k !== undefined && (!Number.isInteger(k) || k <= 0)) {
+      throw new Error(
+        `search options.k must be a positive integer, got ${String(k)}. A call that asked for a number of ` +
+          'turns and silently received a different one cannot tell a short corpus from a truncated answer, ' +
+          'and the reader that asked would then stop looking for a reason nothing in its trace records.',
+      );
+    }
+    // Copied because `#admit` takes a mutable array and this signature takes `readonly`: a copy per call is
+    // the price of not widening a signature eleven call sites depend on. The turns that come back carry
+    // `ordinal`, which is this array's position, so the ids survive the copy.
+    const turns = this.#admit([...context]);
+    if (turns.length === 0) return [];
+    // `record: false`: this call did not ask a question, so it must not claim the per-question slots an
+    // answer owns. The cost is folded inside `#relevanceFor` either way.
+    const relevance = await this.#relevanceFor(query, turns, undefined, { record: false });
+    if (relevance === undefined) {
+      const arrival = turns.map((turn) => ({ turn: turn.ordinal, score: 0 }));
+      return k === undefined ? arrival : arrival.slice(0, k);
+    }
+    const ranked = rankedCandidates(query, turns, relevance).map((row) => ({
+      turn: row.turn.ordinal,
+      score: row.relevance,
+    }));
+    return k === undefined ? ranked : ranked.slice(0, k);
+  }
+
+  /**
    * Flat answering. Also the fallback for every shape whose dedicated path is
    * absent, and for `single-session-preference`.
    *
@@ -3375,14 +3456,32 @@ export class CortexMemory implements SessionAwareMemorySystem {
      * than degraded, and the message names the field so the fix is in the call rather than in a search.
      */
     sessions?: readonly (readonly AdmittedTurn[])[],
+    /**
+     * Whether this call owns the per-question census slots.
+     *
+     * `true` for every route that asks and answers a question, because those slots describe **that**
+     * question's prompt. `false` for {@link CortexMemory.search}, which is the same signal built for a query
+     * the caller wrote: a caller that answers and then searches would otherwise read `rankingCensusOf` as
+     * `undefined` on the answer it just took, and a caller that searches first would have its ownerless
+     * ranking attributed to the question that followed. The **cost** is still folded either way — the index
+     * was built and the bill is real — because "this call did not own the slots" is not "this call was free".
+     */
+    options: { readonly record?: boolean } = {},
   ): Promise<((question: string, turn: string) => number) | undefined> {
     // Cleared here rather than at each exit, so the slot can never describe a question this call is not
     // answering: the three states below are "the caller ranked", "the product ranked" and "nothing ranked",
     // and only the second writes. Two assignments on every question, including the two paths that do not
     // build an index -- which is the price of a slot whose staleness would otherwise be unobservable.
-    this.#lastRanking = [];
-    this.#lastRankingQuestion = null;
-    this.#rankingIsProductOwn = false;
+    //
+    // A call that does not own the slots skips the clearing as well as the writing: clearing is a write of
+    // "no ranking", and a search that erased the answer's census would be the first half of the attribution
+    // defect with the report already filed.
+    const record = options.record ?? true;
+    if (record) {
+      this.#lastRanking = [];
+      this.#lastRankingQuestion = null;
+      this.#rankingIsProductOwn = false;
+    }
     const override = this.#options.relevanceFor;
     if (override !== undefined) return override;
 
@@ -3430,12 +3529,18 @@ export class CortexMemory implements SessionAwareMemorySystem {
     // taken earlier would report a run that made one model call and never the second -- and `rerankCalls`
     // would be zero on every run, which is the exact count a reader would use to decide the stage ran.
     const census = built.census();
-    this.#lastIndex = census;
     // Folded from the same census object the field above holds, rather than from a second `census()` call:
     // the two counters would then be free to disagree if that call ever became non-idempotent, and an
     // artifact whose per-question and cumulative numbers disagree is unreadable in the one place it matters.
+    //
+    // Folded **before** the `record` branch and unconditionally, because this counter answers what the run
+    // has paid rather than what the current question looked like, and a search pays the same bill an answer
+    // does.
     this.#indexCost = foldIndexCost(this.#indexCost, census);
-    this.#rankingIsProductOwn = true;
+    if (record) {
+      this.#lastIndex = census;
+      this.#rankingIsProductOwn = true;
+    }
 
     if (boundaries !== undefined) {
       // The projection that makes the comparison single-variable. Every turn of a session carries that

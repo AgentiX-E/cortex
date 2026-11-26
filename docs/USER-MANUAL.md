@@ -1993,9 +1993,12 @@ turns are printed, not how they are printed.
 
 ```ts
 import type { LLM } from '@agentix-e/cortex-core';
-import { renderInOrder, SearchIndex } from '@agentix-e/cortex-memory';
+import { renderInOrder, type CortexMemory } from '@agentix-e/cortex-memory';
 import { composeAgentPrompt, indexRetrieval, retrieveStepwise } from '@agentix-e/cortex-ai/agent';
 
+// The instance from §6.6 — the one constructed **with `index`**. An instance without one has no ranking of
+// its own, and `search` on it answers in arrival order with every score `0` rather than inventing an order.
+declare const memory: CortexMemory;
 declare const llm: LLM;
 
 const question = 'How much did the charity run raise, and who did it go to?';
@@ -2005,11 +2008,16 @@ const turns: string[] = [
   'My sister moved to Lisbon last spring.',
 ];
 
-const index = new SearchIndex();
-index.add(turns);
+// `search` comes from the memory, so the second look is ranked by the comparator the answer prompt was built
+// from. `indexRetrieval` supplies the two tools a ranking cannot answer — `read` and `session` — and adds no
+// scoring of its own.
+const retrieval = indexRetrieval(
+  { search: (query, k) => memory.search(query, turns, { k }) },
+  turns,
+);
 
 const result = await retrieveStepwise(question, {
-  retrieval: indexRetrieval(index, turns),
+  retrieval,
   llm,
   // Two decisions: the reader may search twice. `0` is a single retrieval with no model call at all.
   maxSteps: 2,
@@ -2032,9 +2040,12 @@ Five things about it are decisions rather than details:
 - **The reader sees a digest, not the evidence.** Each held turn contributes one line and a prefix of its
   text, so the deciding call is cheap and the answering call is the expensive one. `trace.promptChars` is
   the exact size of what was issued, which is why the bill of a two-step run is arithmetic over the trace.
-- **`indexRetrieval` is the only adapter.** It delegates to your `SearchIndex` and adds no scoring, so the
-  loop ranks with the code your `assembleMemory` call ranks with. Pass `sessionOf` if you want the
-  conversation tool to open real boundaries rather than one turn.
+- **`memory.search` is the ranking, and `indexRetrieval` is only the adapter.** The first is what makes this
+  the product's retrieval rather than a second one: it spends the same `rankedCandidates` comparator
+  `selectByRelevance` spends the room on, reads the write gate, and bills the index build into `indexCost()`.
+  The second delegates to it and adds no scoring. A loop handed a `new SearchIndex()` built here would rank
+  with a different index than `assembleMemory` — a difference invisible until the two disagree, which is why
+  `search.test.ts` pins the import rather than the outcome.
 - **Every stop is named.** `trace.stop` is one of `answered`, `step-limit`, `no-new-evidence`,
   `empty-query`, `unparsed`, `llm-error`, `corpus-exhausted` or `budget`. A provider outage and a reply the
   loop could not read are different reasons because the repairs differ.
