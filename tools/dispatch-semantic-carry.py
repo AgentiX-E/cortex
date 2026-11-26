@@ -88,12 +88,23 @@ INPUTS: dict[str, str] = {
     # against on. `reference` is the arm's registered pair, which is what `S10` needs: its two sides are two
     # dispatches of one configuration differing only by the turn window.
     "pairing": "carry",
+    # The instruction block, and the one input this table was missing: `semantic-carry.yml` declared
+    # `ask` and the script never sent it, so the workflow's own default served every dispatch and the
+    # log could not say otherwise. `--set ask=...` was refused by the table check rather than by the
+    # workflow, which is how a missing row reads as a typo. Only `pairing=ask` reads the value as a
+    # treatment; the other four send it because the arm's variable exists on all of them, and the
+    # registered block is what they should send.
+    "ask": "verbatim-acts",
     # `head` is the registered rendering every archived artifact used; `match` is the anchored window, i.e.
     # `S10`'s treatment. The cap stays 400 on the two capped routes either way.
     "turn_rendering": "head",
-    # `supersede` is required by `pairing=carry` (absorption happens only in that pass). `bare` is the
-    # registered preset and the pass `S10` measures under.
-    "review_pass": "supersede",
+    # The registered pass, and the one this file now sends unless the pairing is the carry. That is a
+    # change of default and it is the correction of a drift the paragraph above this table predicted:
+    # the workflow's own default moved to `bare` and this file kept sending `supersede`, so every
+    # dispatch from here measured an arm the product does not ship. `pairing=carry` still needs the
+    # absorbing pass (`review_pass_for` applies it), and the workflow's preflight refuses a carry that
+    # arrives without it -- so the exception is checked where it is made rather than assumed here.
+    "review_pass": "bare",
     # §7.2's timeline rendering. `0` is every archived artifact's state, and the two sides of a dispatch that
     # set it would be the same carrying system with a dated fact against an undated one. It is a value of its own
     # rather than an inference from `pairing` for the reason the arm's option is: the carry's own instrument and
@@ -105,7 +116,13 @@ INPUTS: dict[str, str] = {
     # per side). `S12` is registered at four.
     "ablation_runs": "2",
     "model": "deepseek-chat",
-    "thinking": "disabled",
+    # The registered reader. This was `disabled`, and the argument for it -- "a cheaper reader sharpens
+    # a two-sided comparison" -- is about the reader rather than about the pair, which is why the
+    # *workflow* moved its default to the registered value and wrote down that the 87.00% reading this
+    # file once published was taken with thinking off. The script kept sending `disabled` anyway:
+    # a default that lives in two places moves in one of them. A screening dispatch that wants the
+    # cheap reader says `--set thinking=disabled`, and then the log says so.
+    "thinking": "multi-session+temporal",
     # Mirrors the workflow's own default, which moved from 32 to 8 when the split made it a
     # per-shard number: 32 instances in one job each build a relevance index over ~493 K characters
     # of their own corpus, and a shard owns about 63 questions, so 8 in flight is the whole shard
@@ -209,6 +226,23 @@ def req(method: str, path: str, payload=None, allow_empty: bool = False):
     sys.exit(f"{method} {path} -> exhausted retries")
 
 
+# The one value that is a function of the pairing rather than a choice.
+#
+# `carry` is the only pairing with an absorbing pass to test: `memory.ts` supersedes on
+# `knowledge-update` when `reviewPass === 'supersede'`, so the carry is administered there and nowhere
+# else. Every other pairing is a rendering, a clock, a reference instruction block or an ask, and all
+# four are pairs of the *shipped* arm -- so they belong on the shipped pass. The workflow's preflight
+# refuses `pairing=carry` on any other pass, which is what makes deriving this safe: a derivation this
+# file got wrong is a refused run rather than a billed one that measured the wrong pass.
+REGISTERED_PASS = "bare"
+CARRY_PASS = "supersede"
+
+
+def review_pass_for(pairing: str) -> str:
+    """The pass `pairing` is administered on, as the arm itself would resolve it."""
+    return CARRY_PASS if pairing == "carry" else REGISTERED_PASS
+
+
 def apply_overrides(inputs: dict[str, str], overrides: list[str]) -> dict[str, str]:
     """`inputs` with each `KEY=VALUE` applied, refusing anything that would be silent.
 
@@ -223,11 +257,31 @@ def apply_overrides(inputs: dict[str, str], overrides: list[str]) -> dict[str, s
         key, _, value = override.partition("=")
         key = key.strip()
         if key not in inputs:
+            # The message names the *table*, not the workflow. They are two different statements and
+            # only one of them is true here: `ask` was declared by the workflow and absent from this
+            # table for three rounds, and a refusal that blamed the workflow sent the reader to the
+            # wrong file.
             raise SystemExit(
-                f"{key!r} is not an input {WORKFLOW} declares, so GitHub would drop it and the run "
-                f"would use the default. Keys: {', '.join(sorted(inputs))}"
+                f"{key!r} is not an input this dispatch sends, so the run would use the workflow's "
+                f"default and the log would not say so. Keys: {', '.join(sorted(inputs))}"
             )
         inputs[key] = value.strip()
+    return inputs
+
+
+def arm_inputs(overrides: list[str]) -> dict[str, str]:
+    """The complete input set: the table, the operator's overrides, and the pairing's own pass.
+
+    The order matters in one direction only. `--set pairing=carry` has to reach the derivation, so the
+    derivation runs after the overrides; and `--set review_pass=supersede` on a pairing that does not
+    need it has to survive, because pricing the absorbing pass on a route that has no supersession is a
+    legitimate experiment and this script's stated job is not to refuse values. What it refuses is a
+    *silent* one, and an operator who typed the key has not been silent.
+    """
+    inputs = apply_overrides(dict(INPUTS), overrides)
+    stated = {override.partition("=")[0].strip() for override in overrides}
+    if "review_pass" not in stated:
+        inputs["review_pass"] = review_pass_for(inputs["pairing"])
     return inputs
 
 
@@ -354,7 +408,7 @@ def projected_spend(inputs: dict[str, str], budget: float | None) -> None:
 
 def main(argv: list[str]) -> int:
     sets, watch, allow_stale, budget = parse_argv(argv)
-    inputs = apply_overrides(dict(INPUTS), sets)
+    inputs = arm_inputs(sets)
 
     # Before the head lookup, because a refused value must cost nothing at all -- not even the two
     # API reads below. The message names the closed set rather than the legal one only, since the

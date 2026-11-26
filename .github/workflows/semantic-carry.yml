@@ -48,14 +48,25 @@
 #    `claimRun` in `benchmark.ts` claims a whole corpus atomically, which is what makes `workers=4`
 #    safe on this population rather than a way to erase the treatment.
 #
-# ## The one departure from the registered preset, and why it is not optional
+# ## The one departure, and why it is now an input rather than a default
 #
-# `cortex_memory_review_pass` is `supersede` here, not the registered `bare`. Absorption happens only
-# in that pass, on that route (`memory.ts`'s `reviewPass === 'supersede' && route === 'knowledge-update'`),
-# so a carry run on the registered pass would dispatch a mechanism with nothing to carry -- the exact
-# "treatment administered, reached nothing" shape `S13` was added to refuse. The pass is on BOTH
-# sides, so the pair still isolates the carry; what it does not isolate is the pass, and an artifact
-# reading this line should say so. `memoryArmConfig.reviewPass` on the artifact is the check.
+# `pairing=carry` needs `review_pass=supersede`: absorption happens only in that pass, on that route
+# (`memory.ts`'s `reviewPass === 'supersede' && route === 'knowledge-update'`), so a carry run on the
+# registered pass would dispatch a mechanism with nothing to carry -- the exact "treatment
+# administered, reached nothing" shape `S13` was added to refuse. The pass is on BOTH sides, so the
+# pair still isolates the carry; what it does not isolate is the pass, and an artifact reading this
+# line should say so. `memoryArmConfig.reviewPass` on the artifact is the check.
+#
+# That need belongs to **one pairing**, and until this round the workflow expressed it as the
+# *default*: `supersede` for every dispatch, with an `# arm-config:` exemption whose reason named the
+# carry. Every other pairing inherited a pass the product does not ship, and the exemption that
+# excused it stated a reason that was false for them. `pairing=ask` is the pairing that made the cost
+# visible: its whole purpose is to price the shipped instruction block on the shipped rendering, and
+# it would have priced it under the absorbing pass instead. The default is now the registered `bare`,
+# `pairing=carry` gets `supersede` from the dispatcher (or from the operator), and the preflight below
+# refuses a carry that arrives on any other pass. A default that is the shipped value, plus a
+# preflight that makes the exception explicit, is the rule `resolution` already follows one input
+# down.
 #
 # ## Why `KU`
 #
@@ -95,9 +106,9 @@ on:
         default: head
         type: string
       review_pass:
-        description: 'The supersession pass. `supersede` is required by `pairing=carry` (absorption happens only in that pass, so a carry run on another pass has nothing to carry); `bare` is the registered preset, and it is what S10 measures'
+        description: 'The supersession pass. The default is the registered `bare`, the pass the product ships and the one `S10` measures; `supersede` is required by `pairing=carry` (absorption happens only in that pass, so a carry run on another pass has nothing to carry) and is refused on that pairing when it is absent. The default used to be `supersede` for every pairing, with an `# arm-config:` exemption whose reason named the carry -- which meant `pairing=ask`, whose whole purpose is to price the shipped block on the shipped arm, priced it under the absorbing pass instead'
         required: false
-        default: supersede
+        default: bare
         type: string
       fact_timeline:
         description: 'Whether a served fact also carries the interval it held -- `timeline: 30 dozen [2023/03/12 -> now]`, built from the two record instants the authorisation already returned (docs/USER-MANUAL.md 6.1.2). `1` requires `pairing=carry`: the product refuses to date a fact the prompt does not carry, and the arm refuses the combination before the first call rather than publishing a treatment that never executed. It costs no model call, so the delta it produces is attributable to the interval alone -- which is the one reading no prompt-axis experiment in this campaign has been able to make, because every previous candidate changed how much evidence the reader saw as well as what it said'
@@ -408,8 +419,9 @@ jobs:
           CORTEX_SHARDS: ${{ matrix.shards }}
           # The registered preset, written out here rather than read from the artifact the way
           # `restore-counterfactual.yml` reads a source configuration -- this run is not a
-          # counterfactual of another dispatch, it is the dispatch. One departure: `review_pass` is
-          # `supersede`, because the carry has nothing to carry without the pass that absorbs.
+          # counterfactual of another dispatch, it is the dispatch. No departure among these: the one
+          # value that ever departed, `review_pass`, is the input further down, and its default is now
+          # the registered pass.
           CORTEX_MEMORY_THRESHOLD: '0'
           CORTEX_MEMORY_RETRIEVAL_THRESHOLD: '0'
           CORTEX_MEMORY_SESSION_BUDGET: ''
@@ -417,9 +429,9 @@ jobs:
           CORTEX_MEMORY_CONFIDENCE: none
           CORTEX_MEMORY_PROMPT_CONTRACT: evidence-blocks-unsourced
           CORTEX_MEMORY_ASK: ${{ inputs.ask }}
-          # arm-config: CORTEX_MEMORY_REVIEW_PASS departs — the carry has nothing to carry without the
-          # pass that absorbs, so this file's treatment *is* `supersede`. The claim it tests is that the
-          # carry adds nothing on top; the control is this file with `semantic_carry` off.
+          # The input's default is the registered `bare`, so the exemption that stood here is gone: an
+          # exemption printed on every green run is a departure nobody is making. `pairing=carry` sends
+          # `supersede` from the dispatcher, and the preflight above refuses a carry without it.
           CORTEX_MEMORY_REVIEW_PASS: ${{ inputs.review_pass }}
           # Section 7.2's third rendering channel. An input of its own rather than a value of `pairing`,
           # because the pair `carry` produces is the carry's instrument and this is a different experiment:
