@@ -33,7 +33,7 @@ code is not a baseline.
 | --- | --- |
 | `feature.metrics.correct` (repetition 1) | **465 / 500 = 93.00%** |
 | `featureAggregate` (two passes) | mean **93.40%**, min 93.00, max 93.80 |
-| per capability (repetition 1) | `IE` 143/150 = 95.33 · `MR` 105/121 = 86.78 · `KU` 67/72 = 93.06 · `TR` 120/127 = 94.49 · `ABS` 30/30 = 100.00 |
+| per capability, mean of the two passes | `IE` 285/300 = 95.00 · `MR` 214/242 = 88.43 · `KU` 134/144 = 93.06 · `TR` 241/254 = 94.88 · `ABS` 60/60 = 100.00 |
 | reader | `deepseek:deepseek-chat`, `thinking = enabled on multi-session+temporal`, `temperature 0` |
 | budget | `abstention 24,000 · assistant 24,000 · flat 24,000 · knowledge-update 24,000 · multi-session 48,460 · temporal 24,000`, `maxTurnChars 400` on `multi-session,temporal`, `turnCutMarker none` |
 | prompt tokens per question | **7,346** (7,866 per correct answer) |
@@ -56,6 +56,16 @@ stating precisely: it is smaller than any mechanism this campaign has tried to c
 certifiable effect at `c = 0` is six questions, 1.2 points), so a *level* stated to one decimal is a level
 stated to inside its own noise. What is not inside the noise is the rendering: `raw` 91.20 against
 `layered` 93.40 is 2.2 points on the same 500 questions and the same reader.
+
+**The per-capability row was one repetition of two, and it was the low one.** It printed
+`IE 95.33 · MR 86.78 · TR 94.49` — the artifact's own `feature.metrics.perCapability`, which is
+**repetition 1** — beside a headline that was the mean of both repetitions. `tools/paired-flip.mjs` prints
+that reconciliation as its first line, and reading the 62 MB artifact it had never been able to download
+showed the other repetition: `MR` 109/121 = 90.08, `IE` 142/150, `TR` 121/127. The mean over the two is the
+row this table now carries, and the difference is not cosmetic: `MR`'s gap to `Maximem` narrows from 8.8
+points to 7.2, and `MR`'s **durable** misses — the only part of that gap a fix can reach — are **four
+questions**. Twelve more are `contested`: the same code answers them differently on two byte-identical
+prompts, so before anything can be fixed there they have to be made to decide.
 
 This section used to state `90.15%` from run `41546569106` as the current position. It was the current
 position when it was written and it has not been the current position since `S16`: the per-route budget

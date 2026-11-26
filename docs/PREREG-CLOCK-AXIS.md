@@ -228,3 +228,26 @@ where the ask's own workflow is at 24.
 The reason the better route was not obvious from here is worth recording: this round's diagnosis was _"the field
 cannot be named"_, and `§197`'s was _"the field does not need to be named — the axis selector already exists one
 workflow over."_
+
+### 7.2 The open item is closed, and it closed with a p-value
+
+§7.1 left one thing open and named its price: one `MR` dispatch of `verbatim-acts` against the reference
+block, both at `layered`, **¥5.87**. It was dispatched as `45781692092` and it read:
+
+| population | gap | exact McNemar |
+| --- | --- | --- |
+| `MR`, first window (the one whose prompt can be the registered one) | **+8.27** points, 99/97 → 108/108 of 121 | `p = 0.0117 · 0.0074` |
+| `MR`, both windows pooled (the table's default is two) | **+8.88** points, 390/484 → 433/484 | `p = 1.5e-6 · 5.4e-4` |
+
+`MR` is 24.2% of the 500 and `verbatim-acts` changes that route and no other, so the set-level value is
+**+2.00 points** — one question from the +1.80 an unpaired comparison of two artifacts had been quoting.
+Nothing is adopted (the block already ships and is already inside the 93.40); what changed is that the
+largest single mechanism in this register now has a test on the arm that ships, and that `§13.294`'s
+`+4.13` is explained as a reading against a **different control** (`verbatim`, not `route`) rather than as
+a number this one contradicts.
+
+The dispatch cost **¥12.83**, not ¥5.87, and the difference is the table's own `windows: 2` default that
+this dispatch did not override. `docs/MEASURE-ASK-PRICE.md` carries the reading, the arithmetic of the
+overrun, the instrument gap it exposed (a merged artifact drops all thirty-three statistic fields, and the
+tool that reads one never tested), and the one prediction it leaves open: `verbatim` against `route` has
+never been measured, and the arithmetic says it is worth about +4.1 for ≈¥3.0.
