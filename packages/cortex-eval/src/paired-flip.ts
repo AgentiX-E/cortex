@@ -24,6 +24,16 @@
  * needs a repeat rather than an explanation; `agreed-wrong` is a question neither arm wins, so it
  * is a ceiling of the harness and not a gap between the arms.
  *
+ * ## Why the counts are not enough either
+ *
+ * A verdict says what happened to a question; it says nothing about how surprising the total is. Nine
+ * questions moving one way and two the other is not a finding at any population this campaign runs,
+ * and it looks exactly like the eleven-question row a real treatment produces. So each repetition
+ * carries its own exact McNemar p-value over its own discordant pairs, and `significantEveryRun` says
+ * whether the *repetitions* agree rather than whether a lucky one cleared the bar. The counts stay
+ * printed beside it: a p-value is not a magnitude, and a row that reports only `p < 0.001` has
+ * stopped saying how many questions moved.
+ *
  * ## What a verdict is not
  *
  * It is not a claim about *why*. A durable miss can be a retrieval miss, a reader miss or a gold
@@ -31,6 +41,17 @@
  * `tools/mr-failure-census.mjs` classifies the run-0 failures by value shape, and the two readings
  * compose: the census says what kind of error, this says whether it is stable.
  */
+
+import { exactMcNemar } from './stats.js';
+
+/**
+ * The two-sided alpha every paired criterion in this campaign is written at.
+ *
+ * One value rather than an option: a reading that chose its own alpha after seeing the p-value is a
+ * reading that can certify anything, and every criterion in `PREREGISTRATION` states 0.05 before the
+ * dispatch. A dispatch that wants a different bar states it in its own consequence table.
+ */
+const SIGNIFICANCE = 0.05;
 
 /** How one question was decided across the repetitions of one run. */
 type PairedVerdict =
@@ -81,6 +102,25 @@ type CapabilityPaired = {
   /** Discordant counts per repetition: baseline right and feature wrong, and the reverse. */
   readonly baselineOnlyPerRun: readonly number[];
   readonly featureOnlyPerRun: readonly number[];
+  /**
+   * The exact two-sided McNemar p-value of that repetition's discordant pairs.
+   *
+   * The row above says *how many* questions moved; this says whether the asymmetry could be a coin
+   * flip. Both are needed because neither implies the other: `20` against `9` is `p = 0.043` and
+   * `9` against `2` is `p = 0.065` — one is the campaign's floor and the other is noise, and the
+   * counts alone do not order them. The gap is also not the test: a run can move 24 questions with a
+   * p-value of `1e-6` and another can move 24 with a p-value of `0.3`, depending where they moved.
+   */
+  readonly pValuePerRun: readonly number[];
+  /**
+   * Whether **every** repetition rejected the null at `SIGNIFICANCE`.
+   *
+   * Every, not any: the repetitions are the same questions asked again, so a treatment that is real
+   * shows up in each of them, and "significant in one of two" is a statement about the draw rather
+   * than about the treatment. `false` on a single-repetition artifact is not a finding about the
+   * mechanism — it is that artifact's one draw, which is why the reading prints the counts too.
+   */
+  readonly significantEveryRun: boolean;
   readonly durableMiss: readonly string[];
   readonly durableWin: readonly string[];
   readonly agreedWrong: readonly string[];
@@ -214,6 +254,12 @@ export function summarisePaired(cases: readonly PairedCase[]): PairedReading {
         gapPerRun: baselinePerRun.map((count, run) => count - featurePerRun[run]!),
         baselineOnlyPerRun,
         featureOnlyPerRun,
+        pValuePerRun: baselineOnlyPerRun.map((only, run) =>
+          exactMcNemar(only, featureOnlyPerRun[run]!),
+        ),
+        significantEveryRun: baselineOnlyPerRun.every(
+          (only, run) => exactMcNemar(only, featureOnlyPerRun[run]!) < SIGNIFICANCE,
+        ),
         durableMiss: group
           .filter((row) => row.verdict === 'durable-miss')
           .map((row) => row.questionId),

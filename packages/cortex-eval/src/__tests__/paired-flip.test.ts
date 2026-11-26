@@ -263,3 +263,106 @@ describe('the ceiling this makes computable, which is the point of the instrumen
     expect(mr.agreedWrong.length).toBe(2);
   });
 });
+
+/**
+ * The test the reading was missing for fifteen rounds.
+ *
+ * The verdicts say *what* happened to a question and the counts say *how many* questions moved. Neither
+ * says how surprising the asymmetry is, and the campaign read both as if they did: `20` against `9` is
+ * `p = 0.043` and `9` against `2` is `p = 0.065`, so two rows a reader would order by eye are on
+ * opposite sides of the bar. The p-value is not the gap and the gap is not the p-value, which is why
+ * both are printed and both are asserted here.
+ */
+function block(
+  count: number,
+  prefix: string,
+  baseline: boolean,
+  feature: boolean,
+  runs = 2,
+): Case[] {
+  return Array.from({ length: count }, (_, i) => ({
+    index: i,
+    questionId: `${prefix}-${i}`,
+    capability: 'MR',
+    gold: '3',
+    answer: '3',
+    baseline: Array.from({ length: runs }, () => baseline),
+    feature: Array.from({ length: runs }, () => feature),
+  }));
+}
+
+describe('the exact McNemar p-value of each repetition', () => {
+  it('prices ten questions against none at 2/1024, and calls it significant in every repetition', () => {
+    const reading = summarisePaired([
+      ...block(10, 'featureOnly', true, false),
+      ...block(4, 'both', true, true),
+    ]).capabilities[0]!;
+    expect(reading.baselineOnlyPerRun).toEqual([10, 10]);
+    expect(reading.featureOnlyPerRun).toEqual([0, 0]);
+    expect(reading.pValuePerRun[0]).toBeCloseTo(2 / 1024, 12);
+    expect(reading.pValuePerRun[1]).toBeCloseTo(2 / 1024, 12);
+    expect(reading.significantEveryRun).toBe(true);
+  });
+
+  it('does not call nine against two significant, though it is a seven-question gap', () => {
+    const reading = summarisePaired([
+      ...block(9, 'featureOnly', true, false),
+      ...block(2, 'baselineOnly', false, true),
+    ]).capabilities[0]!;
+    expect(reading.baselineOnlyPerRun).toEqual([9, 9]);
+    expect(reading.featureOnlyPerRun).toEqual([2, 2]);
+    // 2 * (C(11,0) + C(11,1) + C(11,2)) / 2^11 = 134 / 2048.
+    expect(reading.pValuePerRun[0]).toBeCloseTo(134 / 2048, 12);
+    expect(reading.pValuePerRun[1]).toBeCloseTo(134 / 2048, 12);
+    expect(reading.significantEveryRun).toBe(false);
+  });
+
+  it('requires every repetition rather than the best one', () => {
+    const cases = [
+      ...block(10, 'durable', true, false),
+      // Three questions that move the other way in the second draw, which is what a coin flip looks
+      // like beside a real effect: the first repetition clears the bar and the second does not.
+      ...Array.from({ length: 3 }, (_, i) => ({
+        index: 100 + i,
+        questionId: `flip-${i}`,
+        capability: 'MR',
+        gold: '3',
+        answer: '3',
+        baseline: [false, true],
+        feature: [true, false],
+      })),
+    ] as Case[];
+    const reading = summarisePaired(cases).capabilities[0]!;
+    // Repetition 0: ten against three, `2 * 378 / 8192`. Repetition 1: thirteen against none.
+    expect(reading.pValuePerRun[0]).toBeGreaterThan(0.05);
+    expect(reading.pValuePerRun[1]).toBeCloseTo(2 / 8192, 12);
+    // A treatment that is real shows up in the repetition as well as the first draw.
+    expect(reading.significantEveryRun).toBe(false);
+  });
+
+  it('is 1 when nothing moved, because an undefined statistic is not a small one', () => {
+    const reading = summarisePaired([
+      ...block(6, 'bothRight', true, true),
+      ...block(6, 'bothWrong', false, false),
+    ]).capabilities[0]!;
+    expect(reading.pValuePerRun).toEqual([1, 1]);
+    expect(reading.significantEveryRun).toBe(false);
+  });
+
+  it('orders two rows with the same gap the other way round', () => {
+    const concentrated = summarisePaired([
+      ...block(6, 'featureOnly', true, false),
+      ...block(8, 'both', true, true),
+    ]).capabilities[0]!;
+    const spread = summarisePaired([
+      ...block(12, 'featureOnly', true, false),
+      ...block(6, 'baselineOnly', false, true),
+    ]).capabilities[0]!;
+    // Both gaps are six questions, and the second is not evidence of anything.
+    expect(concentrated.gapPerRun[0]).toBe(6);
+    // Same six-question gap, twelve questions moved the other way under it.
+    expect(spread.gapPerRun[0]).toBe(6);
+    expect(concentrated.pValuePerRun[0]).toBeCloseTo(2 / 64, 12);
+    expect(spread.pValuePerRun[0]).toBeGreaterThan(0.2);
+  });
+});

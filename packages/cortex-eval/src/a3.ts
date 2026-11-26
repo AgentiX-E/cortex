@@ -30,7 +30,7 @@
  * null into a trend by reporting a point estimate without the verdict.
  */
 
-import { binomialCdf, wilsonScoreInterval, type ConfidenceInterval } from './stats.js';
+import { exactMcNemar, wilsonScoreInterval, type ConfidenceInterval } from './stats.js';
 
 /** The two presentations. `source` is the sentence alone; `atoms` is the model's split of it. */
 export type A3Arm = 'source' | 'atoms';
@@ -171,19 +171,15 @@ export function scoreA3(trials: readonly A3Trial[], options: A3Options = {}): A3
 }
 
 /**
- * The exact two-sided McNemar p-value.
+ * The exact two-sided McNemar p-value, re-exported from `stats.ts`.
  *
- * `2 * P(X <= min(b, c))` under `Binomial(b + c, 0.5)`, capped at 1. With no discordant pairs there
- * is nothing to test and the answer is 1, not 0 -- an undefined statistic reported as a small number
- * is how a null result becomes a finding.
+ * It was defined here until the paired ablation reading needed it too. `2 * P(X <= min(b, c))` under
+ * `Binomial(b + c, 0.5)`, capped at 1; with no discordant pairs there is nothing to test and the
+ * answer is 1, not 0 -- an undefined statistic reported as a small number is how a null result
+ * becomes a finding. The definition moved so that one instrument does not import another's module;
+ * the name is kept here because `a3.ts` is where the campaign's first reader of it looks.
  */
-export function exactMcNemar(onlySource: number, onlyAtoms: number): number {
-  const n = onlySource + onlyAtoms;
-  if (n === 0) return 1;
-  const tail = Math.min(onlySource, onlyAtoms);
-  // `binomialCdf` is P(X <= k) for Binomial(n, p), computed in log space in cortex-core.
-  return Math.min(1, 2 * binomialCdf(tail, n, 0.5));
-}
+export { exactMcNemar };
 
 function isAccept(trial: A3Trial): boolean {
   return trial.decision === 'accept' || trial.decision === 'edit';

@@ -172,6 +172,34 @@ export function binomialCdf(k: number, n: number, p: number): number {
   return regularizedIncompleteBeta(n - k, k + 1, 1 - p);
 }
 
+/**
+ * The exact two-sided McNemar test, from the two discordant counts.
+ *
+ * Only the discordant pairs carry information about a change: a question both sides answer
+ * correctly, or both wrongly, says the same thing about either side. Under the null hypothesis
+ * each discordant pair is a fair coin, so the p-value is two tails of `Binomial(b + c, 1/2)` at
+ * `min(b, c)` — no continuity correction and no normal approximation, both of which change the
+ * verdict at exactly the sizes this campaign runs at (`c = 0` on nine discordant pairs is
+ * `2/1024 = 0.002`, where `χ²` would say `0.0039`).
+ *
+ * The cap at 1 matters: for `b = c` the doubled tail exceeds one, and a p-value above one is the
+ * one number a reader would notice and a table would print.
+ *
+ * ## Why it lives here rather than in the instrument that first needed it
+ *
+ * It was written in `a3.ts`, where the A3 judge trials were the only caller. The paired reading of
+ * a two-arm ablation needs the same arithmetic on the same shape — `baselineOnly` and `featureOnly`
+ * per repetition — and importing it from `a3.js` would make a general instrument depend on one
+ * experiment's module. `a3.ts` re-exports it, so its public surface and its tests are unchanged.
+ */
+export function exactMcNemar(onlyBaseline: number, onlyFeature: number): number {
+  const n = onlyBaseline + onlyFeature;
+  if (n === 0) return 1;
+  const tail = Math.min(onlyBaseline, onlyFeature);
+  // `binomialCdf` is P(X ≤ k) for Binomial(n, p), computed in log space in cortex-core.
+  return Math.min(1, 2 * binomialCdf(tail, n, 0.5));
+}
+
 /** A two-sided confidence interval for a proportion. */
 export type ConfidenceInterval = {
   lower: number;

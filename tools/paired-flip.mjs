@@ -16,8 +16,14 @@
  *    the same object. Nothing says so, and a reader who divides `correct` by `total` reads one
  *    repetition of four as the run. This tool says which it is before any other number.
  * 2. **Per capability**: every repetition's count on each side, the gap per repetition, and the
- *    discordant counts those gaps are the difference of.
- * 3. **The durable populations**, by question id, because a count without ids cannot be dispatched at.
+ *    discordant counts those gaps are the difference of — plus the exact McNemar p-value of each
+ *    repetition's discordant pairs. The counts say how much moved; the p-value says whether that
+ *    asymmetry could be a coin flip, and neither implies the other.
+ * 3. **Per window**, when the artifact multiplied the population (`CORTEX_WINDOWS = 2`). A pooled
+ *    reading of a two-window artifact adds a window that may have moved nothing to one that moved
+ *    twice as much, and `two-window.ts` grades both so that the second can be read beside the first.
+ *    `--window N` narrows the whole reading to one of them.
+ * 4. **The durable populations**, by question id, because a count without ids cannot be dispatched at.
  *
  * ## Why the census is imported rather than restated
  *
@@ -145,11 +151,63 @@ export function headlineIsOneRepetition(report, reading) {
 
 const pct = (value) => `${(value * 100).toFixed(1)}%`;
 
+/**
+ * A p-value at the precision a reader needs, never as `0`.
+ *
+ * `0.0000001` printed as `0.000` is the one formatting choice that turns a measurement into a
+ * verdict; the exponent says the same thing and says how far below the bar it is.
+ */
+const formatP = (value) => (value < 1e-4 ? value.toExponential(1) : value.toFixed(4));
+
+/**
+ * The window an artifact's ids carry, or `null` when the population is one window per corpus.
+ *
+ * Read from the artifact rather than assumed: `population` is absent on a single-window artifact by
+ * design (`two-window.ts` states why), and a tool that defaulted to two windows would silently drop
+ * half of every archived artifact.
+ */
+function windowCount(report) {
+  const windows = report.population?.windows;
+  return typeof windows === 'number' && windows > 1 ? windows : null;
+}
+
+/** The marker the artifact's own ids carry, with `withWindows`'s spelling as the fallback. */
+function windowMarker(report) {
+  const marker = report.population?.marker;
+  return typeof marker === 'string' && marker.length > 0 ? marker : '#w';
+}
+
+/**
+ * The cases of one window, or a refusal.
+ *
+ * A filtered population that is empty is not a reading of zero: it means the ids do not carry the
+ * marker this tool was told to split on, and a summary of nothing would print as a null result.
+ */
+function casesForWindow(cases, marker, window) {
+  const suffix = `${marker}${window}`;
+  const kept = cases.filter((entry) => entry.questionId.endsWith(suffix));
+  if (kept.length === 0) {
+    throw new Error(
+      `no question id ends in ${JSON.stringify(suffix)}: the artifact's ids do not carry the ` +
+        'marker this reading splits on, so the window selection would summarise an empty population',
+    );
+  }
+  return kept;
+}
+
 function render(reading, report, options) {
   const lines = [];
   const headline = headlineIsOneRepetition(report, reading);
   lines.push(`artifact          ${options.path}`);
   lines.push(`repetitions       ${reading.runs}`);
+  if (options.windows !== null && options.windows !== undefined) {
+    lines.push(
+      `population        ${options.windows} windows per corpus` +
+        (options.window === undefined
+          ? ' (this reading pools them; the per-window split follows)'
+          : `, reading window ${options.window} only`),
+    );
+  }
   if (headline.known === true) {
     lines.push(
       `headline metrics  feature.metrics.correct ${headline.metricsCorrect} = repetition 0 ` +
@@ -206,7 +264,9 @@ function render(reading, report, options) {
     lines.push(
       `${entry.capability}: mean gap ${meanGap.toFixed(2)} questions = ` +
         `durable ${entry.durableMiss.length} - ${entry.durableWin.length} ` +
-        `= ${entry.durableMiss.length - entry.durableWin.length}, discordant mean ${meanDiscordant.toFixed(2)}`,
+        `= ${entry.durableMiss.length - entry.durableWin.length}, discordant mean ${meanDiscordant.toFixed(2)}, ` +
+        `exact p [${entry.pValuePerRun.map(formatP).join(', ')}]` +
+        `${entry.significantEveryRun ? '' : ' -- NOT below 0.05 in every repetition'}`,
     );
   }
 
@@ -239,14 +299,53 @@ function render(reading, report, options) {
   return { text: `${lines.join('\n')}\n`, capabilities };
 }
 
+/**
+ * The same reading, per window of a multiplied population.
+ *
+ * `two-window.ts` grades both windows on purpose, so that a mechanism which moved the second window
+ * is readable beside a first window that did not. A pooled reading cannot show that: it is the sum of
+ * a first window that may have moved nothing and a second that moved twice as much. The split is
+ * printed by default rather than behind a flag for the reason the artifact records the population
+ * rather than the harness printing it once -- a reader who has to remember to ask will not.
+ */
+function renderWindows(cases, marker, windows, capability) {
+  const lines = ['', `per window (ids carry ${JSON.stringify(marker)}N)`];
+  lines.push(
+    'window  capability            n   baseline per repetition        feature per repetition         gap mean  exact p',
+  );
+  for (let window = 1; window <= windows; window += 1) {
+    let reading;
+    try {
+      reading = summarisePaired(casesForWindow(cases, marker, window));
+    } catch (error) {
+      // One line rather than a thrown reading: a window whose ids are absent is a fact about the
+      // artifact's ids, and the other windows are still readable.
+      lines.push(`  ${window}     (no question id carries this marker: ${error.message.slice(0, 60)}...)`);
+      continue;
+    }
+    for (const entry of reading.capabilities) {
+      if (capability !== undefined && entry.capability !== capability) continue;
+      const meanGap = entry.gapPerRun.reduce((a, b) => a + b, 0) / entry.gapPerRun.length;
+      lines.push(
+        `  ${String(window).padEnd(6)}${entry.capability.padEnd(18)}${String(entry.total).padStart(4)}   ` +
+          `${entry.baselinePerRun.map((n) => String(n).padStart(3)).join(' ')}`.padEnd(31) +
+          `${entry.featurePerRun.map((n) => String(n).padStart(3)).join(' ')}`.padEnd(30) +
+          `${meanGap.toFixed(2).padStart(8)}  [${entry.pValuePerRun.map(formatP).join(', ')}]`,
+      );
+    }
+  }
+  return `${lines.join('\n')}\n`;
+}
+
 function main(argv) {
   const args = argv;
   const path = flag(args, '--artifact');
   const capability = flag(args, '--capability');
   const out = flag(args, '--out');
+  const windowFlag = flag(args, '--window');
   if (path === undefined) {
     process.stderr.write(
-      'usage: paired-flip.mjs --artifact <report.json> [--capability MR] [--census] [--list] [--out <file>]\n',
+      'usage: paired-flip.mjs --artifact <report.json> [--capability MR] [--window N] [--census] [--list] [--out <file>]\n',
     );
     return 2;
   }
@@ -256,7 +355,37 @@ function main(argv) {
     process.stderr.write(`${built.error}\n`);
     return 3;
   }
-  const reading = summarisePaired(built.cases);
+
+  const windows = windowCount(report);
+  const marker = windowMarker(report);
+  // `--window` narrows the reading to one window of a multiplied population. It is refused on a
+  // single-window artifact rather than ignored: a reader who asked for a window and got the whole
+  // population would read one number thinking it was another.
+  let window;
+  let cases = built.cases;
+  if (windowFlag !== undefined) {
+    if (windows === null) {
+      process.stderr.write(
+        `--window ${windowFlag} was asked for, but this artifact's population is one window per ` +
+          'corpus: there is no window to select and the whole population is that window\n',
+      );
+      return 2;
+    }
+    window = Number(windowFlag);
+    if (!Number.isInteger(window) || window < 1 || window > windows) {
+      process.stderr.write(
+        `--window ${windowFlag} is not one of this artifact's windows (1..${windows})\n`,
+      );
+      return 2;
+    }
+    try {
+      cases = casesForWindow(built.cases, marker, window);
+    } catch (error) {
+      process.stderr.write(`${error.message}\n`);
+      return 3;
+    }
+  }
+  const reading = summarisePaired(cases);
 
   // A partition that does not add up is an instrument failure, so it is checked before anything is
   // printed rather than left to a reader to notice.
@@ -278,14 +407,21 @@ function main(argv) {
     capability,
     census: args.includes('--census'),
     list: args.includes('--list'),
+    windows,
+    window,
   });
   process.stdout.write(text);
+  if (windows !== null && window === undefined) {
+    process.stdout.write(renderWindows(built.cases, marker, windows, capability));
+  }
 
   if (out !== undefined) {
     const byId = new Map(reading.rows.map((row) => [row.questionId, row]));
     const payload = {
       artifact: path,
       runs: reading.runs,
+      windows: windows ?? 1,
+      window: window ?? null,
       headline: headlineIsOneRepetition(report, reading),
       reading: Object.fromEntries(
         capabilities.map((entry) => [
@@ -297,6 +433,8 @@ function main(argv) {
             gapPerRun: entry.gapPerRun,
             baselineOnlyPerRun: entry.baselineOnlyPerRun,
             featureOnlyPerRun: entry.featureOnlyPerRun,
+            pValuePerRun: entry.pValuePerRun,
+            significantEveryRun: entry.significantEveryRun,
             durableMiss: entry.durableMiss.map((id) => {
               const row = byId.get(id);
               const verdict = classify(row.gold, row.answer);
