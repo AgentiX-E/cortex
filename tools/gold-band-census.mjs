@@ -42,6 +42,7 @@
  */
 
 import { readFileSync } from 'node:fs';
+import { fileURLToPath } from 'node:url';
 
 /** Bands, in the order they are reported. `cut` first because it is the one that reads as whole. */
 const BANDS = ['whole', 'cut', 'absent'];
@@ -76,23 +77,28 @@ export function capReaches(routes, route) {
  */
 export function census(report) {
   const config = report.memoryArmConfig ?? {};
-  if (config.resolution === 'layered') {
-    throw new Error(
-      'resolution: layered bounds a turn by its form ceiling, not by maxTurnChars: the cap ' +
-        'comparison this tool makes would mis-band every gold turn. No table is printed.',
-    );
-  }
-  const cap = config.maxTurnChars;
+  // `cut` needs the cap; `absent` does not. `bandOf` decides delivery **before** it looks at the cap,
+  // so under `layered` -- where a turn's bound is a form ceiling computed from the question
+  // (`resolveCappedTurn`) rather than `maxTurnChars` -- the width columns are unmeasurable and the
+  // delivery column is exact. Refusing the table refused a column that was never in question, and
+  // every published artifact is written in exactly this configuration.
+  const bandsResolvable = config.resolution !== 'layered';
+  const cap = bandsResolvable ? config.maxTurnChars : undefined;
   const routes = config.maxTurnCharsRoutes;
 
   /** @type {Map<string, Record<string, number>>} */
   const byCapability = new Map();
+  /** @type {Map<string, Record<string, number>>} */
+  const byRoute = new Map();
   const all = blank();
   let questions = 0;
 
   const bump = (row, band, correct) => {
     row[band] += 1;
     row.total += 1;
+    // A `whole` or a `cut` segment was delivered; `absent` was not. This is the denominator the
+    // route table prints, so it has to be the same predicate `bandOf` uses and not a second one.
+    if (band !== 'absent') row.deliveredSegments += 1;
     if (!correct) row[`wrong_${band}`] += 1;
     if (!correct) row.wrongTotal += 1;
   };
@@ -101,11 +107,37 @@ export function census(report) {
     const gold = question.goldOverlap?.goldTurns ?? [];
     if (gold.length === 0) continue;
     questions += 1;
+    const overlap = question.goldOverlap;
     const delivered = new Set((question.turns ?? []).map((turn) => turn.text));
     const reach = capReaches(routes, question.route);
     const row = byCapability.get(question.capability) ?? blank();
     byCapability.set(question.capability, row);
-    const bands = gold.map((turn) => bandOf(turn, delivered, cap, reach));
+    const routeRow = byRoute.get(question.route) ?? blank();
+    byRoute.set(question.route, routeRow);
+    // `opaque` is a delivered segment whose width this configuration cannot band. It is not a band:
+    // it never enters `whole` or `cut`, and it is counted so that the two columns plus `absent` still
+    // account for every gold segment in the artifact.
+    const bands = gold.map((turn) => {
+      if (!delivered.has(turn)) return 'absent';
+      if (!bandsResolvable) return 'opaque';
+      if (cap !== undefined && reach && turn.length > cap) return 'cut';
+      return 'whole';
+    });
+    // The split this round added. A gold turn is missing either because the ranking never surfaced it
+    // (a retrieval repair) or because it surfaced and the window's ranked prefix ran out (a selection
+    // repair). On the 500-question artifact those numbers are **0 and 2,256**, so the institution the
+    // queue called *delivery* is a ranking distance and no window sizing reaches it. A report with no
+    // `goldRanks` is counted apart rather than assigned to either branch: the field arrived with the
+    // ranking, and defaulting it would invent the one number the split exists to produce.
+    bands.forEach((band, index) => {
+      if (band !== 'absent') return;
+      const rank = overlap?.goldRanks?.[index];
+      for (const key of [row, routeRow, all]) {
+        if (rank === undefined) key.absentUnattributable += 1;
+        else if (rank < 0) key.absentNeverRanked += 1;
+        else key.absentBeyondCut += 1;
+      }
+    });
     // The cross-tab this tool exists for: does a question whose gold was cut read worse than one
     // whose gold arrived whole? It is a stratification, not an experiment -- see the header.
     const stratum = bands.includes('cut')
@@ -113,22 +145,44 @@ export function census(report) {
       : bands.includes('absent')
         ? 'hasAbsent'
         : 'allWhole';
-    for (const key of [row, all]) {
+    for (const key of [row, routeRow, all]) {
       key[stratum] += 1;
       if (question.correct) key[`${stratum}Correct`] += 1;
     }
     for (const band of bands) {
+      if (band === 'opaque') {
+        for (const key of [row, routeRow, all]) {
+          key.deliveredSegments += 1;
+          key.total += 1;
+          if (!question.correct) key.wrongTotal += 1;
+        }
+        continue;
+      }
       bump(row, band, question.correct);
+      bump(routeRow, band, question.correct);
       bump(all, band, question.correct);
     }
   }
 
+  const finalize = (row) => {
+    // `null` and not `0` for a column this configuration cannot take: zero is a measurement, and the
+    // whole point of the refusal's narrower form is that it must not print one here.
+    if (bandsResolvable) return row;
+    return { ...row, whole: null, cut: null, wrong_whole: null, wrong_cut: null, hasCut: 0, hasCutCorrect: 0 };
+  };
+
   return {
     cap,
     routes: routes === undefined ? 'every route' : [...routes],
+    bandsResolvable,
     questions,
-    all,
-    byCapability: [...byCapability.entries()].sort(([a], [b]) => a.localeCompare(b)),
+    all: finalize(all),
+    byCapability: [...byCapability.entries()]
+      .sort(([a], [b]) => a.localeCompare(b))
+      .map(([name, row]) => [name, finalize(row)]),
+    byRoute: [...byRoute.entries()]
+      .sort(([a], [b]) => a.localeCompare(b))
+      .map(([name, row]) => [name, finalize(row)]),
   };
 }
 
@@ -142,23 +196,50 @@ function blank() {
     row[stratum] = 0;
     row[`${stratum}Correct`] = 0;
   }
+  // Every gold segment accounted for: `deliveredSegments` + `absent` === `total`.
+  row.deliveredSegments = 0;
+  // The three causes of `absent`, which sum to it. See `census` for why they are not one number.
+  row.absentBeyondCut = 0;
+  row.absentNeverRanked = 0;
+  row.absentUnattributable = 0;
   return row;
 }
 
 const pct = (n, d) => (d === 0 ? '—' : `${((100 * n) / d).toFixed(2)}%`);
+
+const width = (row) => (row.whole === null ? 'n/a' : `${row.whole} / ${row.cut}`);
 
 function table(result) {
   const lines = [];
   lines.push(
     `gold-turn census: ${result.questions} question(s), cap ${result.cap ?? 'none'} on ${result.routes}`,
   );
+  if (!result.bandsResolvable) {
+    lines.push(
+      'width columns are n/a: under `resolution: layered` a turn is bounded by its form ceiling, ' +
+        'not by `maxTurnChars`. The delivery column does not consult the cap and is exact.',
+    );
+  }
   lines.push('');
-  lines.push('| capability | gold | whole | cut | absent | cut/delivered | wrong | wrong cut |');
+  lines.push('| route | gold | delivered | absent | beyond-cut | never-ranked | unexplained | delivered% |');
+  lines.push('| --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: |');
+  for (const [name, row] of [...result.byRoute, ['**all**', result.all]]) {
+    lines.push(
+      `| ${name} | ${row.total} | ${row.deliveredSegments} | ${row.absent} | ${row.absentBeyondCut} | ` +
+        `${row.absentNeverRanked} | ${row.absentUnattributable} | ` +
+        `${pct(row.deliveredSegments, row.total)} |`,
+    );
+  }
+  lines.push('');
+  lines.push("`beyond-cut` = the ranking surfaced it and the window's ranked prefix ran out.");
+  lines.push('`never-ranked` = the ranking never surfaced it. Different repair, different institution.');
+  lines.push('');
+  lines.push('| capability | gold | width whole/cut | absent | beyond-cut | never-ranked | wrong | wrong absent |');
   lines.push('| --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: |');
   for (const [name, row] of [...result.byCapability, ['**all**', result.all]]) {
     lines.push(
-      `| ${name} | ${row.total} | ${row.whole} | ${row.cut} | ${row.absent} | ` +
-        `${pct(row.cut, row.whole + row.cut)} | ${row.wrongTotal} | ${row.wrong_cut} |`,
+      `| ${name} | ${row.total} | ${width(row)} | ${row.absent} | ${row.absentBeyondCut} | ` +
+        `${row.absentNeverRanked} | ${row.wrongTotal} | ${row.wrong_absent} |`,
     );
   }
   lines.push('');
@@ -212,31 +293,74 @@ function selfTest() {
   // A route the cap does not reach cannot band as `cut`, whatever the turn's length: the
   // `temporal` question above carries a 500-character gold turn and is counted `whole`.
   eq('uncapped route banded whole', result.all.whole, 2);
-  let refused = false;
-  try {
-    census({ memoryArmConfig: { resolution: 'layered' }, questions: [] });
-  } catch {
-    refused = true;
-  }
-  eq('layered refused', refused, true);
+  // `layered` was refused outright until this round, and every published artifact is written in it.
+  // The width columns are unmeasurable there; the delivery column never was.
+  const layered = census({
+    memoryArmConfig: { resolution: 'layered' },
+    questions: [mk('temporal', false, [short], [])],
+  });
+  eq('layered is read rather than refused', layered.bandsResolvable, false);
+  eq('layered still counts an absent gold', layered.all.absent, 1);
+  eq('layered width is null rather than zero', layered.all.whole, null);
+  eq('layered cut is null rather than zero', layered.all.cut, null);
+  eq('a delivered gold is still counted under layered', layered.all.deliveredSegments, 0);
+
+  // The three causes of `absent`, kept apart because they name three different repairs.
+  const withRanks = (route, golds, delivered, ranks) => ({
+    capability: 'MR',
+    route,
+    correct: false,
+    goldOverlap: {
+      goldTurns: golds,
+      ...(ranks === undefined ? {} : { goldRanks: ranks, goldDelivered: golds.map((g) => delivered.includes(g)) }),
+    },
+    turns: delivered.map((text) => ({ text })),
+  });
+  const why = census({
+    memoryArmConfig: { maxTurnChars: 400 },
+    questions: [
+      withRanks('temporal', ['g1', 'g2', 'g3'], ['g1'], [0, 141, -1]),
+      withRanks('flat', ['h1'], []),
+    ],
+  });
+  eq('beyond-cut', why.all.absentBeyondCut, 1);
+  eq('never-ranked', why.all.absentNeverRanked, 1);
+  eq('unattributable', why.all.absentUnattributable, 1);
+  eq('absent is the sum of its causes', why.all.absent, 3);
+  eq(
+    'the buckets account for every absent segment',
+    why.all.absentBeyondCut + why.all.absentNeverRanked + why.all.absentUnattributable,
+    why.all.absent,
+  );
+  const byRoute = Object.fromEntries(why.byRoute);
+  eq('beyond-cut lives on its own route', byRoute.temporal.absentBeyondCut, 1);
+  eq('a report with no ranks is unattributable on its route', byRoute.flat.absentUnattributable, 1);
+  eq('delivered segments are counted apart from absent', byRoute.temporal.deliveredSegments, 1);
+
   if (errors.length > 0) {
     console.error(`gold-band-census self-test FAILED\n  ${errors.join('\n  ')}`);
     process.exitCode = 1;
     return;
   }
-  console.log('gold-band-census self-test: 10 assertions, all passed');
+  console.log('gold-band-census self-test: 20 assertions, all passed');
 }
 
-const args = process.argv.slice(2);
-if (args.includes('--self-test')) {
-  selfTest();
-} else {
-  const path = args.find((arg) => !arg.startsWith('--'));
-  if (path === undefined) {
-    console.error('usage: node tools/gold-band-census.mjs <report.json> [--json] | --self-test');
-    process.exitCode = 2;
+// Guarded, because the tests import `census` and an unguarded tail would print a usage line into
+// every one of those imports and set a non-zero exit code on a successful import.
+const invokedDirectly =
+  process.argv[1] !== undefined && fileURLToPath(import.meta.url) === process.argv[1];
+if (invokedDirectly) {
+  const args = process.argv.slice(2);
+  if (args.includes('--self-test')) {
+    selfTest();
   } else {
-    const result = census(JSON.parse(readFileSync(path, 'utf8')));
-    console.log(args.includes('--json') ? JSON.stringify(result, null, 2) : table(result));
+    const path = args.find((arg) => !arg.startsWith('--'));
+    if (path === undefined) {
+      console.error('usage: node tools/gold-band-census.mjs <report.json> [--json] | --self-test');
+      process.exitCode = 2;
+    } else {
+      const result = census(JSON.parse(readFileSync(path, 'utf8')));
+      console.log(args.includes('--json') ? JSON.stringify(result, null, 2) : table(result));
+    }
   }
 }
