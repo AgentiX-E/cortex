@@ -73,6 +73,25 @@ table, the `self-index` ranking signal and `ask: verbatim-acts` all landed after
 **90.15 → 91.20** on the same 500 questions. The `90.15` row is kept in `docs/COMMITTED-READINGS.md`
 because a superseded reading is still a reading; what is not kept is the word **current** in front of it.
 
+**The headroom, which is the number that decides what to do next.** The same artifact, cut by how many
+repetitions each question was right in (`docs/MEASURE-REACHABLE-HEADROOM.md`):
+
+| | questions | |
+| --- | ---: | --- |
+| right in **every** repetition | **460** | banked: no mechanism can add to it |
+| right in **some** | **14** | undecided; worth `7.0` of the mean, and `14` if every one were decided right |
+| right in **none** | **26** | the whole of the headroom |
+| … of those 26, the reference pipeline answers at least once | **6** | a fix is *demonstrated* able to reach them |
+| … of those 26, the reference pipeline never answers either | **20** | a ceiling of the harness, not a gap between the arms |
+
+The ceiling those numbers define is **`96.00`** — not `100`, and not the `93.40` above. It splits the gap
+to `Maximem Synap` (`95.6`, i.e. `478` questions) into eighteen: **fourteen that have to be made to decide
+and four that have to be made to answer**. Both blocks have already been measured — `selfConsistency`
+against the first (`MR` 86.2 on a floor of 89, `§13.102`), the numeric institution against the second (ten
+readings, all within a question of break-even) — so the eighteen are reachable only by a capability this
+repository does not have. That is the reason this section now leads with the headroom rather than with the
+gap: the gap says how far away the number is, and the headroom says what the number can be.
+
 One measurement sits on top of this number and it is not in it:
 
 | mechanism | reading | why it is not added here |

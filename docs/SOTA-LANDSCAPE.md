@@ -64,6 +64,26 @@ and metric, different reader or judge; **C** = different metric, subset, or an u
 | Zep                               | 71.20%                           | A     | GPT-4o                           | GPT-4o            | graph memory, 2025-01 paper                                                                                             |
 | full context                      | 60.20%                           | A     | GPT-4o                           | GPT-4o            | the paper's no-memory baseline                                                                                          |
 
+**The frontier, which is a different table from the leaderboard.** Accuracy alone puts Cortex second or third;
+the metric the acceptance criteria actually use is accuracy at a published cost, and on that one this table has
+no segment for Cortex at all. Four systems publish both numbers, and they bracket Cortex from both sides
+(`tools/competitor-ledger.json` carries each with its source):
+
+| system | accuracy | context tokens per question | basis |
+| --- | ---: | ---: | --- |
+| `Contextier` | 91.6 | **2,807** mean | self-reported |
+| `Zep / Graphiti` | 90.2 | 4,408 median | self-reported |
+| `Mem0` (v3) | 93.4 | **6,787** mean | self-reported |
+| **Cortex** | **93.40** | **7,346** | reproduced here, `45760081761` |
+| `Maximem Synap` | 95.6 | 7,400 mean | self-reported, with per-question data |
+
+`Mem0`'s 93.4 at 6,787 **dominates** this row: the same accuracy for 8% fewer tokens. Points per thousand
+tokens — `Contextier` 32.63, `Zep` 20.45, `Mem0` 13.76, **Cortex 12.72** — put this system last of the four that
+publish a cost. That is worth stating beside the accuracy rank rather than instead of it: the accuracy axis has
+`2.60` reachable points and both deposits are measured and closed (`MEASURE-REACHABLE-HEADROOM.md` §2), while
+the cost axis has a `62%` gap to the cheapest published point and has never been a dispatch target.
+`MEASURE-COST-LEVER.md` is the instrument for it and `maxTurnChars` / the per-route budget table are the knobs.
+
 Two rows deserve to be read together, and they are the reason this project does not chase 96%. **The oracle row
 (82.40%) and the Cortex row (83.45%) are 1.05 points apart, and the Cortex row is on the wrong side of the
 oracle — it is above it.** That sentence used to be its own retraction, so it is worth stating precisely what
