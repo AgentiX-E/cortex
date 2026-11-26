@@ -525,13 +525,19 @@ describe('the room census prints the product route order', () => {
 });
 
 /**
- * The failure census holds two copies of product vocabularies, and each one is a claim that it agrees.
+ * The failure census holds one copy of a product vocabulary, and it is a claim that it agrees.
  *
- * `tools/failure-classes.mjs` prints its rows in `TURN_CAP_ROUTES`' order and classifies a decline by
- * `parse.ts`'s abstain token. Both are copies rather than imports for `room-census.mjs`'s reason -- a
- * diagnostic script that imported the product would need a build -- and both fail in the same silent way:
- * a moved spelling makes `declined` never fire, so an entire cascade is reported as `empty`, and a moved
- * route order prints a table under a heading that claims it is the product's.
+ * `tools/failure-classes.mjs` prints its rows in `TURN_CAP_ROUTES`' order, and that is a copy rather than an
+ * import for `room-census.mjs`'s reason -- a diagnostic script that imported the product would need a build.
+ * It fails silently: a moved route order prints a table under a heading that claims it is the product's.
+ *
+ * The second copy used to be here and `§203` removed it. `declined` classified a reply by a local
+ * `ABSTAIN_TOKEN` matched against `record.answer`, and `parseAnswer` maps a decline onto `null` -- so the
+ * class could not fire, `empty` had absorbed every abstention in every census this campaign priced, and
+ * **this gate was green over it**, because it checked that the copy agreed with the parser rather than that
+ * the reader reached it. A gate written to keep a copy honest is a gate that certifies the copy. The two
+ * assertions below therefore run in opposite directions: the tool must import the predicate, and must not
+ * reintroduce the token.
  */
 describe('the failure census reads the vocabularies it copies', () => {
   const routeOrder = (text: string, pattern: RegExp): string[] => {
@@ -548,13 +554,26 @@ describe('the failure census reads the vocabularies it copies', () => {
     );
   });
 
-  it('copies the abstain token from the parser rather than from memory', () => {
+  it('imports the abstention predicate instead of restating the token', () => {
+    // The direction matters: the parser must still declare the token, and the tool must reach it through
+    // `isAbstention` rather than compare a string. `parseAnswer(raw) === null` would work today and is the
+    // weaker reading -- it answers "did this parse to nothing" where the class asks "did this decide to
+    // abstain", and a future reply shape that parses to nothing would silently join the class.
     const parse = readFileSync(resolve(REPO_ROOT, 'packages/cortex-memory/src/parse.ts'), 'utf8');
-    const declared = /export const ABSTAIN_TOKEN = '([A-Z_]+)';/.exec(parse);
-    expect(declared).not.toBeNull();
+    expect(/export const ABSTAIN_TOKEN = '([A-Z_]+)';/.test(parse)).toBe(true);
     const tool = readFileSync(resolve(REPO_ROOT, 'tools/failure-classes.mjs'), 'utf8');
-    const copied = /const ABSTAIN_TOKEN = '([A-Z_]+)';/.exec(tool);
-    expect(copied?.[1]).toBe(declared?.[1]);
+    expect(tool).toContain(
+      "import { isAbstention } from '../packages/cortex-memory/dist/parse.js';",
+    );
+  });
+
+  it('declares no local abstain token, and decides the class on the reply', () => {
+    // The literal still appears in the file -- it appears in the fixtures, which are replies -- so what is
+    // asserted is the two things that made the class dead: a local constant to compare against, and a read
+    // of the **parsed answer** rather than of what the reader wrote.
+    const tool = readFileSync(resolve(REPO_ROOT, 'tools/failure-classes.mjs'), 'utf8');
+    expect(/const ABSTAIN_TOKEN = /.test(tool)).toBe(false);
+    expect(tool).toContain("if (reply !== null && decidesToAbstain(reply)) return 'declined';");
   });
 });
 

@@ -119,9 +119,130 @@ class TestTheRowsPriceTheWayTheArgumentSays(unittest.TestCase):
         self.assertEqual(rows["numeric institution, bundled (MR)"], "certifiable")
 
     def test_the_preference_route_is_at_the_line_rather_than_above_it(self) -> None:
-        # Six questions on 94 is a ceiling of 6.38 against a floor of 6.38: certifiable only at a
-        # hundred per cent conversion, which is why the row is not recommended despite "certifiable".
-        self.assertEqual(self._rows()["preference (flat)"], "certifiable")
+        # Asserted as the inequality rather than as the verdict, because the verdict is not stable and the
+        # inequality is. On `45543010618` the class held six questions, the ceiling was 6.38 against a floor
+        # of 6.38, and the row printed `certifiable` -- true, and true only at a hundred per cent conversion.
+        # On `45760081761`, the census this file now reads, the same arm holds five and the row prints
+        # `refused`. A target whose verdict changes between two runs of one arm is not a target, so what is
+        # pinned here is the property both runs share: the ceiling does not exceed the floor.
+        result = _run("--census", str(CENSUS))
+        line = next(
+            row for row in result.stdout.splitlines() if row.startswith("preference (flat)".ljust(44))
+        )
+        parts = line.split()
+        ceiling, floor = float(parts[-4]), float(parts[-2])
+        self.assertLessEqual(
+            ceiling,
+            floor,
+            "the preference row must not have room above its floor on either archived run",
+        )
+        self.assertIn(parts[-1], {"certifiable", "refused"})
+
+
+class TestTheDeclineClassIsReadFromTheReply(unittest.TestCase):
+    """The class that could not fire.
+
+    `declined` was `answer.includes('INSUFFICIENT_EVIDENCE')`, and `parseAnswer` maps a reply that decides
+    to abstain onto `null` -- an abstention is the absence of an answer -- so the field it searched was
+    `null` on every decline the product has ever produced and `empty` absorbed the whole population. Two
+    questions of the published artifact were filed as "the reader produced nothing" while their replies
+    are 533 and 607 characters ending in the token.
+
+    Asserted at the tool boundary rather than on `classify`, because the bug was a disagreement between the
+    parser and the census and neither unit test alone can see it.
+    """
+
+    def _classes(self, records):
+        report = {"questions": records}
+        path = ROOT / "tools" / "__tests__" / "census-decline.json"
+        path.write_text(json.dumps(report), encoding="utf-8")
+        try:
+            result = subprocess.run(
+                ["node", str(ROOT / "tools" / "failure-classes.mjs"), "--json", str(path)],
+                capture_output=True,
+                text=True,
+                check=False,
+            )
+        finally:
+            path.unlink()
+        self.assertEqual(result.returncode, 0, result.stderr)
+        return {name: row["count"] for name, row in json.loads(result.stdout)["classes"].items()}
+
+    @staticmethod
+    def _record(**overrides):
+        base = {
+            "questionId": "q",
+            "route": "flat",
+            "correct": False,
+            "answer": None,
+            "rawOutput": "",
+            "groundTruth": "Yes",
+            "goldOverlap": {"carried": 1, "total": 2, "goldTurns": ["Yes."]},
+        }
+        base.update(overrides)
+        return base
+
+    def test_a_prose_reply_ending_in_the_token_is_a_decline_not_an_empty(self) -> None:
+        classes = self._classes(
+            [
+                self._record(
+                    questionId="prose",
+                    rawOutput="I cannot determine this from the evidence.\n\nINSUFFICIENT_EVIDENCE",
+                )
+            ]
+        )
+        self.assertEqual(classes, {"declined": 1})
+
+    def test_a_labelled_token_is_a_decline_too(self) -> None:
+        # The `37f165cf` shape: a Step 1 list, a sentence, then `Answer: INSUFFICIENT_EVIDENCE`.
+        classes = self._classes(
+            [
+                self._record(
+                    questionId="labelled",
+                    rawOutput="Step 1 -- Candidate items:\n- one novel\n\nAnswer: INSUFFICIENT_EVIDENCE",
+                )
+            ]
+        )
+        self.assertEqual(classes, {"declined": 1})
+
+    def test_a_blank_reply_is_the_only_empty(self) -> None:
+        classes = self._classes([self._record(questionId="blank", answer="")])
+        self.assertEqual(classes, {"empty": 1})
+
+    def test_the_two_populations_are_counted_separately(self) -> None:
+        classes = self._classes(
+            [
+                self._record(questionId="decline", rawOutput="INSUFFICIENT_EVIDENCE"),
+                self._record(questionId="blank", answer=""),
+                self._record(questionId="pref", answer="x", groundTruth="The user would prefer y."),
+            ]
+        )
+        self.assertEqual(classes, {"declined": 1, "empty": 1, "preference": 1})
+
+    def test_a_token_inside_prose_is_a_mention_and_stays_a_content_failure(self) -> None:
+        classes = self._classes(
+            [
+                self._record(
+                    questionId="mention",
+                    answer="27",
+                    rawOutput="INSUFFICIENT_EVIDENCE was the wrong call: the deposit was 38 dollars.",
+                    groundTruth="The deposit was 38 dollars.",
+                )
+            ]
+        )
+        self.assertNotIn("declined", classes)
+
+    def test_the_frozen_census_records_the_two_declines_and_no_empty_reply(self) -> None:
+        table = _census()
+        classes = table["classes"]
+        self.assertEqual(classes["declined"]["count"], 2)
+        self.assertNotIn(
+            "empty",
+            classes,
+            "the arm produced no blank reply: both rows the previous census called `empty` end in the token",
+        )
+        for name in classes:
+            self.assertIn(name, table["taxonomy"], f"class {name} is outside the taxonomy")
 
 
 class TestAnUnknownClassNameIsRefused(unittest.TestCase):

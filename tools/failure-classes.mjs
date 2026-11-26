@@ -24,8 +24,8 @@
  *
  * | class | rule | what it says about the mechanism |
  * | --- | --- | --- |
- * | `empty` | the reply is blank | the reader produced nothing; a contract or parse defect, not a memory one |
- * | `declined` | the reply is the abstain token | the reader judged the evidence insufficient -- §13.72's cascade |
+ * | `empty` | the reply is blank, or parses to nothing | the reader produced no answer; a contract or parse defect, not a memory one |
+ * | `declined` | the reply **decides** to abstain | the reader judged the evidence insufficient -- §13.72's cascade |
  * | `preference` | the gold is a preference summary ("The user would prefer ...") | the question asks for an inference about the user rather than a fact in a turn |
  * | `derived-number` | the gold **is** a number and that number appears nowhere in the delivered turns | a value to compute: the operand is the count or the sum, so its absence says nothing about delivery |
  * | `number-absent` | the gold's number sits inside a sentence and no delivered turn states it | the operand was never delivered: a **delivery** institution |
@@ -58,19 +58,41 @@
 
 import { readFileSync } from 'node:fs';
 
+import { isAbstention } from '../packages/cortex-memory/dist/parse.js';
+
 class Refusal extends Error {}
 
 /** The product's route order, and a copy of `TURN_CAP_ROUTES` that `repo-gates.test.ts` checks. */
 const ROUTES = ['multi-session', 'temporal', 'flat', 'knowledge-update', 'abstention', 'assistant'];
 
 /**
- * The token a declining reader replies with.
+ * What a decline looks like: **the reply**, read by the reply's own parser.
  *
- * A copy of `parse.ts`'s `ABSTAIN_TOKEN`, and the gate that checks it reads the source rather than this
- * comment: a classification whose "declined" class never fires because the spelling moved would report an
- * entire cascade as `empty`, and both are silent.
+ * ## The defect this import closes, which this file predicted and shipped anyway
+ *
+ * `declined` was `answer.includes('INSUFFICIENT_EVIDENCE')` on a local copy of the token, and the copy
+ * carried a comment saying exactly what would go wrong: *"a classification whose `declined` class never
+ * fires because the spelling moved would report an entire cascade as `empty`, and both are silent."* The
+ * spelling did not move. The **field** did. `parseAnswer` (`parse.ts:87`) maps a reply that decides to
+ * abstain onto `null`, because an abstention is the absence of an answer, so `record.answer` is `null` on
+ * every decline the product has ever produced and `null.includes(...)` cannot be reached. The class was
+ * dead for as long as it existed, and `empty` absorbed the population it names.
+ *
+ * It was found by reading one question, not by reading a count. `c4ea545c` was filed as `empty` -- "the
+ * reader produced nothing, a contract or parse defect" -- and its reply is 533 characters ending in the
+ * bare token; `37f165cf` is the same shape ending in `Answer: INSUFFICIENT_EVIDENCE`. Both are declines.
+ * The census in `tools/failure-census.json` said `empty: 2`, and the two rows it was pricing were a whole
+ * institution away from what it named.
+ *
+ * The predicate is imported rather than restated, which is the rule `mr-failure-census.mjs` follows one
+ * file over: a second implementation of "which part of a reply is a decline" is how two layers come to
+ * disagree about the same artifact. `isAbstention` is the better predicate for this read than
+ * `parseAnswer(raw) === null` because it answers the question asked here -- *does this text decide to
+ * abstain* -- for every input, including a blank one.
  */
-const ABSTAIN_TOKEN = 'INSUFFICIENT_EVIDENCE';
+function decidesToAbstain(reply) {
+  return reply.trim() !== '' && isAbstention(reply);
+}
 
 /**
  * Number words the corpus uses, because a gold answer spells its operands out.
@@ -111,13 +133,96 @@ const NUMBER_WORDS = {
  * every turn around it, so keeping them would make `text-absent` unreachable.
  */
 const STOP = new Set([
-  'the', 'a', 'an', 'and', 'or', 'but', 'if', 'of', 'in', 'on', 'at', 'to', 'for', 'from', 'with',
-  'that', 'this', 'these', 'those', 'it', 'its', 'is', 'are', 'was', 'were', 'be', 'been', 'being',
-  'you', 'your', 'yours', 'i', 'me', 'my', 'we', 'our', 'they', 'them', 'their', 'he', 'she', 'his',
-  'her', 'would', 'will', 'can', 'could', 'should', 'may', 'might', 'do', 'does', 'did', 'have', 'has',
-  'had', 'not', 'no', 'as', 'by', 'so', 'than', 'then', 'there', 'here', 'when', 'what', 'which', 'who',
-  'how', 'why', 'about', 'into', 'over', 'under', 'more', 'most', 'some', 'any', 'all', 'also', 'just',
-  'user', 'prefer', 'prefers', 'preferred', 'preference', 'preferences', 'responses', 'response',
+  'the',
+  'a',
+  'an',
+  'and',
+  'or',
+  'but',
+  'if',
+  'of',
+  'in',
+  'on',
+  'at',
+  'to',
+  'for',
+  'from',
+  'with',
+  'that',
+  'this',
+  'these',
+  'those',
+  'it',
+  'its',
+  'is',
+  'are',
+  'was',
+  'were',
+  'be',
+  'been',
+  'being',
+  'you',
+  'your',
+  'yours',
+  'i',
+  'me',
+  'my',
+  'we',
+  'our',
+  'they',
+  'them',
+  'their',
+  'he',
+  'she',
+  'his',
+  'her',
+  'would',
+  'will',
+  'can',
+  'could',
+  'should',
+  'may',
+  'might',
+  'do',
+  'does',
+  'did',
+  'have',
+  'has',
+  'had',
+  'not',
+  'no',
+  'as',
+  'by',
+  'so',
+  'than',
+  'then',
+  'there',
+  'here',
+  'when',
+  'what',
+  'which',
+  'who',
+  'how',
+  'why',
+  'about',
+  'into',
+  'over',
+  'under',
+  'more',
+  'most',
+  'some',
+  'any',
+  'all',
+  'also',
+  'just',
+  'user',
+  'prefer',
+  'prefers',
+  'preferred',
+  'preference',
+  'preferences',
+  'responses',
+  'response',
 ]);
 
 /**
@@ -133,9 +238,13 @@ const BARE_NUMBER = /^\s*\d[\d,.]*\s*$/;
 /** Every number a string states, whether as digits, as a currency amount, or as a word. */
 export function numbersIn(text) {
   const found = [];
-  const cleaned = String(text).replace(/[,$%]/g, ' ').replace(/(\d)[.](?=\d{3}\b)/g, '$1');
+  const cleaned = String(text)
+    .replace(/[,$%]/g, ' ')
+    .replace(/(\d)[.](?=\d{3}\b)/g, '$1');
   for (const match of cleaned.matchAll(/\d+(?:\.\d+)?/g)) found.push(Number(match[0]));
-  for (const word of String(text).toLowerCase().matchAll(/[a-z]+/g)) {
+  for (const word of String(text)
+    .toLowerCase()
+    .matchAll(/[a-z]+/g)) {
     const value = NUMBER_WORDS[word[0]];
     if (value !== undefined) found.push(value);
   }
@@ -210,8 +319,25 @@ export function classify(record) {
   }
 
   const answer = String(record.answer ?? '');
-  if (answer.trim() === '') return 'empty';
-  if (answer.includes(ABSTAIN_TOKEN)) return 'declined';
+  // The reply is the primary evidence and the parsed answer is derived from it, so the reply decides
+  // whenever the artifact carries one. Read in this order the `declined` class cannot be starved by the
+  // parse, which is precisely what happened while the class read `answer` (see `decidesToAbstain`).
+  const reply = typeof record.rawOutput === 'string' ? record.rawOutput : null;
+  if (reply !== null && decidesToAbstain(reply)) return 'declined';
+  if (answer.trim() === '') {
+    if (reply === null) {
+      // "The reply was blank" and "the artifact does not carry the reply" are the same bytes here and
+      // different findings, and the class this would file is the one that says *the reader produced
+      // nothing*: a claim about a reader made from a field the artifact never wrote. Refused, like every
+      // other reading this file cannot take honestly.
+      throw new Refusal(
+        `question ${record.questionId ?? '?'} carries no \`rawOutput\` and no parsed answer, so a blank ` +
+          'answer cannot be told from a missing reply; `empty` would be a claim about a reader that ' +
+          'nothing in this record observed',
+      );
+    }
+    return 'empty';
+  }
   if (/^the user would prefer/i.test(String(record.groundTruth ?? ''))) return 'preference';
 
   const goldText = overlap.goldTurns.join('\n');
@@ -289,9 +415,7 @@ export function report(records) {
   const wrong = [...byClass.values()].reduce((sum, row) => sum + row.count, 0);
   lines.push(`${total} questions, ${wrong} failures, ${byClass.size} class(es)`);
   lines.push('');
-  lines.push(
-    `${pad('class', 20)}${left('n', 5)}${left('share', 8)}${left('cov med', 9)}  routes`,
-  );
+  lines.push(`${pad('class', 20)}${left('n', 5)}${left('share', 8)}${left('cov med', 9)}  routes`);
   for (const [name, row] of [...byClass.entries()].sort((a, b) => b[1].count - a[1].count)) {
     const routes = [...row.routes.entries()]
       .sort((a, b) => b[1] - a[1])
@@ -304,7 +428,7 @@ export function report(records) {
     );
   }
   lines.push('');
-  lines.push('ceiling against the population each class lives in, and that population\'s floor');
+  lines.push("ceiling against the population each class lives in, and that population's floor");
   lines.push(
     `${pad('class', 20)}${pad('route', 18)}${left('class n', 8)}${left('route n', 8)}` +
       `${left('ceiling', 9)}${left('floor', 8)}  detectable`,
@@ -322,7 +446,9 @@ export function report(records) {
     }
   }
   lines.push('');
-  lines.push('the same classes against the whole suite, which is the population a bundled mechanism is read on');
+  lines.push(
+    'the same classes against the whole suite, which is the population a bundled mechanism is read on',
+  );
   const correct = records.filter((record) => record.correct).length;
   const suiteFloor = resolutionFloor(total, correct / total);
   lines.push(
@@ -402,7 +528,11 @@ const FIXTURE = [
     questionId: 'c',
     route: 'flat',
     correct: false,
-    answer: 'INSUFFICIENT_EVIDENCE',
+    // `parseAnswer` maps a reply that decides to abstain onto `null`, so this is the only shape the
+    // product emits for a decline. The fixture used to carry the token *in `answer`*, a state no run
+    // has ever produced, and that is why the class it exists to pin was dead and green.
+    answer: null,
+    rawOutput: 'INSUFFICIENT_EVIDENCE',
     groundTruth: 'Dark Souls 3 DLC',
     goldOverlap: { carried: 5, total: 12, goldTurns: ['I finished every Dark Souls 3 DLC.'] },
   },
@@ -411,6 +541,7 @@ const FIXTURE = [
     route: 'flat',
     correct: false,
     answer: '',
+    rawOutput: '',
     groundTruth: 'Yes',
     goldOverlap: { carried: 9, total: 24, goldTurns: ['Yes, that worked.'] },
   },
@@ -444,7 +575,7 @@ function selfTest() {
   const cases = [
     ['number-misselected', FIXTURE[0], 'a digit answer against a spelled-out gold number'],
     ['number-misselected', FIXTURE[1], 'the operand was delivered and another one was used'],
-    ['declined', FIXTURE[2], 'the token'],
+    ['declined', FIXTURE[2], 'the token, on the parsed-answer-null shape the product emits'],
     ['empty', FIXTURE[3], 'a blank reply'],
     ['preference', FIXTURE[4], 'a preference summary as the gold'],
     [null, FIXTURE[5], 'a correct answer is not a failure'],
@@ -482,11 +613,93 @@ function selfTest() {
     correct: false,
     answer: '3',
     groundTruth: '4',
-    goldOverlap: { carried: 21, total: 21, goldTurns: ['I went to a festival.', 'Another festival too.'] },
+    goldOverlap: {
+      carried: 21,
+      total: 21,
+      goldTurns: ['I went to a festival.', 'Another festival too.'],
+    },
   });
   if (derived !== 'derived-number') {
-    throw new Error(`self-test: a bare gold with a full delivery must read derived-number, read ${derived}`);
+    throw new Error(
+      `self-test: a bare gold with a full delivery must read derived-number, read ${derived}`,
+    );
   }
+
+  // The `declined` class, on the three reply shapes that decide the question -- because the class was
+  // dead for as long as it existed and the fixture above asserted a shape the product cannot emit.
+  //
+  // `c4ea545c` verbatim: 500 characters of reasoning and then the token on its own line. `parseAnswer`
+  // returns `null`, the artifact's `answer` is `null`, and the census filed it as `empty`.
+  const prose = classify({
+    questionId: 'j',
+    route: 'knowledge-update',
+    correct: false,
+    answer: null,
+    rawOutput:
+      'Based on the evidence, I cannot determine whether you go to the gym more frequently.\n\n' +
+      'However, the evidence does not state what your previous gym frequency was.\n\n' +
+      'INSUFFICIENT_EVIDENCE',
+    groundTruth: 'Yes',
+    goldOverlap: { carried: 9, total: 24, goldTurns: ['I go to the gym three times a week.'] },
+  });
+  if (prose !== 'declined') {
+    throw new Error(
+      `self-test: a prose reply ending in the token must read declined, read ${prose}`,
+    );
+  }
+
+  // `37f165cf` verbatim: a Step 1 list and then the token behind a closing label. The label is the shape
+  // `afterClosingLabel` was written for, so the decision is two rules deep and neither is this file's.
+  const labelled = classify({
+    questionId: 'k',
+    route: 'multi-session',
+    correct: false,
+    answer: null,
+    rawOutput:
+      'Step 1 — Candidate items:\n- "The Nightingale", 416 pages, no month provided.\n\n' +
+      'No evidence identifies two novels finished in January and March.\n\n' +
+      'Answer: INSUFFICIENT_EVIDENCE',
+    groundTruth: '856',
+    goldOverlap: { carried: 6, total: 6, goldTurns: ['I read two novels, 440 and 416 pages.'] },
+  });
+  if (labelled !== 'declined') {
+    throw new Error(`self-test: a labelled token must read declined, read ${labelled}`);
+  }
+
+  // And the inverse, which is the parser's own contract rather than this file's convenience: a token
+  // **inside** prose is a mention, not a decision. If this reads `declined` the class is over-firing and
+  // every answer that argues about a decline is filed as one.
+  const mention = classify({
+    questionId: 'l',
+    route: 'temporal',
+    correct: false,
+    answer: '27',
+    rawOutput:
+      'INSUFFICIENT_EVIDENCE was the wrong call here: the deposit was 38 dollars on 2023/04/02.',
+    groundTruth: 'The deposit was 38 dollars.',
+    goldOverlap: { carried: 9, total: 24, goldTurns: ['I set the thermostat.'] },
+  });
+  if (mention === 'declined') {
+    throw new Error('self-test: a token inside prose is a mention and must not read declined');
+  }
+
+  // And the refusal: with neither a reply nor a parsed answer, `empty` would be a claim about a reader
+  // that nothing in the record observed.
+  let unreadable = false;
+  try {
+    classify({
+      questionId: 'm',
+      route: 'flat',
+      correct: false,
+      answer: '',
+      groundTruth: 'Yes',
+      goldOverlap: { carried: 1, total: 2, goldTurns: ['Yes.'] },
+    });
+  } catch (error) {
+    if (!(error instanceof Refusal)) throw error;
+    unreadable = true;
+  }
+  if (!unreadable) throw new Error('self-test: a blank answer with no reply must be refused');
 
   // And the refusals, each of which would otherwise produce a class rather than an error.
   const refusals = [
@@ -512,13 +725,21 @@ function selfTest() {
   // rather than printing a plausible number in a table nobody re-derives.
   const floor = resolutionFloor(121, 0.84);
   if (Math.abs(floor - 9.37) > 0.1) {
-    throw new Error(`self-test: floor at MR's denominator must read 9.37, read ${floor.toFixed(2)}`);
+    throw new Error(
+      `self-test: floor at MR's denominator must read 9.37, read ${floor.toFixed(2)}`,
+    );
   }
 
   // And the report must actually print a class per line: a census that classifies correctly and prints
   // nothing is the shape `room-census.mjs` was written against.
   const lines = report(FIXTURE);
-  for (const name of ['empty', 'declined', 'preference', 'number-misselected', 'text-misselected']) {
+  for (const name of [
+    'empty',
+    'declined',
+    'preference',
+    'number-misselected',
+    'text-misselected',
+  ]) {
     if (!lines.some((line) => line.startsWith(name))) {
       throw new Error(`self-test: the report printed no ${name} row`);
     }
@@ -530,7 +751,10 @@ function selfTest() {
       throw new Error(`self-test: the report printed no ${bundle} bundle`);
     }
   }
-  console.log('self-test: 7 classifications, 1 absent operand, 1 derived value, 3 refusals, 1 floor, 5 report rows');
+  console.log(
+    'self-test: 7 classifications, 3 reply shapes for `declined`, 1 absent operand, 1 derived value, ' +
+      '4 refusals, 1 floor, 5 report rows',
+  );
 }
 
 function main(argv) {
@@ -555,7 +779,11 @@ function main(argv) {
           classes: Object.fromEntries(
             [...byClass.entries()].map(([name, row]) => [
               name,
-              { count: row.count, routes: Object.fromEntries(row.routes), coverage: median(row.coverage) },
+              {
+                count: row.count,
+                routes: Object.fromEntries(row.routes),
+                coverage: median(row.coverage),
+              },
             ]),
           ),
         },
