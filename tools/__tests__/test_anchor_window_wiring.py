@@ -130,13 +130,41 @@ def test_the_bench_forwards_the_unit_to_the_product() -> None:
     forwarding rule. What it cannot check is that the rule is *right*: mapping the anchor unit to
     `undefined` would compile, forward nothing, and run the turn unit under a configuration line that
     says otherwise.
+
+    ## Why this is three assertions and used to be two
+
+    The single line `relevanceUnits: forwardedUnit` was the edge between "the value was computed" and
+    "the value reached the constructor", and it stopped existing when `CORTEX_MEMORY_AB=units` arrived:
+    the wire is still one edge, but it now runs through `relevanceUnitOption`, because both sides of a
+    `units` pair have to take the *same* path from an arm-level name to the constructor. A test that
+    kept grepping for the old literal would have gone red on a correct change, and one that simply
+    dropped the assertion would have stopped covering the `§13.286.2` defect it exists for -- the
+    computed value travelling nowhere. So the edge is asserted where it now is, in three pieces: the
+    helper, the call, and the translation the helper must not bypass.
     """
     bench = read(BENCH)
     assert f"'{UNIT}': '{UNIT}'," in bench, (
         'RELEVANCE_UNIT_FORWARDING does not map the anchor unit to itself, so the option would be '
         'dropped on the way to CortexMemory'
     )
-    assert 'relevanceUnits: forwardedUnit' in bench, (
+    # 1. The helper is the only thing that turns an arm-level name into the constructor's option.
+    assert re.search(
+        r"function relevanceUnitOption\(units: RelevanceUnits\).*?return forwarded === undefined \? \{\} : \{ relevanceUnits: forwarded \};",
+        bench,
+        re.S,
+    ), (
+        'relevanceUnitOption does not build `{ relevanceUnits: forwarded }`, so the forwarded value '
+        'would have no way to reach the constructor'
+    )
+    # 2. It reads the table rather than the name, because a second translation is a second place to be wrong.
+    helper = bench.split('function relevanceUnitOption', 1)
+    assert len(helper) == 2, 'the bench has no `relevanceUnitOption` to read'
+    assert 'relevanceUnitToForward(units)' in helper[1][:400], (
+        'relevanceUnitOption does not call relevanceUnitToForward, so it would forward an arm-level '
+        'name the table never validated'
+    )
+    # 3. The constructor spreads it. This is the assertion the old literal carried.
+    assert '...relevanceUnitOption(treatment.units)' in bench, (
         'the forwarded value is computed and never handed to the product'
     )
 

@@ -39,12 +39,22 @@ describe('readArmPairing', () => {
     expect(readArmPairing('ask')).toBe('ask');
   });
 
+  it('reads the units pairing, which `PREREG-TURN-FILL.md` was written against and could not dispatch to', () => {
+    // The fifth key, and the one whose absence was recorded in a document rather than in a test: the
+    // pre-registration's §1 said "the arm is the full 500 questions with both sides in one job", and no
+    // pairing could put two evidence units in one job -- `relevanceUnits` was read from `armOptions` inside
+    // the constructor, so both sides selected by the same unit. That is `resolution`'s nine-round defect
+    // repeated on a different key, and this branch is what makes the sentence true.
+    expect(readArmPairing('units')).toBe('units');
+  });
+
   it('folds case and space, because the value is typed by hand into a dispatch', () => {
     expect(readArmPairing(' CARRY ')).toBe('carry');
     expect(readArmPairing('Reference')).toBe('reference');
     expect(readArmPairing(' Clock ')).toBe('clock');
     expect(readArmPairing(' Resolution ')).toBe('resolution');
     expect(readArmPairing(' ASK ')).toBe('ask');
+    expect(readArmPairing(' UNITS ')).toBe('units');
   });
 
   it('refuses a pairing it cannot build, and names every one it can', () => {
@@ -57,12 +67,14 @@ describe('readArmPairing', () => {
     expect(() => readArmPairing('two-window')).toThrow(/`clock`/);
     expect(() => readArmPairing('two-window')).toThrow(/`resolution`/);
     expect(() => readArmPairing('two-window')).toThrow(/`ask`/);
+    expect(() => readArmPairing('two-window')).toThrow(/`units`/);
     // The count is asserted in prose as well as by enumeration: "The three are" survived a fourth
-    // member once already in this campaign's sibling selector, and "The four are" survived a fifth one
-    // this round -- the prose count is the sentence a reader trusts first, and it has now been wrong
-    // twice. Asserted as a number so a sixth member has to edit this line rather than append a branch.
-    expect(() => readArmPairing('two-window')).toThrow(/The five are/);
-    expect(() => readArmPairing('two-window')).not.toThrow(/The four are/);
+    // member once already in this campaign's sibling selector, "The four are" survived a fifth one three
+    // rounds ago, and "The five are" would have survived this sixth one -- the prose count is the sentence
+    // a reader trusts first, and it has now been wrong three times. Asserted as a number so a seventh
+    // member has to edit this line rather than append a branch.
+    expect(() => readArmPairing('two-window')).toThrow(/The six are/);
+    expect(() => readArmPairing('two-window')).not.toThrow(/The five are/);
   });
 });
 
@@ -80,6 +92,7 @@ describe('pairingViolation', () => {
     clock: true,
     resolution: 'layered',
     ask: 'verbatim-acts',
+    units: 'turn-fill',
   };
 
   it('has nothing to require of the registered pair', () => {
@@ -92,6 +105,7 @@ describe('pairingViolation', () => {
         clock: false,
         resolution: 'raw',
         ask: 'route',
+        units: 'turn',
       }),
     ).toBeNull();
   });
@@ -107,25 +121,29 @@ describe('pairingViolation', () => {
       'CORTEX_MEMORY_RESOLUTION=layered',
     );
     expect(pairingViolation('ask', { ...base, ask: 'route' })).toContain('CORTEX_MEMORY_ASK');
+    expect(pairingViolation('units', { ...base, units: 'turn' })).toContain(
+      'CORTEX_MEMORY_RELEVANCE_UNITS',
+    );
   });
 
-  it('says what the reading would be misread as, and the four are not the same misreading', () => {
+  it('says what the reading would be misread as, and the five are not the same misreading', () => {
     // The messages are the only place a dispatcher learns that a zero is not a finding. A message that said
     // "incoherent pairing" would cost a second dispatch to interpret, which is the whole expense the
     // refusal exists to avoid.
     //
-    // The four are NOT one sentence with a variable substituted, and asserting that they are would have
-    // made this test the thing that flattened a real distinction. Two say the artifact **publishes a null**
-    // (`carry`, `ask`: the delta is zero and the accuracy is real); two say a quantity **reads zero**
+    // The five are NOT one sentence with a variable substituted, and asserting that they are would have
+    // made this test the thing that flattened a real distinction. Three say the artifact **publishes a null**
+    // (`carry`, `ask`, `units`: the delta is zero and the accuracy is real); two say a quantity **reads zero**
     // (`clock`: the paired criterion's movement; `resolution`: `F1`'s mechanism census, which is why that
     // run is void rather than null). The wording is the difference between "we measured nothing" and "we
     // measured a zero", and both are failures a dispatcher has to be able to tell apart from a result.
-    for (const pairing of ['carry', 'clock', 'resolution', 'ask'] as const) {
+    for (const pairing of ['carry', 'clock', 'resolution', 'ask', 'units'] as const) {
       const message = pairingViolation(pairing, {
         carry: false,
         clock: false,
         resolution: 'raw',
         ask: 'route',
+        units: 'turn',
       });
       expect({ pairing, saysWhatZeroMeans: /\b(null|zero)\b/.test(message ?? '') }).toEqual({
         pairing,
@@ -140,32 +158,50 @@ describe('pairingViolation', () => {
         clock: false,
         resolution: 'raw',
         ask: 'route',
+        units: 'turn',
       }),
     ).toContain('F1');
+    // `units` names the pre-registration section whose falsification rule it protects (§5.1: "`promptChars`
+    // unchanged on the named questions"), because that is what a reader of a zero delta needs next.
+    expect(
+      pairingViolation('units', {
+        carry: false,
+        clock: false,
+        resolution: 'raw',
+        ask: 'route',
+        units: 'turn',
+      }),
+    ).toContain('PREREG-TURN-FILL.md');
   });
 
   it('requires exactly the one key its pairing splits, and nothing else', () => {
     // The Cartesian product, because the defect this catches is a condition that reads a SECOND key: a
     // `carry` rung that also demanded the clock would pass every single-axis test above and refuse three
-    // quarters of the dispatches that ran. 4 x 16 = 64 readings, each compared as a whole object so a
+    // quarters of the dispatches that ran. 5 x 48 = 240 readings, each compared as a whole object so a
     // failure prints which combination disagreed rather than which boolean did.
     const satisfactions: Record<string, (treatment: PairingTreatment) => boolean> = {
       carry: (treatment) => treatment.carry,
       clock: (treatment) => treatment.clock,
       resolution: (treatment) => treatment.resolution === 'layered',
       ask: (treatment) => treatment.ask !== 'route',
+      // The control is a NAMED unit rather than an absent key, which is why this axis is not a boolean:
+      // `turn` satisfies nothing and `turn-fill` satisfies everything, and a rung that demanded a third
+      // state would be visible here as a combination that disagreed.
+      units: (treatment) => treatment.units !== 'turn',
     };
     for (const [pairing, satisfied] of Object.entries(satisfactions)) {
       for (const carry of [true, false]) {
         for (const clock of [true, false]) {
           for (const resolution of ['raw', 'layered']) {
             for (const ask of ['route', 'verbatim-acts', 'verbatim-scope']) {
-              const treatment = { carry, clock, resolution, ask };
-              expect({
-                pairing,
-                ...treatment,
-                refused: pairingViolation(pairing as 'carry', treatment) !== null,
-              }).toEqual({ pairing, ...treatment, refused: !satisfied(treatment) });
+              for (const units of ['turn', 'turn-fill']) {
+                const treatment = { carry, clock, resolution, ask, units };
+                expect({
+                  pairing,
+                  ...treatment,
+                  refused: pairingViolation(pairing as 'carry', treatment) !== null,
+                }).toEqual({ pairing, ...treatment, refused: !satisfied(treatment) });
+              }
             }
           }
         }
@@ -184,6 +220,20 @@ describe('pairingViolation', () => {
     for (const ask of ['verbatim', 'verbatim-acts', 'verbatim-clock', 'verbatim-scope']) {
       expect({ ask, refused: pairingViolation('ask', { ...base, ask }) !== null }).toEqual({
         ask,
+        refused: false,
+      });
+    }
+  });
+
+  it('refuses `turn` for the units pairing and accepts every other unit', () => {
+    // `ask`'s asymmetry one key down. `turn` is a real member of the product's union, so it is not an
+    // invalid value -- it is an invalid TREATMENT, because it is the control. Every other unit is a
+    // legitimate question: "what is `session` worth against `turn`" and "what is `session-fill` worth"
+    // are both axes `PREREG-SESSION-TEXT-UNIT.md` and `RETRACTIONS.md` 28 have already asked in prose.
+    expect(pairingViolation('units', { ...base, units: 'turn' })).not.toBeNull();
+    for (const units of ['turn-fill', 'session', 'session-fill', 'anchor-window', 'session-text']) {
+      expect({ units, refused: pairingViolation('units', { ...base, units }) !== null }).toEqual({
+        units,
         refused: false,
       });
     }

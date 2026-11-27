@@ -360,6 +360,20 @@ function relevanceUnitToForward(units: string): RelevanceUnits | undefined {
 }
 
 /**
+ * The constructor spread for one arm-level unit.
+ *
+ * One function rather than the spread written inline at the constructor, because the `units` pairing puts
+ * TWO values through it -- the feature side's and the control's `turn` -- and two inline spreads are two
+ * places that have to keep agreeing. `exactOptionalPropertyTypes` forbids `{ relevanceUnits: undefined }`,
+ * and the absent key is the shipped behaviour, so the control returns the empty object rather than a key
+ * holding nothing.
+ */
+function relevanceUnitOption(units: RelevanceUnits): { relevanceUnits?: RelevanceUnits } {
+  const forwarded = relevanceUnitToForward(units);
+  return forwarded === undefined ? {} : { relevanceUnits: forwarded };
+}
+
+/**
  * The resolution as the product's union, keyed so a new form is a compile error rather than a silent drop.
  *
  * Same shape and same reason as `RELEVANCE_UNIT_FORWARDING`: the arm carries the name as a `string`
@@ -401,6 +415,16 @@ type TreatmentAsk = EvidenceAsk | 'route';
 type ArmTreatment = PairingTreatment & {
   readonly resolution: ResolutionMode;
   readonly ask: TreatmentAsk;
+  /**
+   * The evidence unit this side selects by, in the **arm's** spelling rather than the product's.
+   *
+   * `turn` is a member of this union and is not a member of the constructor's forwarded options -- the
+   * shipped behaviour is expressed by NOT passing the key. Carrying the arm-level name here rather than
+   * the forwarded value is what lets the `units` pair name its control (`turn`) without a second
+   * translation table: `buildCortex` runs every branch through `relevanceUnitToForward`, so the control
+   * branch and the feature branch take the same path to the constructor.
+   */
+  readonly units: RelevanceUnits;
 };
 
 /**
@@ -999,7 +1023,12 @@ async function main(): Promise<void> {
   // §13.286.2. Resolved once, next to the option block it feeds, so the value the product receives and
   // the value the artifact reports come from the same read -- the defect was not that they disagreed
   // but that one of them was never consulted.
-  const forwardedUnit = relevanceUnitToForward(armOptions.relevanceUnits);
+  //
+  // The unit is NOT resolved here any more, and the deletion is the `units` pairing's price: the
+  // treatment carries the arm-level name and `buildCortex` translates it per side, so a run that resolved
+  // the forward here would put the feature's unit on the control side and publish a null for a comparison
+  // in which nothing differed. The translation itself did not move -- `relevanceUnitOption` calls the same
+  // table -- so a unit the table does not know still throws before a dataset is opened.
   const forwardedResolution = resolutionToForward(armOptions.resolution ?? 'raw');
 
   // The feature side's treatment, named once. `buildFeature` passes it through untouched and every
@@ -1015,6 +1044,10 @@ async function main(): Promise<void> {
     // `cortex-eval` carries the ask as `string` (the dependency runs the other way) and validates it against
     // the product's list at parse time. The cast states what that validation already established.
     ask: armOptions.ask as TreatmentAsk,
+    // The arm-level unit, not `forwardedUnit`: `turn` is the control the `units` pairing holds, and
+    // `forwardedUnit` has already erased it to `undefined`. The cast states what `readRelevanceUnits`
+    // established at parse time, and `relevanceUnitToForward` re-checks the table on every construction.
+    units: armOptions.relevanceUnits as RelevanceUnits,
   };
 
   // The two readers the product asks for. Absent unless the run named it, so a dispatch of any other
@@ -1216,13 +1249,11 @@ async function main(): Promise<void> {
       // §13.27's single variable, spread conditionally for the reason `relevanceFor` above
       // is: `turn` IS the shipped behaviour (the budget buys individual turns wherever they
       // score highest) and is expressed by NOT passing the key, so a run that names no unit
-      // reproduces the previous prompt byte for byte. The cast is at this boundary rather
-      // than on the option's type, for the reason the contract's cast is: `cortex-eval`
-      // carries the unit as `string` because it cannot import this package's union, and it
-      // validates against the product's own list at parse time -- `readRelevanceUnits`
-      // throws on anything unrecognised -- so by the time execution reaches here the value
-      // IS one of the union's members.
-      ...(forwardedUnit === undefined ? {} : { relevanceUnits: forwardedUnit }),
+      // reproduces the previous prompt byte for byte. Read from the TREATMENT rather than from
+      // `armOptions`, because that is what makes the `units` pair possible: both sides are built by
+      // this one constructor, and a value read from the dispatch here would put the feature's unit on
+      // the control side and publish a null for a comparison in which nothing differed.
+      ...relevanceUnitOption(treatment.units),
       // §13.67's single variable, spread conditionally for the reason the three above are:
       // no cap IS the shipped behaviour and is expressed by NOT passing the key, so a run that
       // names no cap reproduces the previous prompt byte for byte. This is the one line in the
@@ -1316,6 +1347,9 @@ async function main(): Promise<void> {
   // cognitive system on both sides with one flag between them, which is `S12`'s instrument and the only
   // pair whose delta is the semantic layer's carry rather than two systems' difference. `clock` is the
   // same instrument one flag over: the same system twice with the boundary clock off against on.
+  // `units` is the same instrument on the evidence unit: the same system twice with the registered `turn`
+  // selection on the control side, which is the pair `PREREG-TURN-FILL.md` describes and had no way to
+  // dispatch before this branch existed.
   //
   // Built here rather than as two literals so the two sides cannot drift: `buildCortex` is one
   // construction, and the two flags that a pairing can split are its arguments. A second literal for the
@@ -1335,7 +1369,7 @@ async function main(): Promise<void> {
         'a treatment that never executed.',
     );
   }
-  // The four pairing refusals are `arm-pairing.ts`'s `pairingViolation`, and the move is not cosmetic.
+  // The five pairing refusals are `arm-pairing.ts`'s `pairingViolation`, and the move is not cosmetic.
   // They were four `if (...) throw` blocks here for three rounds, in a function that opens a dataset and a
   // worker pool before it can be called -- so **not one of them had a test**, and the ladder of identical
   // refusals was carried by prose. Returning the message makes each rung a value a test asserts.
@@ -1367,6 +1401,14 @@ async function main(): Promise<void> {
         return buildCortex({ ...armTreatment, ask: 'route' });
       case 'reference':
         return buildBaseline();
+      case 'units':
+        // The one key whose control is a **named** value rather than an absent or `false` one. `turn` is a
+        // member of the product's union and the arm forwards it by NOT passing the key, so the control is
+        // spelled as the name here and translated by the same `relevanceUnitOption` the feature side takes
+        // -- which is what makes this branch one key and not a second construction. The name is a literal
+        // rather than the registered value for the reason `ask`'s `'route'` is: the control is the
+        // configuration the 93.40% reading was produced under, and it must not move when the product adopts.
+        return buildCortex({ ...armTreatment, units: 'turn' });
     }
   };
 
@@ -1588,6 +1630,14 @@ async function main(): Promise<void> {
       // difference between two runs. Recorded for the reason `resolutionPair` is: the register's every ask
       // reading compares two artifacts, and this field is what tells a later reader that one did not.
       askPair: pairing === 'ask',
+      // The fifth one-flag pair, and the one whose two halves are furthest apart in the record:
+      // `relevanceUnits=turn-fill` names the treatment and says nothing about what it was compared
+      // against, because the control is a **named** unit (`turn`) rather than an absent key. Without this
+      // entry a reader of the artifact would have to know that `turn` is the control, which is a fact about
+      // `arm-pairing.ts` rather than about the run -- and `read-merged-population.py`'s `PAIR_FLAGS` is the
+      // one place that turns the flag back into a pairing, so an artifact that omitted it would be read as
+      // the registered pair and its delta would be attributed to two systems.
+      unitsPair: pairing === 'units',
     },
     datasetFingerprint,
     // §E6's population, when the run multiplied it or answered one part of a split dispatch. Absent

@@ -56,7 +56,7 @@ from math import comb
 # The pairings `arm-pairing.ts` can build. One constant, held to that union by
 # `test_the_pairing_vocabulary_is_the_arms_vocabulary`, because a closed set copied into a reader is a
 # closed set that will fall out of step -- measured, not hypothesised: see this file's header.
-PAIRINGS = ('reference', 'carry', 'clock', 'resolution', 'ask')
+PAIRINGS = ('reference', 'carry', 'clock', 'resolution', 'ask', 'units')
 
 # Which `featureConfig` field says the arm built this pairing, for the pairings that put ONE FLAG of the
 # same system between their sides.
@@ -71,6 +71,10 @@ PAIR_FLAGS = {
     'clock': 'clockPair',
     'resolution': 'resolutionPair',
     'ask': 'askPair',
+    # `PREREG-TURN-FILL.md`'s instrument. The one flag whose control is a NAMED value (`turn`) rather than an
+    # absent key, so the flag is doing more work here than anywhere above: `relevanceUnits=turn-fill` on the
+    # artifact says the treatment ran, and only `unitsPair` says what it ran against.
+    'units': 'unitsPair',
 }
 
 # Derived rather than restated: a second tuple of the same names would be a second place to forget.

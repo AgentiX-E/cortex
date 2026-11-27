@@ -34,6 +34,20 @@
 const PAIRING_VARIABLE = 'CORTEX_MEMORY_AB';
 
 /**
+ * The unit the `units` pairing holds on its control side.
+ *
+ * A literal rather than a read of `tools/arm-config-baseline.json`, and the reason is the same one
+ * `ask`'s `'route'` states: **the control is the configuration the register's numbers were produced
+ * under, and it must not move when the product adopts a new value.** `turn` is what `45760081761`
+ * scored 93.40% at and what every artifact before it selected by; if `turn-fill` is adopted, that
+ * artifact stays the reading a future `units` pair is placed against, so the control has to keep
+ * naming it. Reading the registered value here would make two readings taken on either side of an
+ * adoption incomparable -- deltas against two different controls -- and the register would have no
+ * way to say so.
+ */
+const UNIT_PAIRING_CONTROL = 'turn';
+
+/**
  * The pairings this arm knows how to build.
  *
  * - `reference`: the reference pipeline against the cognitive one. The registered pair, and the
@@ -53,8 +67,14 @@ const PAIRING_VARIABLE = 'CORTEX_MEMORY_AB';
  *   well, so the delta it published belonged to `resolution`. A pairing removes the question -- one pass,
  *   one corpus, one block between the sides -- and it is the shape `PREREG-CLOCK-AXIS.md` §7 asked for
  *   after that reading was withdrawn.
+ * - `units`: the same cognitive system twice, the registered `turn` unit against the unit the dispatch
+ *   names in `CORTEX_MEMORY_RELEVANCE_UNITS`. `PREREG-TURN-FILL.md` was written against a sentence that
+ *   claimed "both sides in one job" and no such pairing existed, so the document described an instrument
+ *   the harness could not build -- the same defect `resolution` carried for nine rounds. This value is
+ *   what makes that pre-registration dispatchable rather than merely readable, and it is the reason the
+ *   paragraph below counts five keys rather than four.
  *
- * The last four are one instrument with four keys, and that is why they live here rather than in four
+ * The last five are one instrument with five keys, and that is why they live here rather than in five
  * files: each asks "what is this one switch worth", each is built by calling the same constructor twice,
  * and each must keep the OTHER keys equal on the two sides. A second selector for the second flag would
  * be a second place that has to remember the same rule, and the rule is the whole instrument -- a pair
@@ -67,7 +87,7 @@ const PAIRING_VARIABLE = 'CORTEX_MEMORY_AB';
  * Not exported: `readArmPairing` is the only way to obtain one, and the export census reports a
  * type nothing names. The union travels in the function's signature, which is where a caller reads it.
  */
-type ArmPairing = 'reference' | 'carry' | 'clock' | 'resolution' | 'ask';
+type ArmPairing = 'reference' | 'carry' | 'clock' | 'resolution' | 'ask' | 'units';
 
 /**
  * The pairing this environment asks for. Absent and blank mean `reference`.
@@ -88,17 +108,20 @@ export function readArmPairing(raw: string | undefined): ArmPairing {
   if (trimmed === 'clock') return 'clock';
   if (trimmed === 'resolution') return 'resolution';
   if (trimmed === 'ask') return 'ask';
+  if (trimmed === 'units') return 'units';
   throw new Error(
-    `${PAIRING_VARIABLE} does not name a pairing: got ${JSON.stringify(raw)}. The five are ` +
+    `${PAIRING_VARIABLE} does not name a pairing: got ${JSON.stringify(raw)}. The six are ` +
       '`reference` (the reference pipeline against the cognitive one, which is the registered ' +
       'pair and what an unset variable means), `carry` (the cognitive system against itself ' +
       "with `semanticCarry` off, which is `S12`'s instrument), `clock` (the cognitive system " +
       'against itself with `sessionClock` off, which is the boundary clock’s), `resolution` ' +
       '(the cognitive system against itself with `resolution` at the registered `raw`, which is ' +
-      "`C7`'s -- the one pair whose delta is a rendering form's) and `ask` (the cognitive system " +
+      "`C7`'s -- the one pair whose delta is a rendering form's), `ask` (the cognitive system " +
       'against itself with each route’s reference instruction block on the control side, which is the ' +
-      'pair `§13.291`’s adoption should have been priced with). A value that named none of them ' +
-      'would publish a delta between two systems the dispatch never described.',
+      'pair `§13.291`’s adoption should have been priced with) and `units` (the cognitive system ' +
+      'against itself with the registered `turn` evidence unit on the control side, which is the pair ' +
+      '`PREREG-TURN-FILL.md` was written against and could not be dispatched to). A value that named ' +
+      'none of them would publish a delta between two systems the dispatch never described.',
   );
 }
 
@@ -115,6 +138,16 @@ export type PairingTreatment = {
   readonly clock: boolean;
   readonly resolution: string;
   readonly ask: string;
+  /**
+   * The evidence unit the **feature** side is asked for, in the arm's own spelling.
+   *
+   * A `string` rather than the product's union for the reason `resolution` and `ask` are: the dependency
+   * runs the other way, and the arm's parser (`readRelevanceUnits`) is the thing that validates it against
+   * the product's list. What this field exists for is the refusal below -- a `units` pair whose feature side
+   * names the control is two controls, and the artifact would publish a null for a comparison that never
+   * administered a unit.
+   */
+  readonly units: string;
 };
 
 /**
@@ -188,6 +221,21 @@ export function pairingViolation(pairing: ArmPairing, treatment: PairingTreatmen
         'instruction blocks the arm knows (`verbatim`, `verbatim-acts`, `verbatim-clock`, `verbatim-scope`). ' +
         'Without it both sides render the reference block, the delta is zero by construction, and the ' +
         'artifact would publish a null for a comparison that never administered an instruction.'
+      );
+    case 'units':
+      if (treatment.units !== UNIT_PAIRING_CONTROL) return null;
+      // The `ask` rung's shape, one layer down: the control is a **named** unit rather than an absent key,
+      // so a dispatcher who says `pairing=units` and leaves the variable at its registered `turn` gets the
+      // same unit on both sides. The delta would then be exactly zero, the artifact would record a unit on
+      // both lines, and `PREREG-TURN-FILL.md` §3's `P1` ("the mechanism fires", read as `promptChars` rising
+      // on the 215 named questions) would fail for a reason that has nothing to do with the mechanism.
+      return (
+        'CORTEX_MEMORY_AB=units pairs the cognitive system against itself with the registered `turn` evidence ' +
+        'unit on the control side, so the feature side must name a different one: set ' +
+        'CORTEX_MEMORY_RELEVANCE_UNITS to `turn-fill`, `session`, `session-fill`, `anchor-window` or ' +
+        '`session-text`. Without it both sides select by `turn`, every prompt is byte-identical, and the ' +
+        'artifact would publish a null -- and a zero with a unit named on both sides is the sentence ' +
+        '`PREREG-TURN-FILL.md` §5.1 exists to prevent.'
       );
     case 'reference':
       // The registered pair compares two systems, so there is no one key to require: `buildBaseline` and

@@ -7,7 +7,7 @@ refutation it repairs is run `38753835652`, recorded in `prompt.ts` at `selectBy
 
 ## 1. Treatment, byte for byte
 
-One workflow input changes and no other:
+One arm option changes and no other:
 
 | input | shipped | this run | why |
 | --- | --- | --- | --- |
@@ -18,9 +18,59 @@ One workflow input changes and no other:
 | window segment | `head` | *unchanged* | the window and the marker are one indivisible change; neither is this arm |
 | everything else | shipped | *unchanged* | the dispatcher names the remaining inputs from the baseline |
 
-The arm is the full 500 questions with both sides in one job, the pairing invariant of
+### 1.1 Two things this section got wrong, and what fixed them
+
+**The instrument did not exist.** The paragraph below used to read "the arm is the full 500 questions
+with both sides in one job … so the comparison is this dispatch's own baseline side", and no such
+instrument could be built: `CORTEX_MEMORY_AB` had five values (`reference`, `carry`, `clock`,
+`resolution`, `ask`) and none of them put two **evidence units** in one job. `relevanceUnits` was read
+from the dispatch inside the constructor, so both sides selected by the same unit — which means this
+pre-registration described a reading it had no way to take, the same way
+`PREREGISTRATION-RESOLUTION-LAYERING.md` described one for nine rounds. `arm-pairing.ts` now carries a
+sixth value, `units`, and `run-ablation.ts`'s `buildPairBaseline` builds its control as
+`{ ...armTreatment, units: 'turn' }`. Two consequences are worth stating because they are not
+cosmetic:
+
+* the pairing is **not** a second treatment. It names which two sides exist; the treatment is still
+  exactly one unit, and `pairingViolation` refuses `pairing=units` with `turn` on the feature side,
+  because that run would put the same unit on both sides and publish a null for a comparison in which
+  nothing differed;
+* the unit now travels in `ArmTreatment` rather than as a resolved value beside it, so every branch of
+  `buildPairBaseline` reaches the constructor through one function (`relevanceUnitOption`) instead of
+  two. A unit the forwarding table does not know still throws before a dataset is opened.
+
+**The repetition count was left implicit.** The shipped value is `ablation_runs: 4`; this dispatch takes
+**1**, and the table above did not say so. It is a departure from the registered configuration and it is
+recorded here rather than discovered in the artifact:
+
+| input | shipped | this run | why |
+| --- | --- | --- | --- |
+| `ablation_runs` | `4` | **`1`** | the rejection region of `P3` is three questions, and a paired comparison holds every other question fixed by construction. §6 prices the second pass and §5 says when it is taken. |
+
+`MEASURE-SPEND-MINIMUM.md` §206.2 is the arithmetic: four repetitions buy variance reduction on a
+metric whose noise floor is five questions, and this arm's quantity is a **paired** movement on a named
+population of 215, not an absolute accuracy. The saving is 3/4 of the bill — **10.69 CNY** — which is
+more than the entire remaining queue.
+
+The arm is therefore the full 500 questions with both sides in one job, the pairing invariant of
 `PREREGISTRATION-CORTEX-MEMORY-ARM.md` §2.2, so the comparison is this dispatch's own baseline side
-rather than an archived run from another day.
+rather than an archived run from another day. **One pass**, priced in §1.2.
+
+### 1.2 The bill, before it is spent
+
+| quantity | value | how it is derived |
+| --- | ---: | --- |
+| question-runs | 500 | 500 questions × 1 pass; both sides are inside one pass, so the side count is not a multiplier |
+| rate | 0.00713 CNY | `MEASURE-SPEND-MINIMUM.md` §206.1: `14.26 / (500 × 4)` on `42467` — the file rate, not the `MR` rate |
+| projected bill | **3.57 CNY** | 500 × 0.00713 |
+| label | `extrapolated` | a configuration `42467` did not run, at or below its repetition count. Not `billed` and not `proxy` |
+| probe | the published artifact | `MEASURE-UNSPENT-ROOM.md` is the probe and it cost nothing: it falsifies the upper bound (215 questions, 10 wrong) before the reader is called. `P1` is the in-run probe for the mechanism having fired at all |
+
+At 3.57 CNY the row does not reach the 10 CNY threshold that `guard:queue-price` prices a probe
+against, and it carries one anyway. The probe it carries is unusual and better than a discount: the
+population is **already known**, so a dispatch that spends the room and changes no answer is a
+registered outcome (`P3`'s floor) rather than a failed experiment.
+
 
 ## 2. Population, and the number that is already known
 

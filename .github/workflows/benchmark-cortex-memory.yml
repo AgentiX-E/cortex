@@ -679,6 +679,23 @@ jobs:
           # `CORTEX_MEMORY_MAX_TURN_CHARS` is refused by the product rather than defaulted, because the
           # form ceilings are ratios of that width. `raw` is the rendering every archived artifact used.
           CORTEX_MEMORY_RESOLUTION: ${{ vars.CORTEX_MEMORY_RESOLUTION || 'raw' }}
+          # `PREREG-TURN-FILL.md`'s instrument, and the third axis to ride a repository variable for the
+          # reason the two above do: 24 of GitHub's 25 inputs are spoken for, and a pairing is metadata
+          # about the pass rather than an arm option -- nothing in `arm-config-baseline.json` compares it,
+          # so a slot would buy a comparison the registration gate does not make.
+          #
+          # `reference` is the fallback rather than a blank, because it is the pairing every archived
+          # artifact was produced by, and `readArmPairing` distinguishes unset from a named value. That
+          # distinction is what makes a control run reproducible from this commit rather than from
+          # whatever the last experiment left in the variable -- the same property `SESSION_CLOCK=off`
+          # and `RESOLUTION=raw` carry.
+          #
+          # `units` is the value this variable exists to reach today: it puts the registered `turn` unit
+          # on the control side and `CORTEX_MEMORY_RELEVANCE_UNITS` on the feature side, inside ONE pass,
+          # so the two sides share a corpus read, a cache state and a wall clock. `pairingViolation`
+          # refuses the combination where both sides name `turn`, because that run would publish a null
+          # for a comparison in which nothing differed.
+          CORTEX_MEMORY_AB: ${{ vars.CORTEX_MEMORY_AB || 'reference' }}
           # Section 13.83's reach, passed the same way. Blank means every route; the untouched
           # routes are this experiment's control.
           CORTEX_MEMORY_EVIDENCE_ROLES_ROUTES: ${{ github.event.inputs.cortex_memory_evidence_roles_routes }}
