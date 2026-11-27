@@ -86,11 +86,16 @@ class SecondLookSystem implements MemorySystem {
  * `attempted: 121` with `queries: 118` is the shape of a real `MR` dispatch: the stage reaches every
  * multi-session question, and the model declines a few (`refused: 3`). The numbers are the ones the floor
  * below is computed from, so they are named rather than inlined.
+ *
+ * `empty: 0` is what a working stage writes and what run `45974552492` did not: it reached 242 questions,
+ * wrote no query and came back with no usable line 242 times, because the decision call's `maxTokens` was
+ * 32 under a reader that thinks before it answers.
  */
 const SECOND_LOOK_CENSUS = {
   attempted: 121,
   queries: 118,
   refused: 3,
+  empty: 0,
   unranked: 0,
   promoted: 1,
 };
@@ -133,7 +138,7 @@ describe("the second look's receipt and its census on the artifact", () => {
       memoryArmConfig: { ...config(), ...overrides },
     });
 
-  it('carries the five counters at the top level and the switch inside the config block', async () => {
+  it('carries the six counters at the top level and the switch inside the config block', async () => {
     // Two places on purpose, and the split is the claim: the switch is configuration (so `--registration` and
     // the shard merge compare it), the counters are what happened (so they may differ between jobs that read
     // different corpora). Run `45543010618` is what a census inside the config block costs -- eight shards,
@@ -213,6 +218,7 @@ describe("the second look's receipt and its census on the artifact", () => {
           attempted: 1,
           queries: 1,
           refused: 0,
+          empty: 0,
           unranked: 0,
           promoted: 0,
         }),

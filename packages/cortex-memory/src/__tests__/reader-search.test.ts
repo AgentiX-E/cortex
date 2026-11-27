@@ -194,15 +194,13 @@ describe('parseSecondLookQuery', () => {
     expect(verdict).toEqual({ kind: 'refused', reason: 'too-long' });
   });
 
-  it('refuses an empty reply and a stub too short to embed', () => {
-    expect(parseSecondLookQuery('   \n\n', QUESTION, options)).toEqual({
-      kind: 'refused',
-      reason: 'empty',
-    });
-    expect(parseSecondLookQuery('ab', QUESTION, options)).toEqual({
-      kind: 'refused',
-      reason: 'empty',
-    });
+  it('reports an empty reply and a stub too short to embed as empty, not as a refusal', () => {
+    // The verdict run `45974552492` split. 242 of 242 decision calls were cut by a 32-token budget and every
+    // one of them arrived here with no usable line; counted as refusals, the artifact said the model declined
+    // on every question, which is a finding about the reader rather than about the bound. The two verdicts
+    // are different findings about the same bill, so they are different values.
+    expect(parseSecondLookQuery('   \n\n', QUESTION, options)).toEqual({ kind: 'empty' });
+    expect(parseSecondLookQuery('ab', QUESTION, options)).toEqual({ kind: 'empty' });
   });
 
   it('keeps a query that starts with a refusal word but is about something', () => {
@@ -223,6 +221,15 @@ describe('readerSearchOptions', () => {
     expect(() => readerSearchOptions({ k: 0 })).toThrow(/must be a positive integer/u);
     expect(() => readerSearchOptions({ digestChars: 1.5 })).toThrow(/digestChars/u);
     expect(() => readerSearchOptions({ maxTokens: Number.NaN })).toThrow(/maxTokens/u);
+  });
+
+  it('keeps a budget a thinking reader can answer inside, not a truncation-scale one', () => {
+    // `32` is the value run `45974552492` measured: 242 decision calls, 242 of them cut before their first
+    // content token, because the `multi-session` route asks its reader for `thinking` (§13.197) and the bound
+    // was spent on reasoning. The floor below is not the chosen value -- it is the point under which the
+    // bound becomes the answer -- so a later edit is free to move anywhere above it, and an edit back to a
+    // truncation-scale number fails here rather than in a ¥5.87 dispatch.
+    expect(DEFAULT_READER_SEARCH.maxTokens).toBeGreaterThan(256);
   });
 });
 
@@ -287,6 +294,7 @@ describe('the second look on the multi-session route', () => {
       attempted: 1,
       queries: 1,
       refused: 0,
+      empty: 0,
       unranked: 0,
       promoted: 1,
     });
@@ -309,6 +317,7 @@ describe('the second look on the multi-session route', () => {
       attempted: 1,
       queries: 1,
       refused: 0,
+      empty: 0,
       unranked: 0,
       promoted: 0,
     });
@@ -330,6 +339,33 @@ describe('the second look on the multi-session route', () => {
       attempted: 1,
       queries: 0,
       refused: 1,
+      empty: 0,
+      unranked: 0,
+      promoted: 0,
+    });
+  });
+
+  it('counts a reply that came back with no usable line as empty, not as a refusal', async () => {
+    // The state run `45974552492` bought. All 242 of its decision calls were cut by a 32-token bound while the
+    // `multi-session` route reader thought before answering, so every reply arrived with no content token at
+    // all -- and the census reported 242 refusals, which reads as a model declining on every question. The
+    // verdict is now `empty`, and the reason it has to be a different counter is that the repair is
+    // different: this one is a bound in this stage's own configuration, and that one is the reader's answer.
+    const { llm, calls } = scripted(['   \n\n', ANSWER]);
+    const memory = system(llm, {
+      relevanceFor: querySensitive,
+      gate: { ...OPEN_GATE, sessionBudget: 2 },
+      readerSearch: readerSearchOptions(),
+    });
+    await memory.answerSessions(QUESTION, [PLANT_SESSION, DOG_SESSION]);
+    // Same two calls as `NONE`: the stage fired, got nothing usable, and did not search -- so the answer is
+    // the control's, byte for byte.
+    expect(calls).toHaveLength(2);
+    expect(memory.readerSearchCensus()).toEqual({
+      attempted: 1,
+      queries: 0,
+      refused: 0,
+      empty: 1,
       unranked: 0,
       promoted: 0,
     });
@@ -360,6 +396,7 @@ describe('the second look on the multi-session route', () => {
       attempted: 1,
       queries: 0,
       refused: 0,
+      empty: 0,
       unranked: 1,
       promoted: 0,
     });
@@ -377,6 +414,7 @@ describe('the second look on the multi-session route', () => {
       attempted: 0,
       queries: 0,
       refused: 0,
+      empty: 0,
       unranked: 0,
       promoted: 0,
     });

@@ -11,14 +11,21 @@ Two failures are therefore separate and this reader keeps them separate:
 
 * the **floor** -- `indexes >= attempted + queries`, which is "every query the reader wrote was
   ranked". Below it the stage wrote queries the index never saw.
-* the **accounting** -- `attempted == queries + refused + unranked`, which is the census closing on
-  itself. A census that does not close is a defect in the instrument, not a reading of the
-  mechanism, and collapsing the two would report an instrument fault as a null result.
+* the **accounting** -- `attempted == queries + refused + empty + unranked`, which is the census
+  closing on itself. A census that does not close is a defect in the instrument, not a reading of
+  the mechanism, and collapsing the two would report an instrument fault as a null result.
 
-The tests below are the seven ways that goes: at the floor, short of the floor, counters that do
-not close, no census, no divisor, no bill, and a malformed counter. The last three exist because
-each of them, coerced, would print a plausible zero -- the same silent success the four-state
-classifier in `--reply-repair` exists to make impossible.
+A third state joined them after run `45974552492`: a stage that reached every question and wrote
+**no** query at all. Both checks above pass on such a run -- the accounting closes and the floor
+is trivially met -- and its `refused: 242` read as a model declining on every question. It was not:
+`llmUsage.truncatedCalls` was 242, because the decision call was given 32 tokens under a reader
+that thinks before it answers. That state is now its own verdict (`starved`), so the §4.1 stop rule
+cannot close an axis on a run in which the mechanism produced nothing to measure.
+
+The tests below are the ways that goes: at the floor, short of the floor, counters that do not
+close, a stage that fired and wrote nothing, no census, no divisor, no bill, and a malformed
+counter. The last three exist because each of them, coerced, would print a plausible zero -- the
+same silent success the four-state classifier in `--reply-repair` exists to make impossible.
 """
 
 from __future__ import annotations
@@ -38,6 +45,7 @@ def _report(
     present: bool = True,
     runs: object = 2,
     indexes: object = 478,
+    truncated: object = None,
 ) -> dict:
     """A report carrying only what this section reads, plus the fields `main` needs."""
     config: dict = {'ask': 'verbatim-acts', 'readerSearch': True}
@@ -52,6 +60,8 @@ def _report(
     }
     if runs is not None:
         report['runs'] = runs
+    if truncated is not None:
+        report['llmUsage'] = {'truncatedCalls': truncated}
     if present:
         report['readerSearchCounts'] = counts
     return report
@@ -72,6 +82,7 @@ def _counts(
     attempted: int = 242,
     queries: int = 236,
     refused: int = 6,
+    empty: int = 0,
     unranked: int = 0,
     promoted: int = 2,
 ) -> dict:
@@ -79,6 +90,7 @@ def _counts(
         'attempted': attempted,
         'queries': queries,
         'refused': refused,
+        'empty': empty,
         'unranked': unranked,
         'promoted': promoted,
     }
@@ -130,19 +142,77 @@ class TestTheAccounting:
         )
         assert r.returncode == 1
         assert 'accounting' in r.stdout
-        assert 'neither wrote a query nor were refused' in r.stdout
+        assert 'neither wrote a query, were refused, nor came back empty' in r.stdout
 
     def test_a_stage_that_refused_every_time_still_closes(self, tmp_path: Path) -> None:
         """`queries: 0` with every attempt refused is a finding, not a defect.
 
         The stage reached 121 questions twice and the model declined all of them: the reach is zero,
         the accounting closes, and the artifact is readable. The registration's §4.1 stop rule reads
-        this as "the axis closes", not as "the run failed".
+        this as "the axis closes", not as "the run failed" -- and it can, because `refused` is the
+        counter that says the model answered and the answer was `NONE`.
         """
         r = _run(_report(_counts(queries=0, refused=242, promoted=0), indexes=242), tmp_path)
         assert r.returncode == 0, r.stderr
         assert '0 queries over 242 questions reached' in r.stdout
-        assert '242 refused' in r.stdout
+        assert '242 refused, 0 empty' in r.stdout
+        assert 'starved' not in r.stdout
+
+
+class TestTheBound:
+    """The state run `45974552492` was read as a null and was not one."""
+
+    def test_a_starved_stage_is_refused_rather_than_read_as_a_null(self, tmp_path: Path) -> None:
+        """242 reached, 0 written, 242 empty -- and the usage block naming the same 242 as cut.
+
+        Every other check passes on this artifact: the accounting closes, and the floor is met by
+        the 242 indexes the stage built for the questions it reached. The §4.1 stop rule would then
+        close a ¥5.87 axis on a run in which the mechanism never produced a query.
+        """
+        r = _run(
+            _report(_counts(queries=0, refused=0, empty=242, promoted=0), truncated=242),
+            tmp_path,
+        )
+        assert r.returncode == 1
+        assert 'starved' in r.stdout
+        assert 'not a reading of the mechanism' in r.stdout
+        # The cause, printed beside the effect: the census counts the empty replies and the usage
+        # block is the only field that says the replies were cut rather than declined.
+        assert 'llmUsage.truncatedCalls 242' in r.stdout
+        assert 'came back cut, not declined' in r.stdout
+
+    def test_a_single_empty_reply_beside_working_queries_is_not_starvation(
+        self, tmp_path: Path
+    ) -> None:
+        """One cut reply in 121 questions is noise, and the check must not be a hair trigger.
+
+        The census closes (`attempted 242 = 236 + 5 + 1`), the bill is at the floor, and the run
+        measured the mechanism on 236 of them. Refusing this would make the guard fire on every
+        dispatch that had a single malformed reply, which is how a real signal gets tuned out.
+        """
+        r = _run(
+            _report(_counts(queries=236, refused=5, empty=1), truncated=1),
+            tmp_path,
+        )
+        assert r.returncode == 0, r.stderr
+        assert '1.0 per repetition' in r.stdout
+        assert 'starved' not in r.stdout
+        # The bound is still printed: the reader should see the cut calls even when they are not
+        # enough to void the run.
+        assert 'llmUsage.truncatedCalls 1' in r.stdout
+
+    def test_a_census_without_a_usage_block_says_the_bound_is_unknown(
+        self, tmp_path: Path
+    ) -> None:
+        """A build that reports no `truncatedCalls` cannot be asked whether the replies were cut.
+
+        Printed rather than assumed zero, on the same rule as the bill: "this build does not report
+        it" and "nothing was cut" are different rows, and only the first is what the artifact says.
+        """
+        r = _run(_report(_counts(queries=0, refused=0, empty=242, promoted=0)), tmp_path)
+        assert r.returncode == 1
+        assert 'truncatedCalls absent' in r.stdout
+        assert 'starved' in r.stdout
 
 
 class TestWhatItRefusesToScore:
@@ -162,3 +232,21 @@ class TestWhatItRefusesToScore:
         r = _run(_report(_counts(promoted=2.5)), tmp_path)
         assert r.returncode == 2
         assert 'readerSearchCounts.promoted' in r.stderr
+
+    def test_a_five_counter_census_predates_the_split_and_is_refused(self, tmp_path: Path) -> None:
+        """Every artifact up to `45974552492` carries five counters and one `refused`.
+
+        Reading it with `empty: 0` supplied would publish "no empty replies" for a run whose 242
+        refusals *were* 242 cut replies -- the conflation the split exists to end, rebuilt at the
+        boundary. The refusal names the field instead.
+        """
+        legacy = {
+            'attempted': 242,
+            'queries': 0,
+            'refused': 242,
+            'unranked': 0,
+            'promoted': 0,
+        }
+        r = _run(_report(legacy), tmp_path)
+        assert r.returncode == 2
+        assert 'readerSearchCounts.empty' in r.stderr

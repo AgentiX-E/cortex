@@ -136,6 +136,9 @@ which is not a method. The gate above is the method; it was added to catch this 
 | receipt | `readerSearchCounts` on the artifact, beside `semanticCarry` rather than in the config block |
 | dispatch | `tools/dispatch-cortex-memory-ab.py` writes the variable on **every** dispatch |
 
+The receipt carries six counters, not five: `empty` was split from `refused` after §3.3, because the run
+that read as 242 refusals had 242 replies cut by the stage's own token bound.
+
 The seam is the one §3.1 predicted, and it is worth recording where it actually is because it is one
 frame higher than the sketch: `#relevanceFor` builds the product's index per question, so the first pass
 exists only inside `answerSessions`, and the public `search()` this document sketched — though it
@@ -205,6 +208,54 @@ Two consequences worth stating because they were wrong before this round:
    on every correct run: it would have thrown at the end of the dispatch, after the money was spent. It
    now reads `indexes >= attempted + queries` — one index per question the stage reached, one more per
    query it wrote — and `--second-look` applies the same floor to a finished artifact.
+
+### 3.3 The first dispatch read a null from a run in which the mechanism never executed
+
+The row was dispatched on the fixed instrument — one job, `CORTEX_MEMORY_AB=reader`, 121 `MR` questions
+twice, ¥5.87 — and the paired reading is negative and flat:
+
+| side | correct | share | discordant | McNemar |
+| --- | ---: | ---: | --- | --- |
+| control (`readerSearch` off) | 107 / 121 | 88.43% | `b = 4` | |
+| feature (`readerSearch` on) | 106 / 121 | 87.60% | `c = 3` | **p = 1.000** |
+
+Net **−1 question**. §4.1's stop rule reads that as "the axis closes"; it is not applied here, and the
+reason is in the artifact's own counters rather than in the delta:
+
+| field | value | what it says |
+| --- | ---: | --- |
+| `readerSearchCounts.attempted` | 242 | the stage reached every multi-session question |
+| `readerSearchCounts.queries` | 0 | it wrote no query, on any of them |
+| `readerSearchCounts.refused` | 242 | and the census called all 242 of them refusals |
+| `readerSearchCounts.promoted` | 0 | nothing was promoted, so nothing could be measured |
+| `llmUsage.truncatedCalls` | 242 | **the replies were cut, not declined** |
+
+`242` is the whole run: the stage fired on both repetitions of all 121 questions and came back with no
+usable line every time. The cause is one number in this stage's own configuration. The decision call is
+made through the question's own route reader, and that reader is asked for `thinking` on `multi-session`
+(`§13.197`) — so the stage's `maxTokens: 32` was spent on reasoning tokens and the reply was cut before
+its first content token. Every one of those calls was billed, and the census reported the model as
+declining 242 times.
+
+**This is the meter being wrong again, in the same direction as §3.2.** The delta was real, the
+comparison was clean, the receipt passed — and the run measured a stage that answered nothing. It is a
+null about the instrument, not about the mechanism, and applying the stop rule to it would have closed a
+¥5.87 axis on the strength of a configuration defect.
+
+Three changes follow, and the third is the one that would have caught it without a reader:
+
+1. `DEFAULT_READER_SEARCH.maxTokens` **32 → 1024** — four times the widest query the stage accepts,
+   with room for a short trace. Whether it is enough is on the artifact either way.
+2. **`empty` is its own census counter.** A reply with no usable line is not a refusal: a reader
+   answering `NONE` is the mechanism's stop rule working, and a reply cut by the bound is a defect in
+   this stage's configuration. Collapsed into `refused`, the first reads as the second — which is exactly
+   what the artifact above says.
+3. **`--second-look` refuses a starved run.** `queries == 0` with `empty > 0` is a verdict of its own
+   (exit 1), printed with `llmUsage.truncatedCalls` beside it, so the §4.1 stop rule cannot be applied to
+   a run in which the mechanism produced nothing to measure. A stage that reached every question and the
+   model declined every time still passes: that is a null, and it is allowed to be one.
+
+The row keeps its price, its bars and its control. What it does not keep is the reading above.
 
 ## 4. Bars, both directions, written before the dispatch
 

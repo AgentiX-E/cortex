@@ -91,8 +91,14 @@ describe("the second look's census is read defensively", () => {
   const cases: [string, unknown][] = [
     ['throws', new Error('no census here')],
     ['answers null', null],
-    ['carries a float', { attempted: 1, queries: 1, refused: 0, unranked: 0, promoted: 0.5 }],
-    ['carries a negative', { attempted: 1, queries: 1, refused: 0, unranked: 0, promoted: -1 }],
+    [
+      'carries a float',
+      { attempted: 1, queries: 1, refused: 0, empty: 0, unranked: 0, promoted: 0.5 },
+    ],
+    [
+      'carries a negative',
+      { attempted: 1, queries: 1, refused: 0, empty: 0, unranked: 0, promoted: -1 },
+    ],
   ];
 
   for (const [what, payload] of cases) {
@@ -113,14 +119,15 @@ describe("the second look's census is read defensively", () => {
     });
   }
 
-  it('sums the five counters when every one of them is an integer', async () => {
+  it('sums the six counters when every one of them is an integer', async () => {
     const feature: MemorySystem = {
       name: 'second-look-double',
       answer: () => 'one',
       readerSearchCensus: () => ({
         attempted: 2,
         queries: 1,
-        refused: 1,
+        refused: 0,
+        empty: 1,
         unranked: 0,
         promoted: 1,
       }),
@@ -129,10 +136,31 @@ describe("the second look's census is read defensively", () => {
     expect(report.report.readerSearchCounts).toEqual({
       attempted: 2,
       queries: 1,
-      refused: 1,
+      refused: 0,
+      empty: 1,
       unranked: 0,
       promoted: 1,
     });
+  });
+
+  it('drops a census that predates the empty counter, rather than reading it as zero', async () => {
+    // The five-counter shape is what every artifact up to run `45974552492` carries, and it is exactly the
+    // payload whose `refused` conflated cut replies with declined ones. Summing it with `empty: 0` invented
+    // would publish "no empty replies" for a run that had 242 of them -- which is the defect the split was
+    // made to end, rebuilt at the boundary instead of inside `CortexMemory`.
+    const feature: MemorySystem = {
+      name: 'second-look-double',
+      answer: () => 'one',
+      readerSearchCensus: () => ({
+        attempted: 2,
+        queries: 0,
+        refused: 2,
+        unranked: 0,
+        promoted: 0,
+      }),
+    } as MemorySystem;
+    const report = await run(feature);
+    expect(report.report.readerSearchCounts).toBeUndefined();
   });
 });
 

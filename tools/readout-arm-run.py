@@ -1411,11 +1411,11 @@ def reply_repair_section(report: dict) -> tuple[str, bool]:
     return '\n'.join(lines), not unconverted and low <= per_run <= high
 
 
-SECOND_LOOK_COUNTERS = ('attempted', 'queries', 'refused', 'unranked', 'promoted')
+SECOND_LOOK_COUNTERS = ('attempted', 'queries', 'refused', 'empty', 'unranked', 'promoted')
 
 
 def second_look_section(report: dict) -> tuple[str, bool]:
-    """The second look's five counters, and the one arithmetic the bill can still falsify.
+    """The second look's six counters, and the one arithmetic the bill can still falsify.
 
     ## Why `attempted` has to be divided and `indexes` must not be
 
@@ -1442,6 +1442,21 @@ def second_look_section(report: dict) -> tuple[str, bool]:
     `readerSearchCounts` is absent on every archived artifact and on every build without the stage.
     Printing zeros there would make "this build has no second look" and "the second look reached
     nothing" the same line -- the shape that made §10.10's wrong reading possible.
+
+    ## Why `empty` is its own counter, and why `queries == 0` is not a null
+
+    `empty` counts calls that came back with no usable line, and it is split from `refused` because
+    the two are different findings about the same bill: a reader answering `NONE` is the mechanism's
+    stop rule working, and a reply cut by the stage's `maxTokens` is a defect in this stage's own
+    configuration. Run `45974552492` reported 242 of the second as 242 of the first, and the census
+    on its own read as a model declining on every question.
+
+    A stage that reached every question, wrote **no** query and had attempts come back **empty** is
+    therefore not a null about the mechanism: it is a run in which the mechanism produced nothing to
+    measure, and the §4.1 stop rule must not be applied to it. `refused` still carries the other
+    reading -- 242 reached and 242 declined is the model answering `NONE` on every question, which is
+    a null and is allowed through. This section refuses the first reading rather than leaving the
+    distinction to the operator, because the operator already collapsed it once.
     """
     raw = report.get('readerSearchCounts')
     if raw is None:
@@ -1488,21 +1503,53 @@ def second_look_section(report: dict) -> tuple[str, bool]:
         ranked = True
         lines.append('  bill         absent: this build reports no index cost, so the floor cannot be applied')
 
-    reach = counts['attempted'] - counts['refused'] - counts['queries']
+    reach = counts['attempted'] - counts['refused'] - counts['empty'] - counts['queries']
     lines.append(
         f'  reach        {counts["queries"]} queries over {counts["attempted"]} questions reached, '
-        f'{counts["refused"]} refused, {counts["unranked"]} unranked'
+        f'{counts["refused"]} refused, {counts["empty"]} empty, {counts["unranked"]} unranked'
     )
     if reach != 0:
         lines.append(
-            f'  accounting   {reach} attempt(s) neither wrote a query nor were refused: the counters do not '
-            'close, which is a defect in the census rather than a reading of the mechanism'
+            f'  accounting   {reach} attempt(s) neither wrote a query, were refused, nor came back empty: the '
+            'counters do not close, which is a defect in the census rather than a reading of the mechanism'
         )
+
+    # The bound, read from the artifact rather than from the configuration. `empty` counts replies with no
+    # usable line, and the stage's own token bound is the cause that leaves no trace in the census -- so the
+    # usage block is the only field that can say whether a run that reached every question and wrote nothing
+    # was declined by the reader or cut by `maxTokens`. Run `45974552492` is why this line exists: 242 of 242
+    # attempts came back empty, `truncatedCalls` was 242, and the census alone read as the model refusing on
+    # every question -- a null about the mechanism drawn from a run in which it never executed.
+    usage = report.get('llmUsage') or {}
+    truncated = usage.get('truncatedCalls')
+    if isinstance(truncated, int) and not isinstance(truncated, bool):
+        lines.append(f'  the bound    llmUsage.truncatedCalls {truncated}')
+        if counts['empty'] and truncated:
+            lines.append(
+                '               the replies came back cut, not declined: `empty` and `truncatedCalls` naming '
+                'the same calls means the stage answered no question and the budget is the reason'
+            )
+    else:
+        lines.append('  the bound    llmUsage.truncatedCalls absent (a build that does not report it)')
+
+    # `empty` is what makes this different from a null. A stage that reached every question and the model
+    # declined every time (`refused` == `attempted`) is a reading of the mechanism: it looked, and said there
+    # was nothing to search. A stage whose attempts came back with no usable line is not -- the mechanism
+    # produced nothing to measure, and the §4.1 stop rule must not be applied to it.
+    starved = counts['queries'] == 0 and counts['empty'] > 0
+    if starved:
+        lines.append(
+            f'  starved      the stage reached {counts["attempted"]} question(s), wrote no query, and '
+            f'{counts["empty"]} of them came back with no usable line: this run is not a reading of the '
+            'mechanism, and a stop rule applied here would close the axis on the instrument rather than on '
+            'the mechanism'
+        )
+
     lines.append(
         f'  promoted     {counts["promoted"]}: the only number that separates "looked twice" from '
         '"got a longer prompt"'
     )
-    verdict = ranked and reach == 0
+    verdict = ranked and reach == 0 and not starved
     return '\n'.join(lines), verdict
 
 

@@ -5673,13 +5673,21 @@ function readerSearchOf(
 }
 
 /** The counters a second-look census must carry before any of them is published. */
-const READER_SEARCH_COUNTERS = ['attempted', 'queries', 'refused', 'unranked', 'promoted'] as const;
+const READER_SEARCH_COUNTERS = [
+  'attempted',
+  'queries',
+  'refused',
+  'empty',
+  'unranked',
+  'promoted',
+] as const;
 
 function readerSearchAcross(systems: readonly MemorySystem[]): {
   readerSearchCounts?: {
     attempted: number;
     queries: number;
     refused: number;
+    empty: number;
     unranked: number;
     promoted: number;
   };
@@ -5691,6 +5699,7 @@ function readerSearchAcross(systems: readonly MemorySystem[]): {
       attempted: total.attempted as number,
       queries: total.queries as number,
       refused: total.refused as number,
+      empty: total.empty as number,
       unranked: total.unranked as number,
       promoted: total.promoted as number,
     },

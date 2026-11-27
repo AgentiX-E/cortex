@@ -293,6 +293,14 @@ export type AblationReport = {
         readonly attempted: number;
         readonly queries: number;
         readonly refused: number;
+        /**
+         * Calls that came back with no usable line at all.
+         *
+         * Split from `refused` because they are different findings about the same bill: a reply cut by the
+         * stage's own token bound is a configuration defect, and a reader answering `NONE` is the mechanism's
+         * stop rule working. Run `45974552492` reported 242 of the first as 242 of the second.
+         */
+        readonly empty: number;
         readonly unranked: number;
         readonly promoted: number;
       }

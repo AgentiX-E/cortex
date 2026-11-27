@@ -66,13 +66,27 @@ export type ReaderSearchOptions = {
  *
  * `k: 16` is the narrowest width that can hold a second opinion over a corpus whose sessions run to
  * roughly 190 turns; wider widths were not measured and are not claimed.
+ *
+ * **`maxTokens` was 32 until a dispatch measured what that bound does.** Run `45974552492` fired the stage
+ * on all 242 multi-session question-answers and got **nothing back from any of them**: `queries: 0`,
+ * `refused: 242`, `truncatedCalls: 242` on the artifact's own usage block. The decision call is made
+ * through the question's own route reader, and that reader is asked for `thinking` on `multi-session`
+ * (§13.197) -- so the budget was being spent on reasoning tokens and the reply was cut before its first
+ * content token. Every one of those 242 calls was billed, and the census reported the model as declining
+ * 242 times.
+ *
+ * `1024` is a bound rather than a measurement of what a thinking reply costs: it is four times the longest
+ * one-line query this stage will accept (120 characters, ~40 tokens) and leaves room for a short trace.
+ * The number that says whether it is enough is on the artifact either way -- `truncatedCalls` counts the
+ * cut calls, and `readerSearchCounts.empty` counts the ones that came back with no usable line at all, so
+ * a bound that is still too small reads as a bound and not as a model refusing to cooperate.
  */
 export const DEFAULT_READER_SEARCH: ReaderSearchOptions = {
   k: 16,
   digestTurns: 16,
   digestChars: 120,
   maxQueryChars: 120,
-  maxTokens: 32,
+  maxTokens: 1024,
 };
 
 /**
@@ -174,7 +188,18 @@ export function buildSecondLookPrompt(
 /** What one decision call produced, as a state rather than as a string. */
 export type SecondLookVerdict =
   | { readonly kind: 'query'; readonly query: string }
-  | { readonly kind: 'refused'; readonly reason: 'empty' | 'echo' | 'instruction' | 'too-long' };
+  /**
+   * A call that came back with no usable line at all.
+   *
+   * Its own verdict rather than `refused: 'empty'`, and the distinction is the one run `45974552492` bought:
+   * a reply cut by `maxTokens` and a reader that answered `NONE` are different findings about the same bill.
+   * The first is a bound that is too small -- a defect in this stage's configuration, repairable and not the
+   * model's opinion -- and the second is the mechanism's own stop rule working. Collapsed into one counter,
+   * 242 truncated calls read as "the model declined on every question", which is what that artifact said
+   * until it was read against its usage block.
+   */
+  | { readonly kind: 'empty' }
+  | { readonly kind: 'refused'; readonly reason: 'echo' | 'instruction' | 'too-long' };
 
 /**
  * Whole lines that are a refusal and nothing else.
@@ -231,7 +256,7 @@ export function parseSecondLookQuery(
   if (label !== undefined) text = text.slice(label.length).trim();
   text = text.replace(/^["'`\u201c\u2018]+|["'`\u201d\u2019]+$/g, '').trim();
 
-  if (text === '') return { kind: 'refused', reason: 'empty' };
+  if (text === '') return { kind: 'empty' };
   const lower = text.toLowerCase();
   // Terminal punctuation and a trailing clause are not part of the verdict: `none.` and `NONE` are the same
   // answer, and so are `no query` and `no query - the list is complete`.
@@ -250,7 +275,9 @@ export function parseSecondLookQuery(
   }
   if (normalise(text) === normalise(question)) return { kind: 'refused', reason: 'echo' };
   if (text.length > options.maxQueryChars) return { kind: 'refused', reason: 'too-long' };
-  if (text.length < 3) return { kind: 'refused', reason: 'empty' };
+  // Two characters is not a query and not a refusal either: it is a reply this stage cannot use, which is
+  // the same finding as a reply it did not get.
+  if (text.length < 3) return { kind: 'empty' };
   return { kind: 'query', query: text };
 }
 

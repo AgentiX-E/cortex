@@ -339,9 +339,10 @@ export class CortexMemory implements SessionAwareMemorySystem {
     attempted: number;
     queries: number;
     refused: number;
+    empty: number;
     unranked: number;
     promoted: number;
-  } = { attempted: 0, queries: 0, refused: 0, unranked: 0, promoted: 0 };
+  } = { attempted: 0, queries: 0, refused: 0, empty: 0, unranked: 0, promoted: 0 };
 
   /**
    * The reply-contract repair, counted by kind.
@@ -1702,6 +1703,7 @@ export class CortexMemory implements SessionAwareMemorySystem {
     attempted: number;
     queries: number;
     refused: number;
+    empty: number;
     unranked: number;
     promoted: number;
   } | null {
@@ -2245,6 +2247,13 @@ export class CortexMemory implements SessionAwareMemorySystem {
       { maxTokens: options.maxTokens, temperature: 0 },
     );
     const verdict: SecondLookVerdict = parseSecondLookQuery(reply, question, options);
+    // The two no-query verdicts are counted apart, and the reason is a measurement rather than a taxonomy:
+    // a reply cut by `maxTokens` and a reader that answered `NONE` are different findings about the same
+    // bill. Run `45974552492` had 242 of the first and reported them as 242 of the second.
+    if (verdict.kind === 'empty') {
+      this.#secondLookCensus.empty += 1;
+      return undefined;
+    }
     if (verdict.kind === 'refused') {
       this.#secondLookCensus.refused += 1;
       return undefined;
