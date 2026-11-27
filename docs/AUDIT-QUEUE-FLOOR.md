@@ -9,13 +9,14 @@ instrument that refused them is `tools/queue-floor.mjs`, admitted to `pnpm check
 `AUDIT-FAILURE-CLASSES.md` §4 ranks every remaining mechanism by "ceiling against floor" and concludes
 that **not one class can be certified**, calling that "the arithmetic reason five rounds of
 single-lever dispatches produced no certifiable reading". The table's floor is
-`2.8016·sqrt(p(1−p)/n)` — the **unpaired** two-proportion minimum detectable effect — while every
+`2.8016·sqrt(2·p(1−p)/n)` — the **unpaired** two-proportion minimum detectable effect — while every
 dispatch in this campaign is read by a **paired** test whose criteria are written in the registrations
 themselves: `T1` requires `b ≥ 6, c ≤ 1` and `T2` requires McNemar `p ≤ 0.05`. On `MR` the unpaired
-floor is **9.5 questions**; McNemar certifies **6**. The queue has therefore been ordered by an
-instrument that demands 1.6× (on the route) to 2.6× (on the suite) what the test it is read by
+floor is **13.5 questions**; McNemar certifies **6**. The queue has therefore been ordered by an
+instrument that demands 2.2× (on the route) to 3.7× (on the suite) what the test it is read by
 demands, and five classes of six to nine questions were written off as untestable when six is exactly
-what certifies. The second half of the round applies the same scrutiny to the one dispatch that *was*
+what certifies. (This paragraph read 9.5, 1.6× and 2.6× until §211 corrected the floor's formula; see
+§1.1.) The second half of the round applies the same scrutiny to the one dispatch that *was*
 queued — `reviewPass: spec` — whose frozen ceiling of 12 has decayed to **4** on the arm it would be
 read against, which is below the floor of 6: it could not have produced a certifiable reading even if
 it repaired every question it could reach.
@@ -27,10 +28,40 @@ They are not rival estimates of one quantity. They answer different questions.
 | | unpaired | paired |
 | --- | --- | --- |
 | the question | *how many questions would two independent samples need, to show this difference?* | *how many questions must move, given that every other question is held fixed?* |
-| formula | `2.8016·sqrt(p(1−p)/n)` points | smallest `b` with exact McNemar `p ≤ 0.05` at `c` losses |
-| `MR`, n = 121 | 7.87 points = **9.5 questions** | **6 questions** = 4.96 points |
-| suite, n = 500 | 3.16 points = **15.8 questions** | **6 questions** = 1.20 points |
+| formula | `2.8016·sqrt(2·p(1−p)/n)` points | smallest `b` with exact McNemar `p ≤ 0.05` at `c` losses |
+| `MR`, n = 121 | 11.13 points = **13.5 questions** | **6 questions** = 4.96 points |
+| suite, n = 500 | 4.47 points = **22.3 questions** | **6 questions** = 1.20 points |
 | where it is the right instrument | a competitor comparison, where two systems cannot share a run | a one-field dispatch, where they do |
+
+### 1.1 The unpaired floor was computed in its one-sample form, and the correction widens the gap
+
+The two rows above read **7.87 points / 9.5 questions** and **3.16 / 15.8** for four months. They were
+computed as `2.8016·sqrt(p(1−p)/n)`, which is the standard error of **one** proportion — the quantity
+that bounds a single arm's resolution — while the column is headed *"how many questions would two
+independent samples need"*. Two samples at the same denominator have two variances, and the MDE of a
+difference uses their **sum**, so the printed figure was low by exactly `sqrt(2)`.
+`MEASURE-TWO-WITNESSES.md` §5 found it and left it standing on the explicit ground that no verdict
+read it; the queue did, and this table is the queue's instrument.
+
+| quantity | one-sample (what was printed) | two-proportion (what the column asks) |
+| --- | ---: | ---: |
+| `MR`, p = 0.893, n = 121 | 7.87 points = 9.5 questions | **11.13 points = 13.5 questions** |
+| suite, p = 0.935, n = 500 | 3.16 points = 15.8 questions | **4.47 points = 22.3 questions** |
+
+**What the correction changes, and what it does not.** The section's conclusion is unchanged and
+stronger: the queue should be read by the paired floor, and the unpaired one now disagrees with it by
+2.2× on `MR` and 3.7× on the suite rather than 1.6× and 2.6×. The two dispositions this document
+issued — `reviewPass: spec` refused at a decayed ceiling of 4, and the delivery institution refused on
+its ceiling — were taken on the **paired** floor of 6 and do not move. What moves is any later argument
+that used the unpaired number as a *population size*: a class of ten on `MR` clears the old floor of
+9.5 and does not clear the corrected 13.5, and the second reading is the one the definition supports.
+
+The fix is `tools/queue-floor.mjs`'s `unpairedFloor`, which now writes the variance as the **sum of two
+sample variances** so the factor of two is the derivation rather than a constant. The self-test's pin
+was the defect's strongest ally — it asserted `~7.87` and would have gone red on the fix — so it now
+asserts the identity `unpairedFloor(p, n) = sqrt(2) · [one-sample form]` against an independently
+written expression, which is a statement about the derivation and not about a number somebody once
+computed.
 
 A one-field dispatch is the second thing by construction: the same 500 questions, the same corpus,
 the same reader, one configuration field moved, `b` and `c` counted on the discordant pairs. The

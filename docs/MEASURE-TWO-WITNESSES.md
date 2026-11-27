@@ -251,7 +251,11 @@ and for the same reason.
   cannot re-read would be inventing it. What is written instead is an amendment against the run this round
   *can* read, and the census `tools/failure-census.json` is re-frozen against `45760081761` with the
   artifact's SHA-256 unchanged.
-- **It does not fix `unpairedFloor`'s formula, and the defect is real.** `tools/queue-floor.mjs`'s
+- **It does not fix `unpairedFloor`'s formula, and the defect is real.** *(Fixed in §211 --
+  `AUDIT-QUEUE-FLOOR.md` §1.1 records the correction: the function now writes the variance as the sum
+  of two sample variances, the `MR` floor reads 11.13 points rather than 7.87, and the self-test
+  asserts the identity against an independently written one-sample expression instead of pinning the
+  constant that was wrong.)* `tools/queue-floor.mjs`'s
   `unpairedFloor` is documented as *"the unpaired **two-proportion** minimum detectable effect"* but computes
   `2.8016 * sqrt(p(1-p)/n)`, which is the **one-sample** form; two independent samples of size `n` have
   variance `2p(1-p)/n`, so the printed figure is low by a factor of `sqrt(2)` — 7.87 points where the

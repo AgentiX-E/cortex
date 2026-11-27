@@ -13,10 +13,14 @@
  *
  * | population | unpaired floor | McNemar floor at `c = 0` |
  * | --- | ---: | ---: |
- * | `multi-session`, n = 121 | **9.5 questions** (7.87 points) | **6 questions** (4.96 points) |
- * | the whole suite, n = 500 | **15.8 questions** (3.16 points) | **6 questions** (1.20 points) |
+ * | `multi-session`, n = 121 | **13.5 questions** (11.13 points) | **6 questions** (4.96 points) |
+ * | the whole suite, n = 500 | **22.3 questions** (4.47 points) | **6 questions** (1.20 points) |
  *
- * So the queue has been ordered by an instrument that demands 1.6 to 2.6 times what the registered
+ * (These two rows read 9.5 and 15.8 questions until `§211`: the floor was computed in its one-sample
+ * form, so the *comparison* was understated by `sqrt(2)` and the disagreement with the paired
+ * criterion is larger than this file used to claim, not smaller.)
+ *
+ * So the queue has been ordered by an instrument that demands 2.2 to 3.7 times what the registered
  * criterion does. §198.4 concluded "not one class clears the floor" and named that as "the
  * arithmetic reason five rounds of single-lever dispatches produced no certifiable reading". The
  * arithmetic was right and the *instrument* was wrong: a class of six questions is certifiable
@@ -133,18 +137,36 @@ export function pairedFloor(c, alpha = 0.05) {
 }
 
 /**
- * The unpaired two-proportion minimum detectable effect, in **points**, for a population of `n` at
- * accuracy `p`.
+ * The unpaired **two-proportion** minimum detectable effect, in **points**, for a population of `n`
+ * at accuracy `p`.
  *
  * `z` is `1.96 + 0.8416` -- the two-sided 5% critical value plus the 80% power quantile -- which is
  * the constant `MEASURE-RESOLUTION-WALL.md` and `AUDIT-FAILURE-CLASSES.md` §4 both use. Kept as a
  * parameter so a reader can see that this number is a *choice of power*, not a property of the data.
+ *
+ * ## The defect this function carried, and why the fix is a shape rather than a constant
+ *
+ * It was named "the unpaired two-proportion minimum detectable effect" and computed
+ * `2.8016 * sqrt(p(1-p)/n)` -- the **one-sample** form, which is the standard error of *one*
+ * proportion. A comparison of two arms at the same denominator has two of those, so the variance of
+ * the **difference** is their sum and the printed figure was low by `sqrt(2)`: **7.87 points** at
+ * `MR`'s denominator where the two-proportion answer is **11.13**, and 15.8 questions where it is
+ * 22.3 at `n = 500`. `MEASURE-TWO-WITNESSES.md` §5 found it four months ago and left it standing
+ * because no verdict read it -- the verdicts use the paired branch -- but the *queue* reads it, and
+ * two documents quote the wrong number in their tables.
+ *
+ * The variance is written as the **sum of two sample variances** rather than as `2p(1-p)/n` so the
+ * factor of two is the design and not a constant a later editor has to remember. The self-test then
+ * asserts the identity against an independently computed one-sample figure, because the pinned
+ * *value* is exactly what the defect pinned for four months: a number is not a derivation.
  */
 export function unpairedFloor(accuracy, n, z = 2.8016) {
   if (!(n > 0)) throw new Refusal(`a floor needs a population, read n=${n}`);
   if (!(accuracy > 0 && accuracy < 1))
     throw new Refusal(`accuracy must be inside (0,1), read ${accuracy}`);
-  return 100 * z * Math.sqrt((accuracy * (1 - accuracy)) / n);
+  const variance = (accuracy * (1 - accuracy)) / n;
+  // Two samples, one at each arm, at this denominator. The addition is the whole point of the body.
+  return 100 * z * Math.sqrt(variance + variance);
 }
 
 /** A class of `k` questions in a population of `n`, in points. The ceiling of a perfect mechanism. */
@@ -478,14 +500,29 @@ function selfTest() {
       throw new Error(`self-test: floor is not monotone at c=${c}`);
   }
 
-  // The unpaired floor at MR's own denominator: 2.8016 * sqrt(.893*.107/121) * 100 = 7.87 points,
-  // which is 9.5 questions of 121. The audit note quotes both, so both are held.
+  // The unpaired floor at MR's own denominator: 2.8016 * sqrt(2 * .893 * .107 / 121) * 100 = 11.13
+  // points, which is 13.5 questions of 121. `AUDIT-QUEUE-FLOOR.md` and
+  // `PREREG-SPEC-CEILING-ADOPTED.md` quote both, so both are held.
   const small = unpairedFloor(0.893, 121);
-  if (Math.abs(small - 7.87) > 0.02)
-    throw new Error(`self-test: unpaired floor at MR must read ~7.87, read ${small.toFixed(2)}`);
-  if (Math.abs((small / 100) * 121 - 9.53) > 0.05) {
+  if (Math.abs(small - 11.13) > 0.02)
+    throw new Error(`self-test: unpaired floor at MR must read ~11.13, read ${small.toFixed(2)}`);
+  if (Math.abs((small / 100) * 121 - 13.47) > 0.05) {
     throw new Error(
-      `self-test: that floor must be ~9.5 questions of 121, read ${(((small / 100) * 121) | 0).toFixed(2)}`,
+      `self-test: that floor must be ~13.5 questions of 121, read ${(((small / 100) * 121) | 0).toFixed(2)}`,
+    );
+  }
+
+  // **The identity that catches a revert to the one-sample form.** This is the assertion the pinned
+  // number could not make: for four months the pin read `7.87` and the function was wrong, so the
+  // test agreed with the bug. Here the two-proportion figure is compared against an independently
+  // written one-sample expression, which is a statement about the *derivation* rather than about a
+  // constant somebody once computed.
+  const oneSample = 100 * 2.8016 * Math.sqrt((0.893 * 0.107) / 121);
+  if (Math.abs(small - Math.SQRT2 * oneSample) > 1e-9) {
+    throw new Error(
+      `self-test: the two-proportion floor must be sqrt(2) times the one-sample ` +
+        `${oneSample.toFixed(2)}, read ${small.toFixed(2)} -- a reading near ${oneSample.toFixed(2)} ` +
+        'is the one-sample form this function carried until §211',
     );
   }
 
@@ -558,7 +595,8 @@ function selfTest() {
     throw new Error('self-test: a decayed group below the floor must not read certifiable');
 
   process.stdout.write(
-    'self-test: p(6,0)=0.03125, floor table 6/8/10/12, unpaired 7.87 points = 9.5 questions, ' +
+    'self-test: p(6,0)=0.03125, floor table 6/8/10/12, unpaired 11.13 points = 13.5 questions ' +
+      'and sqrt(2) times the one-sample form, ' +
       'six certifies and five does not, 6 refusals, 1 absent-id refusal, 1 decayed group\n',
   );
 }

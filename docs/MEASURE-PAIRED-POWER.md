@@ -22,7 +22,7 @@ movement gets published as a finding. Both mistakes are avoidable by naming whic
 | yardstick | formula | `MR` (n=121) | `KU` (n=72) | answers |
 | --- | --- | ---: | ---: | --- |
 | repetition 2 sd | 2 sd of the four repetition accuracies, over `sqrt(4)` | 3.50 | 2.52 | how much would this same configuration move if re-run |
-| resolution floor | `2.8016 * sqrt(p(1-p)/n)` (Miller, `arXiv:2411.00640`) | **9.37 pts** | **10.52 pts** | how large a difference between two **independent** samples is visible 80% of the time |
+| resolution floor | `2.8016 * sqrt(2p(1-p)/n)` (Miller's form with the two-proportion variance; §5 of this note corrects the omission) | **13.25 pts** | **14.88 pts** | how large a difference between two **independent** samples is visible 80% of the time |
 | measured flip floor | 5 of 121 questions under a **byte-identical prompt**, §13.365 | **4.1%** | 4.1% (assumed) | how often this population moves with **nothing changed** |
 
 All three are in the table `MEASURE-RESOLUTION-WALL.md` §1 built, and only the second one is called a floor
@@ -40,6 +40,13 @@ opposite directions from the conclusion:
 | `42930900136` (`spec`) | 121 `MR` | **6 / 45** | **1.8e-08** | −32.2 | yes, in the negative direction |
 | `42791109966` (`E3.2` decline repair) | 127 `TR` | 6 / 5 | 0.607 | +0.25 | no |
 | `42355323615` vs `42533236864` | 500 | — | — | 0.75 (rep mean) | no |
+
+**The row above carried the wrong formula for its own description, and §211 corrected it.** The
+"answers" column says *two independent samples*, and `2.8016 * sqrt(p(1-p)/n)` is the standard error of
+**one** proportion: the tabulated 9.37 and 10.52 points are the one-sample forms of 13.25 and 14.88.
+`tools/queue-floor.mjs` computed the same expression under the name "two-proportion", `AUDIT-QUEUE-FLOOR.md`
+§1.1 is the record of the fix, and the argument below is unaffected -- it is an argument about *which*
+yardstick a mechanism verdict uses, and every number in it is on the paired side.
 
 The first row is the one that settles it: **a 51-question movement on 121 questions reached `p = 1.8e-08`**,
 and every candidate shape gate priced on that same artifact could be read to a single question
@@ -79,9 +86,13 @@ than by running anything.
 Three things, and none of them is a mechanism verdict:
 
 1. **No arm here can establish "cortex beats Hindsight by 5 points".** That is a comparison of two independent
-   samples at `n = 500`, and 92.6% against 97.2% is inside `2.8016 * sqrt(p(1-p)/n)` at that denominator. Any
-   such claim needs either thousands of questions or a same-harness run of the competitor — which is what the
-   controlled board already does, and it is why the board's numbers are quoted with the harness beside them.
+   samples at `n = 500`, and 92.6% against 97.2% — a 4.6-point gap — sits *on* the two-proportion floor rather
+   than comfortably inside it: at `p = 0.949` that floor is **3.90 points** (4.6 clears it), and at the
+   conservative `p = 0.5` it is **8.86** (4.6 does not). The claim therefore needs either thousands of questions
+   or a same-harness run of the competitor — which is what the controlled board already does, and it is why the
+   board's numbers are quoted with the harness beside them. The sentence read "is inside
+   `2.8016 * sqrt(p(1-p)/n)`" before §211, which was the one-sample form at an unstated `p`: the honest version
+   is that the gap is at the boundary and the boundary moves with the accuracy it is evaluated at.
 2. **A file-level movement under ~9 points cannot be attributed to one mechanism.** The paired test says a
    mechanism *moved something*; it does not say the movement is the mechanism's, because four repetitions of a
   500-question file have a 27-question stable/flaky split. §13.365's floor is the local answer to that.

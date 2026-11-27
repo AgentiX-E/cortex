@@ -237,6 +237,12 @@ question the queue asks. The question is "how large must a true difference be be
 and the answer is the **resolution floor** `2.8016 * sqrt(p(1-p)/n)` (Miller, `arXiv:2411.00640`): **9.37
 points on `MR`**, **10.52 on `KU`**.
 
+> **Correction (§211).** That expression is the **one-sample** form; a two-arm difference at the same
+> denominator needs `sqrt(2)` times it, i.e. **13.25** and **14.88** points here. The column this note
+> feeds is a *mechanism* verdict, which this repository reads with the paired test, so the numbers are
+> left as the record of what that round computed and the disposition it produced ("detectable: no" at a
+> ceiling of 1.86) is unchanged by the correction -- it is further below 13.25 than below 9.37.
+
 | population | mechanism | ceiling | points | floor | detectable |
 | --- | --- | ---: | ---: | ---: | :---: |
 | `MR` | deterministic summation | 2.25 | 1.86 | 9.37 | **no** |

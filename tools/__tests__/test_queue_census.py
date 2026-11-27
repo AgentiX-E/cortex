@@ -429,3 +429,54 @@ class TestAnUnknownClassNameIsRefused(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class TestTheUnpairedFloorIsTwoProportion(unittest.TestCase):
+    """The floor the queue was ordered by, recomputed from its own definition.
+
+    ## The defect
+
+    `unpairedFloor` was named "the unpaired two-proportion minimum detectable effect" and computed
+    `2.8016 * sqrt(p(1-p)/n)` -- the one-sample form, the standard error of *one* proportion. Two
+    independent arms at the same denominator have two variances, so the figure was low by `sqrt(2)`:
+    7.87 points at `MR` where the answer is 11.13. `MEASURE-TWO-WITNESSES.md` §5 found it and left it
+    standing because no *verdict* read it, and `AUDIT-QUEUE-FLOOR.md` quotes the number in the table
+    that orders the queue.
+
+    ## Why these tests and not the self-test's pin
+
+    The self-test pinned `7.87` for four months, so the test agreed with the bug -- the strongest
+    form of a validation that cannot fail. The assertion here is about the *derivation*: the printed
+    floor must equal `sqrt(2)` times an independently written one-sample expression, which is false
+    for the buggy version and true for the corrected one, and it names the defect in its message.
+    """
+
+    def _floor(self, accuracy: float, n: int) -> float:
+        script = (
+            "import('./tools/queue-floor.mjs').then((m) => "
+            f"console.log(m.unpairedFloor({accuracy}, {n})))"
+        )
+        result = subprocess.run(
+            ["node", "-e", script], cwd=str(ROOT), capture_output=True, text=True, check=False
+        )
+        self.assertEqual(result.returncode, 0, result.stderr)
+        return float(result.stdout.strip())
+
+    def test_the_floor_at_mr_reads_eleven_point_one_three_points(self) -> None:
+        self.assertAlmostEqual(self._floor(0.893, 121), 11.13, places=2)
+
+    def test_the_floor_at_mr_covers_thirteen_and_a_half_questions(self) -> None:
+        # Points to questions is the conversion every queue table does, and it is where the
+        # correction changes a decision: 9.5 questions said a five-question mechanism could be seen,
+        # 13.5 says it cannot.
+        self.assertAlmostEqual(self._floor(0.893, 121) / 100 * 121, 13.47, places=2)
+
+    def test_the_floor_is_sqrt_two_times_the_one_sample_form(self) -> None:
+        one_sample = 100 * 2.8016 * ((0.893 * 0.107 / 121) ** 0.5)
+        self.assertAlmostEqual(self._floor(0.893, 121), (2**0.5) * one_sample, places=9)
+
+    def test_a_one_sample_implementation_would_not_pass_that_identity(self) -> None:
+        # The negative control. Without it the identity above could be satisfied by a function that
+        # returned the one-sample figure twice; this asserts the two differ by enough to be caught.
+        one_sample = 100 * 2.8016 * ((0.893 * 0.107 / 121) ** 0.5)
+        self.assertGreater(abs(self._floor(0.893, 121) - one_sample), 1.0)

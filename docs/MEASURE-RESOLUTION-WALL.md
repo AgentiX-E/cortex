@@ -16,6 +16,14 @@ one for the question the queue asks. Three quantities are in play and they answe
 | resolution floor | `2.8016 * sqrt(p(1-p)/n)` (Miller, `arXiv:2411.00640`) | **9.37** | **10.52** | how large must a true difference be before this population sees it 80% of the time |
 | paired floor | `2.8016 * sqrt(pi/n)` with `pi` the discordant share | 9.53 at `pi`=0.14 | 12.3 at `pi`=0.14 | the same, when the two arms answer the same questions |
 
+> **Correction (§211).** The formula in this row is the **one-sample** form: `2.8016·sqrt(p(1−p)/n)` is
+> the standard error of *one* proportion. A difference between two independent arms at the same
+> denominator uses the **sum** of two variances, so the two-proportion MDE is `sqrt(2)` times these
+> figures. Every number derived from this row should be scaled by `1.4142` when it is used to judge a
+> **two-arm** comparison, and by nothing when it is used as one arm's own resolution. The tool that
+> computes it (`tools/queue-floor.mjs`) was corrected in §211 and its self-test now asserts the identity
+> rather than pinning the constant; `AUDIT-QUEUE-FLOOR.md` §1.1 is the record.
+
 The first number is smaller than the other two, and that is the whole of the mistake. Repetition spread
 measures the **reader's** nondeterminism on one configuration. It does not measure the **question sample**,
 which is the dominant variance when the population is 121 items. Four repetitions divide the first and leave

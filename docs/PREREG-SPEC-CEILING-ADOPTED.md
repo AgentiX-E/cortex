@@ -52,9 +52,11 @@ Twelve ids, frozen in `tools/spec-ceiling-population.json`, in three groups the 
 | conversion required at the full population | **6 of 12 = 50%** |
 
 The floor is the paired one, because this is a single-variable dispatch read against the shipped arm
-by exact McNemar (`docs/AUDIT-QUEUE-FLOOR.md` 1). The unpaired band — 9.5 questions on this
+by exact McNemar (`docs/AUDIT-QUEUE-FLOOR.md` 1). The unpaired band — **13.5** questions on this
 capability at `p = 0.8926` — is the number competitor tables are compared on, not the number a
-dispatch is judged by.
+dispatch is judged by. It read 9.5 until §211 corrected the band's formula from the one-sample form to
+the two-proportion one; the paired floor of 6, which is the disposition this document actually issues,
+is untouched.
 
 ## 3. The three criteria, registered before the run
 
