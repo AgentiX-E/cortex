@@ -1,6 +1,8 @@
 # Pre-registration: spending the room the prefix rule returns
 
-**Status:** pending — dispatched as run `45923435343`, not yet read: no Result section exists for it.
+**Status:** decided — run `45923435343`. `P2` holds, `P3` fails (net 0, twelve discordant pairs each way),
+`P1` is partly verified (the mechanism reached the prompt; the 215/285 shape needs the 60 MB artifact) and
+`P4` is unread. §9 is the reading, and §9.2 retires the implication that made this arm look worth buying.
 
 Written before dispatch. The arithmetic it is conditioned on is `MEASURE-UNSPENT-ROOM.md`; the
 refutation it repairs is run `38753835652`, recorded in `prompt.ts` at `selectBySessionFill`.
@@ -221,3 +223,72 @@ budget map is not the registered arm) and `cortex_memory_relevance_units` was an
 Both are `tools/dispatch-cortex-memory-ab.py`'s job -- it sends all 24 registered inputs and writes the
 departure list it computed. The cost of that lesson was zero, which is the point of a preflight that runs
 before `Setup pnpm`.
+
+## 9. Result — the room was spent, and nothing moved
+
+Run `45923435343`, read at 2026-11-27T02:35Z. Twenty steps green in 51m57s. The configuration reached:
+`config.relevanceUnits` is `turn-fill` on the artifact, and both sides came out of one job.
+
+| side | all | IE | MR | KU | TR | ABS |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: |
+| control (`turn`) | **467 (93.40%)** | 142 | 108 | 67 | 120 | 30 |
+| feature (`turn-fill`) | **467 (93.40%)** | **145** | **109** | **65** | **118** | 30 |
+| **delta** | **0** | **+3** | **+1** | **−2** | **−2** | 0 |
+
+McNemar exact: **b = c = 12, p = 1.0**.
+
+### 9.1 The four predictions
+
+| | verdict | evidence |
+| --- | --- | --- |
+| **`P1`** the mechanism fires | **partly** | `config.relevanceUnits = turn-fill`, and **12 questions flipped at temperature 0** -- the same prompt must produce the same answer, so the prompt differed on at least those twelve. The *shape* `P1` names (215 questions up, 285 byte-identical) needs per-question `promptChars`, which lives in the 60 MB `longmemeval-s-report` artifact and was **not read this round** |
+| **`P2`** non-inferior | **holds** | the largest single-capability loss is **2** (KU, TR), under the rejection region's 3; the aggregate is 0, above −2 |
+| **`P3`** at least 3 of the reachable ten convert | **fails** | net movement is **0**. Even if three of the ten converted, three others moved the other way: 12 discordant pairs each direction. This is §13.72's shape at a smaller scale -- `+13 MR / −30 IE` was the precedent, this is `+3 IE / −2 KU / −2 TR` |
+| **`P4`** the bill does not move | **unread** | `llmUsage` is in the same 60 MB artifact, and the provider-cost step's log is not reachable from this sandbox. Both are the next round's first task |
+
+### 9.2 What the null means, and it is worth more than a win
+
+§208's finding was that a third of the paid-for room was returned unread, and the implicit expectation was
+that reading it would help. **This reading says: it was read, and nothing moved.** 313,372 characters of
+empty room were filled, twelve questions flipped, twelve flipped back, net zero.
+
+That is a stronger statement than "the fill did not help". It says the text in that room has **no marginal
+value to this reader** -- not that it was sent to the wrong place, but that it is not worth sending.
+
+Two consequences, and the first is the reason this section exists:
+
+* **`MEASURE-UNSPENT-ROOM.md`'s implication is retired.** The room is not a lever. The census that sized the
+  hole was a *supply* measurement and it was correct; what it could not say, and this dispatch now does, is
+  that the demand side is flat.
+* **The queue's row 1 is demoted rather than deleted.** "Rerun per-route room on `verbatim-acts`" (5.81 CNY)
+  buys **more** room. If the room already paid for has no marginal value, more of the same has less. That is
+  an inference and not a measurement, which is exactly why the row moves to the back of the queue instead of
+  out of it -- the cost of demoting it is zero.
+
+### 9.3 Adoption, by §7's own rule
+
+§7 says a reading that holds `P1` and `P2` but fails `P3` is **"adopted for the room-honesty reason only:
+the arm pays for the room and a rule that returns part of it unread has to justify returning it. That
+adoption carries no score claim and the registry row says so."**
+
+The condition is met, and the adoption is now a choice rather than a consequence: spending the room costs
+zero tokens and moves no accuracy, so the argument for `turn-fill` is that leaving bought room unread is a
+rule that needs justifying, not that filling it earns anything. **No accuracy is adopted from this run.** The
+published number stays 93.40% and the registry row for `turn-fill` records `P3` as failed.
+
+The adoption is **not** performed in this round, and that is deliberate: `P1`'s shape is unverified, so
+"the mechanism fires on five of six routes" is still a claim about `buildPrompt` rather than a reading. Doing
+the config change and the shape measurement in the same round is how a registry row ends up describing an
+intent. The next round reads the 60 MB artifact, and the adoption follows that.
+
+### 9.4 Three things still unread, named so they are not mistaken for done
+
+1. **`P1`'s 215/285 split.** Needs `longmemeval-s-report` (60 MB; about 100 minutes at this proxy's 10 KB/s).
+   It does not change `P2`'s verdict. It does decide *which routes* the mechanism reached, and therefore which
+   route a future room experiment would have to be run on.
+2. **`P4`'s bill.** One `llmUsage` line, in the same artifact.
+3. **The superset gate.** §4's only theorem-shaped assertion. A counterexample is a bug report rather than a
+   reading, so leaving it unread leaves the one claim that could turn this null into a defect unexamined.
+
+**Spend: 3.57 CNY**, the only paid action this round, and the first dispatch where §1.2's file-rate projection
+and the dispatcher's token-level projection both landed on the same number.
