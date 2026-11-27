@@ -1,8 +1,10 @@
 # Pre-registration: spending the room the prefix rule returns
 
 **Status:** decided — run `45923435343`. `P2` holds, `P3` fails (net 0, twelve discordant pairs each way),
-`P1` is partly verified (the mechanism reached the prompt; the 215/285 shape needs the 60 MB artifact) and
-`P4` is unread. §9 is the reading, and §9.2 retires the implication that made this arm look worth buying.
+`P4` holds on tokens (1.0164), and `P1`'s shape is **falsified**: §10 reads the 63 MB artifact and finds
+418 up / 72 level / 10 down against a predicted 215/285, because the census that sized the arm was taken
+at `resolution: raw` and this run declared `layered`. §9 is the accuracy reading, §9.2 retires the
+implication that made this arm look worth buying, and §10.5 declines the adoption on that basis.
 
 Written before dispatch. The arithmetic it is conditioned on is `MEASURE-UNSPENT-ROOM.md`; the
 refutation it repairs is run `38753835652`, recorded in `prompt.ts` at `selectBySessionFill`.
@@ -292,3 +294,109 @@ intent. The next round reads the 60 MB artifact, and the adoption follows that.
 
 **Spend: 3.57 CNY**, the only paid action this round, and the first dispatch where §1.2's file-rate projection
 and the dispatcher's token-level projection both landed on the same number.
+
+## 10. The shape, read from the artifact
+
+§9.4 named three unread things and priced the reason: the artifact carrying them is 63.2 MB and the
+sandbox moved it at 25 KB/s, which is **26 minutes 41 seconds** for four hundred kilobytes of integers.
+That is the instrument being the bottleneck for the third time in this campaign, so this round built the
+instrument instead of waiting on the transfer: `tools/pair-shape-readout.mjs` (`guard:pair-shape`) reads
+any pair report in 0.8 s, and `.github/workflows/pair-shape-readout.yml` runs it on a runner where the
+artifact is one API call away.
+
+| reading | value |
+| --- | ---: |
+| compared | 500 |
+| **rose / level / fell** | **418 / 72 / 10** |
+| characters added | **+350,852** |
+| mean / median / max delta | **+701.7** / +212 / +13,817 (`b86304ba`) |
+| bill, treatment over control | **1.0164** |
+
+By route, characters added: `flat` +129,916 · `knowledge-update` +94,810 · `assistant` +75,042 ·
+`abstention` +28,161 · `temporal` +13,700 · **`multi-session` +9,223**.
+By capability: `IE` +204,958 · `KU` +94,810 · `ABS` +28,161 · `TR` +13,700 · **`MR` +9,223**.
+
+### 10.1 `P1`'s shape is falsified, and the census is why
+
+`P1` predicted **215 up and 285 byte-identical**. The artifact reads **418 up, 72 level, 10 down**. The
+volume is wrong in the same direction: `turn-fill-ceiling.mjs` sized the unspent room at **313,372**
+characters across the arm, and the fill spent **350,852** — 12.0% more room than the supply measurement
+said existed.
+
+The fill is not what is wrong. The ceiling was computed on an artifact at `resolution: raw`; this run
+declared `resolution` as a departure and ran `layered`, which prints a long turn as a window around the
+match or as one line of its opening, and therefore fits more turns into the same room. **A supply
+measurement is a property of a configuration**, and this one was carried across a configuration change
+that the same pre-registration's own §1 table records. It is §13.278's shape for the fourth time: a stale
+premise with a number attached, and the number is exactly why nobody re-derived it.
+
+### 10.2 Where the room went, which is the reading the null needed
+
+93.5% of the 350,852 characters landed on the four routes with room to spare — `flat`, `KU`, `assistant`,
+`abstention`. **2.6% landed on `multi-session`**, the route the arm was aimed at, where the room is already
+full and a filling rule can only re-cut it.
+
+That is the mechanism behind `P3`'s failure, and it is not a criticism of the selector: the fill did what
+it promised, on every route, and the route that needed it had nothing left to sell. The queue's demotion of
+"rerun per-route room" (§9.2) survives this, and now it has an arithmetic reason rather than an inference.
+
+### 10.3 Two gates breached, and what each of them means
+
+| gate | registered | observed | reading |
+| --- | --- | --- | --- |
+| **internal control** | rises ≤ **108** on every `multi-session` question, never falls | rises up to **+326** (`gpt4_194be4b3`), **seven falls**, largest **−114** (`8cf4d046`) | the 108 is the census's estimate for a configuration this run did not run (§10.1) |
+| **cost: bill** | ≤ **1.02×** | **1.0164** | holds |
+| **cost: prompt growth** | mean up ≤ **627** | **701.7** | the 627 is `313,372 / 500`, i.e. the same stale census divided by the population |
+| **population** | rises on ≥ 200 of the 215 named | **418 of 500** | necessary and not sufficient; the 215 are not on the artifact |
+| **guard** | no capability drops 3 | largest drop **2** (`KU`) | holds |
+| **superset** | no question delivers fewer gold turns | unreadable | the control side records its prompt *length* and not the turns it delivered |
+
+**The seven falls are not explained by a stale bound, and they are registered open.** The containment
+theorem is about the **carried set**; what the artifact records for the control side is a **length**. Under
+a capped, layered rendering the same room can buy more turns and less text, so characters are not monotone
+in the carried set — which is a statement about the rendering rather than about the containment, and the
+two are being separated rather than conflated. The discriminator is named: the same pair at
+`resolution: raw`, where the renderer is the archived one, would either show zero falls or localize them.
+Ten questions, none larger than 114 characters, none of them a verdict: **not repaired this round, and not
+called a defect either.**
+
+### 10.4 `P4`: the bill holds, and the price is not readable
+
+Control 4,201,812 tokens against treatment 4,270,578: **1.0164**, inside the registered 1.02. `P4` holds.
+
+A cache-weighted price over the same counters reads **2.357** (2.50 against 5.88 CNY), because the credited
+cache-hit share moved **0.969 → 0.470**. It is **not** reported as money. `AUDIT-CACHE-CREDIT.md` §0
+measured this counter against the prompts it claims to describe — 96.4% credit on a shard whose 63 prompts
+share **22 characters** of prefix at the longest, against a ceiling its own two repetitions bound at 50% —
+and a byte-identical repeat is credited 82.7%. A price built on that counter already refused
+`resolution: 'layered'` at 1.55× and was overruled when the mechanism measured +0.07% prompt tokens. It
+gets a diagnostic row and no verdict, which is why the registered gate is phrased on tokens.
+
+The near-miss is worth recording: this file's own tool evaluated the bound on money first, read 2.357, and
+would have headlined a 2.36× cost increase that the counter cannot support.
+
+### 10.5 The decision: measured and declined
+
+§9.3 said the adoption was a choice rather than a consequence, and §9.2 had already retired the only
+argument for it — the implication that room left unread is room wasted. This round makes that retirement
+arithmetic: **12.0% more room than the census believed existed was spent, and the net movement is 0**
+(b = c = 12, p = 1.0).
+
+What adoption would buy: 24 verdict changes that cancel, an `O(n)` render on every question, and a
+published number resting on one pass. What it would cost: the same. What it would not buy: a point.
+
+So the shipped unit stays `turn`, and the registry row reads **measured, net 0, declined**. The re-open
+condition is named rather than implied: **a positive paired delta on this arm under a reasoning reader**,
+where the extra text has a mechanism to act on. Until that reading exists, spending the room is a way to
+move 24 answers without moving the score.
+
+### 10.6 What this round's instrument cost, and what it removes
+
+`tools/pair-shape-readout.mjs` costs nothing to run: it reads JSON and calls no model. It replaced a
+26-minute transfer with 0.8 s, and it is the reader that would have caught the field-name trap earlier
+than a human did — `ablation.baselinePromptChars` is the control's **whole** prompt and
+`questions[].promptChars` is that side's **evidence**, and the first version of the tool compared them.
+The wrong comparison read 333 questions *falling* by a mean of 306.2 characters; the right one reads 418
+rising by 701.7, and the difference between the two means is **1,007.9**, which is exactly the mean prompt
+overhead on this artifact. A constant bias wearing a delta's clothes, caught by an identity rather than by
+a suspicion.
