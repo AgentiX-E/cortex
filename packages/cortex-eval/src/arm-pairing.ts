@@ -71,10 +71,16 @@ const UNIT_PAIRING_CONTROL = 'turn';
  *   names in `CORTEX_MEMORY_RELEVANCE_UNITS`. `PREREG-TURN-FILL.md` was written against a sentence that
  *   claimed "both sides in one job" and no such pairing existed, so the document described an instrument
  *   the harness could not build -- the same defect `resolution` carried for nine rounds. This value is
- *   what makes that pre-registration dispatchable rather than merely readable, and it is the reason the
- *   paragraph below counts five keys rather than four.
+ *   what makes that pre-registration dispatchable rather than merely readable.
+ * - `reader`: the same cognitive system twice, the second look (`readerSearch`) off against the
+ *   registered configuration. `PREREGISTRATION-MULTI-STEP.md` §3 wrote its control column as "the
+ *   registered arm, run `43140878641`" -- a **different run**, whose `MR` reading is seven questions stale
+ *   and whose between-run drift this file's opening paragraph prices at 1.7-2.1pp (8.5-10.5 questions on
+ *   500) against a bar of three questions. A bar smaller than the drift of the control it is read against
+ *   is not a bar. This value is the sixth key, and it is the reason the paragraph below counts six keys
+ *   rather than five.
  *
- * The last five are one instrument with five keys, and that is why they live here rather than in five
+ * The last six are one instrument with six keys, and that is why they live here rather than in six
  * files: each asks "what is this one switch worth", each is built by calling the same constructor twice,
  * and each must keep the OTHER keys equal on the two sides. A second selector for the second flag would
  * be a second place that has to remember the same rule, and the rule is the whole instrument -- a pair
@@ -87,7 +93,7 @@ const UNIT_PAIRING_CONTROL = 'turn';
  * Not exported: `readArmPairing` is the only way to obtain one, and the export census reports a
  * type nothing names. The union travels in the function's signature, which is where a caller reads it.
  */
-type ArmPairing = 'reference' | 'carry' | 'clock' | 'resolution' | 'ask' | 'units';
+type ArmPairing = 'reference' | 'carry' | 'clock' | 'resolution' | 'ask' | 'units' | 'reader';
 
 /**
  * The pairing this environment asks for. Absent and blank mean `reference`.
@@ -109,8 +115,9 @@ export function readArmPairing(raw: string | undefined): ArmPairing {
   if (trimmed === 'resolution') return 'resolution';
   if (trimmed === 'ask') return 'ask';
   if (trimmed === 'units') return 'units';
+  if (trimmed === 'reader') return 'reader';
   throw new Error(
-    `${PAIRING_VARIABLE} does not name a pairing: got ${JSON.stringify(raw)}. The six are ` +
+    `${PAIRING_VARIABLE} does not name a pairing: got ${JSON.stringify(raw)}. The seven are ` +
       '`reference` (the reference pipeline against the cognitive one, which is the registered ' +
       'pair and what an unset variable means), `carry` (the cognitive system against itself ' +
       "with `semanticCarry` off, which is `S12`'s instrument), `clock` (the cognitive system " +
@@ -118,20 +125,28 @@ export function readArmPairing(raw: string | undefined): ArmPairing {
       '(the cognitive system against itself with `resolution` at the registered `raw`, which is ' +
       "`C7`'s -- the one pair whose delta is a rendering form's), `ask` (the cognitive system " +
       'against itself with each route’s reference instruction block on the control side, which is the ' +
-      'pair `§13.291`’s adoption should have been priced with) and `units` (the cognitive system ' +
+      'pair `§13.291`’s adoption should have been priced with), `units` (the cognitive system ' +
       'against itself with the registered `turn` evidence unit on the control side, which is the pair ' +
-      '`PREREG-TURN-FILL.md` was written against and could not be dispatched to). A value that named ' +
-      'none of them would publish a delta between two systems the dispatch never described.',
+      '`PREREG-TURN-FILL.md` was written against and could not be dispatched to) and `reader` (the ' +
+      'cognitive system against itself with the second look off, which is the pair ' +
+      '`PREREGISTRATION-MULTI-STEP.md` priced and barred and then had no instrument for). A value that ' +
+      'named none of them would publish a delta between two systems the dispatch never described.',
   );
 }
 
 /**
- * The four treatment fields a pairing can split, as a pairing reads them.
+ * The six treatment fields a pairing can split, as a pairing reads them.
  *
  * Structural rather than imported: the arm's own `ArmTreatment` is this type with two fields narrowed
  * (`resolution` to its union and `ask` to its own), so it is assignable here and the two cannot disagree
- * about the four names. Declaring them in the harness instead would put the question "which keys can a
+ * about the six names. Declaring them in the harness instead would put the question "which keys can a
  * pairing move" in the file that builds instances rather than in the file that names pairings.
+ *
+ * The count in that first line was **four** until `reader` was added, and it had been wrong since `units`
+ * landed one key earlier: five fields, a sentence that said four, and nothing in the repository that could
+ * notice. That is the same failure the `readArmPairing` message documents in its own prose count, arriving
+ * in the docstring beside it -- so the number is stated once, at the head of the type, and every key below
+ * is listed rather than counted.
  */
 export type PairingTreatment = {
   readonly carry: boolean;
@@ -148,6 +163,15 @@ export type PairingTreatment = {
    * administered a unit.
    */
   readonly units: string;
+  /**
+   * Whether the **feature** side takes the second look (`readerSearch`).
+   *
+   * A boolean, unlike `units`, because the control is the **absence** of the option rather than a named
+   * value: the shipped configuration passes no `readerSearch` key at all, and `false` is how a treatment
+   * record spells that. The refusal below exists because a `reader` pair with the switch off on both sides
+   * is two controls, and the delta would be exactly zero with the artifact naming a stage on both lines.
+   */
+  readonly reader: boolean;
 };
 
 /**
@@ -236,6 +260,19 @@ export function pairingViolation(pairing: ArmPairing, treatment: PairingTreatmen
         '`session-text`. Without it both sides select by `turn`, every prompt is byte-identical, and the ' +
         'artifact would publish a null -- and a zero with a unit named on both sides is the sentence ' +
         '`PREREG-TURN-FILL.md` §5.1 exists to prevent.'
+      );
+    case 'reader':
+      if (treatment.reader) return null;
+      // The `units` rung's shape for a key whose control is an **absence**: `CORTEX_MEMORY_READER_SEARCH`
+      // defaults to `0`, so a dispatcher who names the pairing and forgets the switch gets two first passes.
+      // The delta would then be exactly zero with `readerSearch` recorded as a configuration the run carried,
+      // and `PREREGISTRATION-MULTI-STEP.md` §4's bar 1 (+3 `MR` questions) would fail for a reason that has
+      // nothing to do with the second look -- after which §4.1's stop rule closes the axis at its price.
+      return (
+        'CORTEX_MEMORY_AB=reader pairs the cognitive system against itself with the second look off, so the ' +
+        'feature side must be the side that looks twice: set CORTEX_MEMORY_READER_SEARCH=1. Without it both ' +
+        'sides are the first pass, the delta is zero by construction, and the artifact would publish a null ' +
+        '-- and §4.1 of the registration closes the axis on that null at its price.'
       );
     case 'reference':
       // The registered pair compares two systems, so there is no one key to require: `buildBaseline` and

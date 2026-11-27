@@ -147,11 +147,11 @@ RESOLUTIONS = ("raw", "layered")
 # `units` requires a feature-side unit other than `turn` and the registered value is `turn`. A loud
 # refusal at the top of a job is the outcome this campaign wants from a leftover variable.
 #
-# The six names are duplicated from `arm-pairing.ts` rather than imported for the reason every constant in
+# The seven names are duplicated from `arm-pairing.ts` rather than imported for the reason every constant in
 # this file is (this is a Python process talking to the API, and an import would make dispatching depend on
 # a TypeScript build). `test_session_clock_wiring.py` holds the two lists to each other in both directions.
 PAIRING_VARIABLE = "CORTEX_MEMORY_AB"
-PAIRINGS = ("reference", "carry", "clock", "resolution", "ask", "units")
+PAIRINGS = ("reference", "carry", "clock", "resolution", "ask", "units", "reader")
 
 # §13.312's judge pin, reachable from the only workflow that dispatches a **pair** of arms.
 #
@@ -985,7 +985,7 @@ def in_flight_refusal(runs: list[dict]) -> str | None:
     )
     return (
         f"refusing to dispatch while {len(busy)} run(s) of this workflow are queued or in progress: "
-        f"{described}. The dispatch channel is twelve repository variables that the workflow reads "
+        f"{described}. The dispatch channel is thirteen repository variables that the workflow reads "
         f"when the job starts, so a second dispatch overwrites the first one's switches and the "
         f"earlier run executes a configuration nobody asked for -- accurately recorded, and therefore "
         f"unreadable. Wait for the run to finish, then dispatch the second arm at the same sha: that "
@@ -1734,6 +1734,11 @@ def main(argv: list[str] | None = None) -> int:
             *(("lexicalWeighting",) if lexical_weighting != "flat" else ()),
             *(("sessionClock",) if session_clock != "off" else ()),
             *(("resolution",) if resolution != "raw" else ()),
+            # The second look's own field, on the same rule a tenth time: `memoryArmConfig.readerSearch` is
+            # always present (`false` on every archived artifact), so a run that turned it on and declared
+            # nothing would be filed by the gate as a measurement of the shipped configuration -- and the
+            # one row of the queue this exists to dispatch would arrive as an undeclared experiment.
+            *(("readerSearch",) if reader_search == "1" else ()),
             # §139.1. The same rule a ninth time, and this one is the gate's only way to tell a
             # reader swap from a judge swap: `memoryArmConfig.judge.source` is on every artifact
             # (`'reader'` or `'pinned'`), so a run that pinned a judge and declared nothing would be

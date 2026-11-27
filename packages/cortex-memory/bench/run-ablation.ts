@@ -1055,6 +1055,11 @@ async function main(): Promise<void> {
     // `forwardedUnit` has already erased it to `undefined`. The cast states what `readRelevanceUnits`
     // established at parse time, and `relevanceUnitToForward` re-checks the table on every construction.
     units: armOptions.relevanceUnits as RelevanceUnits,
+    // The second look's side of the pair. A `treatment` key rather than a read of `armOptions` inside
+    // `buildCortex`, because it is now one of the axes `CORTEX_MEMORY_AB` flips: under `pairing=reader` this
+    // same construction is asked for twice with one flag between the two sides, and a read of the parsed
+    // option there would put the second look on both -- the `resolution` defect, nine rounds long.
+    reader: armOptions.readerSearch === true,
   };
 
   // The two readers the product asks for. Absent unless the run named it, so a dispatch of any other
@@ -1160,13 +1165,17 @@ async function main(): Promise<void> {
       // absent IS the shipped behaviour and is expressed by NOT passing the key, so a run that names nothing
       // reproduces every archived prompt byte for byte.
       //
-      // `armOptions` rather than a `treatment` key, for the reason `conflicts` reads it: this is not one of
-      // the axes `CORTEX_MEMORY_AB` flips, so there is no second side to disagree with. The guard that the
-      // ranking can serve it is `assertReaderSearchReachesRanking` below, and the receipt that the query
-      // reached an index is `assertReaderSearchReached` in `bench-memory-arm.ts` -- a stage that consults the
-      // model, spends nothing on retrieval and reports a treatment is the §10.10 shape this repository has
-      // paid for three times.
-      ...(armOptions.readerSearch === true ? { readerSearch: DEFAULT_READER_SEARCH } : {}),
+      // `treatment.reader` rather than `armOptions.readerSearch`, for the reason `treatment.clock` gives one
+      // spread down: this IS now one of the axes `CORTEX_MEMORY_AB` flips (`pairing=reader`), so a read of
+      // the parsed option here would put the stage on both sides of its own instrument. Until the pairing
+      // existed, the sentence in this comment claimed the opposite -- "no second side to disagree with" --
+      // and it was true only because there was no way to ask the question.
+      //
+      // The guard that the ranking can serve it is `assertReaderSearchReachesRanking` below, and the receipt
+      // is `assertReaderSearchReached` in `bench-memory-arm.ts` -- a stage that consults the model, spends
+      // nothing on retrieval and reports a treatment is the §10.10 shape this repository has paid for three
+      // times.
+      ...(treatment.reader ? { readerSearch: DEFAULT_READER_SEARCH } : {}),
       // §13.386. The boundary clock. Spread conditionally for the reason `conflicts` is: `off` IS the
       // shipped behaviour and is expressed by NOT passing the key, so a run that names nothing reproduces
       // every archived prompt byte for byte -- which `turn-clock.test.ts` asserts on the rendering side and
@@ -1419,6 +1428,14 @@ async function main(): Promise<void> {
         return buildCortex({ ...armTreatment, ask: 'route' });
       case 'reference':
         return buildBaseline();
+      case 'reader':
+        // The control is the **absence** of the option, which is what `buildCortex` already does when
+        // `treatment.reader` is false -- so this branch flips one boolean and the construction stays one
+        // construction. It is not `buildBaseline()`: the registered pair compares two systems, and
+        // `PREREGISTRATION-MULTI-STEP.md` §3's comparison is one flag of one system. Reading it as the
+        // reference pair is how the delta would have been charged to the second look while belonging to the
+        // cognitive layer's whole difference from the reference pipeline.
+        return buildCortex({ ...armTreatment, reader: false });
       case 'units':
         // The one key whose control is a **named** value rather than an absent or `false` one. `turn` is a
         // member of the product's union and the arm forwards it by NOT passing the key, so the control is
@@ -1656,6 +1673,14 @@ async function main(): Promise<void> {
       // one place that turns the flag back into a pairing, so an artifact that omitted it would be read as
       // the registered pair and its delta would be attributed to two systems.
       unitsPair: pairing === 'units',
+      // The sixth one-flag pair, and the one whose two halves are furthest apart on the **bill**:
+      // `readerSearch: true` says the feature side took a second look, and says nothing about the other
+      // side of the same job. Without this entry a reader would have to know that the pair exists at all
+      // before `selfIndex.indexes` could be read as one side's work rather than as a run's -- and
+      // `read-merged-population.py`'s `PAIR_FLAGS` is the one place that turns the flag back into a
+      // pairing, so an artifact that omitted it would be read as the registered pair and the delta would
+      // be attributed to two systems instead of one flag.
+      readerPair: pairing === 'reader',
     },
     datasetFingerprint,
     // §E6's population, when the run multiplied it or answered one part of a split dispatch. Absent

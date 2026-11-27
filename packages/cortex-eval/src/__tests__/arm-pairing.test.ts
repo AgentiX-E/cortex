@@ -48,6 +48,15 @@ describe('readArmPairing', () => {
     expect(readArmPairing('units')).toBe('units');
   });
 
+  it('reads the reader pairing, which the queued row was priced and barred without', () => {
+    // `PREREGISTRATION-MULTI-STEP.md` §3 wrote its control column as another **run** (`43140878641`) and
+    // §4 put a bar of +3 `MR` questions on the difference. The drift between two runs of this corpus is
+    // 1.7-2.1pp, which on 500 questions is 8.5-10.5 questions -- so the bar was smaller than the noise of
+    // the control it was read against, and the row could not be answered even with a dispatch. This value
+    // is the instrument that makes the bar readable: one pass, one corpus, one flag between the sides.
+    expect(readArmPairing('reader')).toBe('reader');
+  });
+
   it('folds case and space, because the value is typed by hand into a dispatch', () => {
     expect(readArmPairing(' CARRY ')).toBe('carry');
     expect(readArmPairing('Reference')).toBe('reference');
@@ -55,6 +64,7 @@ describe('readArmPairing', () => {
     expect(readArmPairing(' Resolution ')).toBe('resolution');
     expect(readArmPairing(' ASK ')).toBe('ask');
     expect(readArmPairing(' UNITS ')).toBe('units');
+    expect(readArmPairing(' Reader ')).toBe('reader');
   });
 
   it('refuses a pairing it cannot build, and names every one it can', () => {
@@ -68,13 +78,14 @@ describe('readArmPairing', () => {
     expect(() => readArmPairing('two-window')).toThrow(/`resolution`/);
     expect(() => readArmPairing('two-window')).toThrow(/`ask`/);
     expect(() => readArmPairing('two-window')).toThrow(/`units`/);
+    expect(() => readArmPairing('two-window')).toThrow(/`reader`/);
     // The count is asserted in prose as well as by enumeration: "The three are" survived a fourth
     // member once already in this campaign's sibling selector, "The four are" survived a fifth one three
-    // rounds ago, and "The five are" would have survived this sixth one -- the prose count is the sentence
-    // a reader trusts first, and it has now been wrong three times. Asserted as a number so a seventh
-    // member has to edit this line rather than append a branch.
-    expect(() => readArmPairing('two-window')).toThrow(/The six are/);
-    expect(() => readArmPairing('two-window')).not.toThrow(/The five are/);
+    // rounds ago, "The five are" survived a sixth, and "The six are" would have survived this seventh --
+    // the prose count is the sentence a reader trusts first, and it has now been wrong four times.
+    // Asserted as a number so an eighth member has to edit this line rather than append a branch.
+    expect(() => readArmPairing('two-window')).toThrow(/The seven are/);
+    expect(() => readArmPairing('two-window')).not.toThrow(/The six are/);
   });
 });
 
@@ -93,6 +104,7 @@ describe('pairingViolation', () => {
     resolution: 'layered',
     ask: 'verbatim-acts',
     units: 'turn-fill',
+    reader: true,
   };
 
   it('has nothing to require of the registered pair', () => {
@@ -106,6 +118,7 @@ describe('pairingViolation', () => {
         resolution: 'raw',
         ask: 'route',
         units: 'turn',
+        reader: false,
       }),
     ).toBeNull();
   });
@@ -124,6 +137,9 @@ describe('pairingViolation', () => {
     expect(pairingViolation('units', { ...base, units: 'turn' })).toContain(
       'CORTEX_MEMORY_RELEVANCE_UNITS',
     );
+    expect(pairingViolation('reader', { ...base, reader: false })).toContain(
+      'CORTEX_MEMORY_READER_SEARCH=1',
+    );
   });
 
   it('says what the reading would be misread as, and the five are not the same misreading', () => {
@@ -137,13 +153,14 @@ describe('pairingViolation', () => {
     // (`clock`: the paired criterion's movement; `resolution`: `F1`'s mechanism census, which is why that
     // run is void rather than null). The wording is the difference between "we measured nothing" and "we
     // measured a zero", and both are failures a dispatcher has to be able to tell apart from a result.
-    for (const pairing of ['carry', 'clock', 'resolution', 'ask', 'units'] as const) {
+    for (const pairing of ['carry', 'clock', 'resolution', 'ask', 'units', 'reader'] as const) {
       const message = pairingViolation(pairing, {
         carry: false,
         clock: false,
         resolution: 'raw',
         ask: 'route',
         units: 'turn',
+        reader: false,
       });
       expect({ pairing, saysWhatZeroMeans: /\b(null|zero)\b/.test(message ?? '') }).toEqual({
         pairing,
@@ -159,6 +176,7 @@ describe('pairingViolation', () => {
         resolution: 'raw',
         ask: 'route',
         units: 'turn',
+        reader: false,
       }),
     ).toContain('F1');
     // `units` names the pre-registration section whose falsification rule it protects (§5.1: "`promptChars`
@@ -170,6 +188,7 @@ describe('pairingViolation', () => {
         resolution: 'raw',
         ask: 'route',
         units: 'turn',
+        reader: false,
       }),
     ).toContain('PREREG-TURN-FILL.md');
   });
@@ -177,7 +196,7 @@ describe('pairingViolation', () => {
   it('requires exactly the one key its pairing splits, and nothing else', () => {
     // The Cartesian product, because the defect this catches is a condition that reads a SECOND key: a
     // `carry` rung that also demanded the clock would pass every single-axis test above and refuse three
-    // quarters of the dispatches that ran. 5 x 48 = 240 readings, each compared as a whole object so a
+    // quarters of the dispatches that ran. 6 x 96 = 576 readings, each compared as a whole object so a
     // failure prints which combination disagreed rather than which boolean did.
     const satisfactions: Record<string, (treatment: PairingTreatment) => boolean> = {
       carry: (treatment) => treatment.carry,
@@ -188,6 +207,9 @@ describe('pairingViolation', () => {
       // `turn` satisfies nothing and `turn-fill` satisfies everything, and a rung that demanded a third
       // state would be visible here as a combination that disagreed.
       units: (treatment) => treatment.units !== 'turn',
+      // A boolean like `carry` and `clock`, and for the same reason: the control is the absence of the
+      // option, so `false` is the only value that is a control.
+      reader: (treatment) => treatment.reader,
     };
     for (const [pairing, satisfied] of Object.entries(satisfactions)) {
       for (const carry of [true, false]) {
@@ -195,12 +217,14 @@ describe('pairingViolation', () => {
           for (const resolution of ['raw', 'layered']) {
             for (const ask of ['route', 'verbatim-acts', 'verbatim-scope']) {
               for (const units of ['turn', 'turn-fill']) {
-                const treatment = { carry, clock, resolution, ask, units };
-                expect({
-                  pairing,
-                  ...treatment,
-                  refused: pairingViolation(pairing as 'carry', treatment) !== null,
-                }).toEqual({ pairing, ...treatment, refused: !satisfied(treatment) });
+                for (const reader of [true, false]) {
+                  const treatment = { carry, clock, resolution, ask, units, reader };
+                  expect({
+                    pairing,
+                    ...treatment,
+                    refused: pairingViolation(pairing as 'carry', treatment) !== null,
+                  }).toEqual({ pairing, ...treatment, refused: !satisfied(treatment) });
+                }
               }
             }
           }

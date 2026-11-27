@@ -1411,6 +1411,101 @@ def reply_repair_section(report: dict) -> tuple[str, bool]:
     return '\n'.join(lines), not unconverted and low <= per_run <= high
 
 
+SECOND_LOOK_COUNTERS = ('attempted', 'queries', 'refused', 'unranked', 'promoted')
+
+
+def second_look_section(report: dict) -> tuple[str, bool]:
+    """The second look's five counters, and the one arithmetic the bill can still falsify.
+
+    ## Why `attempted` has to be divided and `indexes` must not be
+
+    The census is accumulated on **one instance reused across every repetition** (`§12.5`), so
+    `attempted: 242` on a two-repetition run is 121 questions -- the same divisor `--reply-repair`
+    prints. The product's bill is accumulated the same way, so the floor is compared before any
+    division: both sides of `attempted + queries` and of `indexes` cover the same repetitions, and
+    dividing one without the other would read a working mechanism as four times its reach.
+
+    ## Why the floor is `attempted + queries`
+
+    The bill is the **feature** side's (`censusSourcesOf` answers the instances that answer
+    questions), and each question the stage reached built one index, each query it wrote one more.
+    So `indexes >= attempted + queries` is the claim "every query the reader wrote was ranked", and
+    a run below it wrote queries the index never saw -- the state
+    `PREREGISTRATION-MULTI-STEP.md` §3.1 found the queued row in, one frame earlier.
+
+    What this cannot see is a stage that fired on fewer questions than the run ranked
+    (`attempted` under-counts and the floor drops with it). That gap is stated in the arm's own
+    receipt too; closing it would need a per-question index census the product does not keep.
+
+    ## Why absent and zero are different
+
+    `readerSearchCounts` is absent on every archived artifact and on every build without the stage.
+    Printing zeros there would make "this build has no second look" and "the second look reached
+    nothing" the same line -- the shape that made §10.10's wrong reading possible.
+    """
+    raw = report.get('readerSearchCounts')
+    if raw is None:
+        raise ValueError(
+            'carries no `readerSearchCounts`: either the build predates the second look, or the dispatch '
+            'ran with `CORTEX_MEMORY_READER_SEARCH=0`. This field cannot tell those two apart'
+        )
+    if not isinstance(raw, dict):
+        raise ValueError(f'carries `readerSearchCounts` of type {type(raw).__name__}, not an object')
+    counts: dict[str, int] = {}
+    for key in SECOND_LOOK_COUNTERS:
+        value = raw.get(key)
+        if isinstance(value, bool) or not isinstance(value, int) or value < 0:
+            raise ValueError(f'`readerSearchCounts.{key}` is {value!r}, not a non-negative integer')
+        counts[key] = value
+
+    runs = report.get('runs')
+    if isinstance(runs, bool) or not isinstance(runs, int) or runs < 1:
+        raise ValueError(
+            'carries no `runs`, so the census cannot be divided: it is accumulated on one instance reused '
+            'across repetitions, and reading the total as a per-repetition figure is the four-times error '
+            '`--reply-repair` prints its divisor to avoid'
+        )
+
+    config = report.get('memoryArmConfig') or {}
+    switch = config.get('readerSearch')
+    lines = ['', 'second look (fields: memoryArmConfig.readerSearch / selfIndex, readerSearchCounts)']
+    lines.append(f'  switch       {switch!r}   (absent and `false` are the control; the queue row is `true`)')
+    lines.append(f'  repetitions  {runs}')
+    for key in SECOND_LOOK_COUNTERS:
+        per_run = counts[key] / runs
+        lines.append(f'  {key:<12} {counts[key]:>5}   ({per_run:.1f} per repetition)')
+
+    bill = config.get('selfIndex') or {}
+    indexes = bill.get('indexes')
+    queries = bill.get('queries')
+    if isinstance(indexes, int) and not isinstance(indexes, bool):
+        floor = counts['attempted'] + counts['queries']
+        lines.append(f'  bill         indexes {indexes}, queries {queries!r}   (the product’s own count)')
+        lines.append(f'  floor        attempted + queries = {floor}   (one index per reached question, one per query)')
+        ranked = indexes >= floor
+        lines.append(f'  the queries reached a ranking  {"yes" if ranked else "NO -- the floor is not met"}')
+    else:
+        ranked = True
+        lines.append('  bill         absent: this build reports no index cost, so the floor cannot be applied')
+
+    reach = counts['attempted'] - counts['refused'] - counts['queries']
+    lines.append(
+        f'  reach        {counts["queries"]} queries over {counts["attempted"]} questions reached, '
+        f'{counts["refused"]} refused, {counts["unranked"]} unranked'
+    )
+    if reach != 0:
+        lines.append(
+            f'  accounting   {reach} attempt(s) neither wrote a query nor were refused: the counters do not '
+            'close, which is a defect in the census rather than a reading of the mechanism'
+        )
+    lines.append(
+        f'  promoted     {counts["promoted"]}: the only number that separates "looked twice" from '
+        '"got a longer prompt"'
+    )
+    verdict = ranked and reach == 0
+    return '\n'.join(lines), verdict
+
+
 def census_parts(report: dict, kind: str) -> object:
     """The named half of the census, or a value `_pair_of_counts` will reject by name."""
     census = report.get('replyRepair')
@@ -5078,6 +5173,17 @@ REGISTERED_CONDITIONS: dict[str, tuple[str, object]] = {
     # `run-ablation.ts` has written `memoryArmConfig.judge` since §13.312, so an artifact without the
     # block predates the field and was graded by its reader.
     'judge': ('judge.source', 'reader'),
+    # §213. The second look is the tenth condition, and its registered value is the **absence** of a
+    # stage: `false` is the shipped arm, every archived artifact either lacks the field or records
+    # `false`, and an artifact produced with the stage on agrees about every dispatch input -- the
+    # reader wrote a query and the index answered it, neither of which any input names. Without this
+    # seat the one queued row this round exists to dispatch would be refused *after* its money was
+    # spent, which is the `S14` failure; with the wrong default every registered run would depart
+    # from the registration, which is the same seat's other edge.
+    #
+    # Absence reads as the registered value, because `toMemoryArmConfig` has written the field since
+    # §212 and every artifact before it predates the stage it describes.
+    'readerSearch': ('readerSearch', False),
 }
 
 ABSENT = '<-absent->'
@@ -6094,6 +6200,15 @@ def main(argv: list[str]) -> int:
         ),
     )
     parser.add_argument(
+        '--second-look',
+        action='store_true',
+        help=(
+            'print the second look\'s five counters, its per-repetition reach and the product\'s own bill '
+            'against the floor `attempted + queries` (exit 1 when the floor is missed or the counters do '
+            'not close, 2 when the artifact carries no census)'
+        ),
+    )
+    parser.add_argument(
         '--union',
         action='store_true',
         help='print the union of the two sides per capability instead of the run summary',
@@ -6457,6 +6572,15 @@ def main(argv: list[str]) -> int:
             return 2
         print(section)
         return 0
+
+    if args.second_look:
+        try:
+            section, verdict = second_look_section(report)
+        except ValueError as error:
+            print(f'{args.report}: {error}', file=sys.stderr)
+            return 2
+        print(section)
+        return 0 if verdict else 1
 
     if args.union:
         try:

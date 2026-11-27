@@ -165,3 +165,67 @@ reach. Its first draft passed for the wrong reason: the fixture's plant session 
 second query winning a tie rather than from the mechanism. The fixture now says "plant", and the
 sentence is here because a green test on a fixture that cannot express the claim is this campaign's most
 expensive recurring defect.
+
+## 8. The instrument: a sixth one-flag pairing, and a receipt that could not pass
+
+§7 recorded the mechanism. This section records what measuring it required, because two of the three
+defects it found were in the *instrument*, and both would have survived a successful dispatch.
+
+### 8.1 The control was a different run
+
+`PREREGISTRATION-MULTI-STEP.md` §3's control column read "the registered arm (`91.25%`, run
+`43140878641`)". Three readings of one arm say why that cannot carry a three-question bar:
+
+| run | repetitions | `MR` | share |
+| --- | ---: | ---: | ---: |
+| `43140878641` | 1 | 102 | 84.30% |
+| `45760081761` (published) | 2 | 105 | 86.78% |
+| `45923435343`, control side | 1 | 108 | 89.26% |
+
+Six questions of spread across one configuration, against a bar of three. A bar smaller than the spread
+of its own control cannot fail, and that means it cannot pass either: the reading would have been
+whatever the reader expected, priced at ¥5.87.
+
+So the control is a **side**. `CORTEX_MEMORY_AB=reader` is the sixth one-flag pairing: both sides are
+`CortexMemory`, the control passes no `readerSearch` key, the feature passes the registered
+configuration, and the two share the corpus, the reader, the judge and the clock. One dispatch, and the
+delta belongs to the second look rather than to the cognitive layer's whole difference from the
+reference pipeline.
+
+That also corrected a sentence: the arm's comment on the option said "this is not one of the axes
+`CORTEX_MEMORY_AB` flips, so there is no second side to disagree with", and it was true only because
+there was no way to ask the question. The option is now read from the treatment, like every other key a
+pairing can split.
+
+### 8.2 The receipt could not pass
+
+The receipt shipped in §7 read `selfIndex.queries > selfIndex.indexes`. That is the **query-expansion**
+ratio: one index, *k* queries, so the query count runs ahead. The second look issues one query against
+one more index, so the two counts rise together and the inequality is false on every correct run — the
+check would have thrown at the end of the dispatch it exists to police, after the money was spent.
+
+A check that can only fire on a correct run is §208.10's shape with the sign flipped, and it is worse
+than no check: it looks like a receipt.
+
+The replacement is a floor, `indexes >= attempted + queries` — one index per question the stage reached,
+one more per query it wrote. It is a lower bound rather than an equality because the product may build
+indexes this stage knows nothing about, and an equality would turn the next such mechanism into a false
+failure. `--second-look` applies the same floor to a finished artifact, prints the counters per
+repetition (they accumulate on one instance reused across repetitions, so the total is
+`per-repetition × runs`) and refuses an artifact whose counters do not close.
+
+The bill is readable this way because `censusSourcesOf` answers the **feature** instances: an archived
+reference-pair run reads `indexes: 500` over 500 questions, one index each, not a thousand. That is the
+fact that makes `attempted` a lower bound rather than a count of one side of a pair, and it is why the
+receipt takes no pairing argument.
+
+### 8.3 The bar pair could not both hold
+
+At 121 paired questions the two-sided exact McNemar reaches `p < 0.05` only from a net `+6` (with no
+regressions), `+7` with one, `+8` with two. Bar 1 asks for `+3`. So bar 1 is necessary and never
+sufficient, and the operative threshold is `+6` — a 5% `MR` effect, against the `+1.75` the *blind* form
+of this idea measured. The registration states this rather than editing the bar, because a bar written
+before a dispatch is worth more than a tidier one written after.
+
+The most likely verdict of the screen is therefore "the axis closes at its price", and that is the
+honest reading of a ¥5.87 instrument rather than a reason to spend ¥25 on the 500×4 run.

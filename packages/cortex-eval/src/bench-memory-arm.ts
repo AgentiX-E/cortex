@@ -5812,18 +5812,42 @@ function assertQueryExpansionReached(
  */
 function assertReaderSearchReached(
   config: MemoryArmConfig | undefined,
-  counts: { readonly queries: number } | undefined,
+  counts: { readonly attempted: number; readonly queries: number } | undefined,
   bill: IndexCostRecord | undefined,
 ): void {
   if (config?.readerSearch !== true) return;
   if (counts === undefined || counts.queries === 0) return;
   if (bill === undefined) return;
-  if (bill.queries > bill.indexes) return;
+  // The floor, not the ratio. Each question the stage reached built one index, and each query it wrote built
+  // exactly one more -- so a bill at or above `attempted + queries` is a bill in which every written query
+  // was ranked, and a bill below it is a query the index never saw.
+  //
+  // **This replaces `bill.queries > bill.indexes`, which was wrong in the one direction that matters.** That
+  // is the *expansion* receipt: one index, k queries, so the query count runs ahead of the index count. The
+  // second look issues one query against one more index, so the two counts rise together, the strict
+  // inequality is false on every correct run, and the receipt could not pass -- it would have thrown after
+  // the money was spent, at the end of the 121-question dispatch it exists to police. A check that can only
+  // fire on a correct run is §208.10's shape with the sign flipped.
+  //
+  // The bill is the **feature** side's: `censusSourcesOf` answers the instances that answer questions, so an
+  // archived reference-pair run reads `indexes: 500` over 500 questions and one index each. That is what
+  // makes `attempted` a lower bound on the ranking this stage can see rather than a count of one side of a
+  // pair.
+  //
+  // A **lower** bound and not an equality, deliberately: the product may build indexes this stage knows
+  // nothing about, and an equality would turn the next such mechanism into a false failure. The cost of the
+  // weaker form is that a run whose stage reaches only some of its ranked questions can hide a defect here
+  // -- `attempted` then under-counts the corpus, and the floor drops with it. That gap is stated rather than
+  // closed, because the alternative is a gate that fails paid runs for being correct.
+  const floor = counts.attempted + counts.queries;
+  if (bill.indexes >= floor) return;
   throw new Error(
-    `readerSearch produced ${String(counts.queries)} quer${counts.queries === 1 ? 'y' : 'ies'} and the ` +
-      `product's index issued ${String(bill.queries)} for ${String(bill.indexes)} retrieval(s) -- one each, ` +
-      'which is the control. The second look never reached a ranking. Check that the arm passed the switch ' +
-      'to the product (`CortexMemory.readerSearch`) and that the route resolved a signal.',
+    `readerSearch wrote ${String(counts.queries)} quer${counts.queries === 1 ? 'y' : 'ies'} over ` +
+      `${String(counts.attempted)} question(s) the stage reached, and the product's index built ` +
+      `${String(bill.indexes)} -- below the ${String(floor)} that ranking ` +
+      'every one of those queries requires. The second look never reached a ranking: check that the arm ' +
+      'passed the switch to the product (`CortexMemory.readerSearch`), that `CORTEX_MEMORY_AB` put the ' +
+      'other side on the control, and that the route resolved a signal.',
   );
 }
 

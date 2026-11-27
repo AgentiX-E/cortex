@@ -256,6 +256,62 @@ class TestTheOracleSwitch:
         assert declared and declared[0] == ['evidenceSource'], declared
 
 
+class TestTheReaderSearchSwitch:
+    """The second look's variable, and the departure it has to declare.
+
+    Two properties, both learned from the same class of defect. It cannot be an input (the workflow sits
+    one below GitHub's ceiling of 25), so it is written by the dispatcher and read by the job from `vars`;
+    and because `memoryArmConfig.readerSearch` is on every artifact, a run that turned it on without
+    declaring it would be filed by the registration gate as the shipped configuration.
+    """
+
+    def test_absent_means_the_registered_control(self) -> None:
+        module = _module()
+        assert module.reader_search_switch({}) == '0'
+        assert module.reader_search_switch({module.READER_SEARCH_VARIABLE: ''}) == '0'
+
+    def test_a_typo_is_refused_rather_than_read_as_off(self) -> None:
+        # The defect this prevents is the one the whole switch exists against: a dispatch that asked for the
+        # treatment, ran the control, and published `readerSearch: false` -- a field that is true and
+        # useless.
+        module = _module()
+        with pytest.raises(SystemExit) as refusal:
+            module.reader_search_switch({module.READER_SEARCH_VARIABLE: 'yes'})
+        assert module.READER_SEARCH_VARIABLE in str(refusal.value)
+
+    def test_the_switch_joins_the_declaration_only_when_it_is_on(self, monkeypatch) -> None:  # noqa: ANN001
+        module = _module()
+        declared: list[list[str]] = []
+        monkeypatch.setattr(module, 'req', lambda *a, **k: {'tree': {'sha': 'b' * 40}})
+        monkeypatch.setattr(module, 'remote_head', lambda: 'a' * 40)
+        monkeypatch.setattr(module, 'local_tree', lambda: 'b' * 40)
+        monkeypatch.setattr(module, 'staleness_refusal', lambda *_: None)
+        monkeypatch.setattr(module, 'write_variable', lambda name, value: value)
+        monkeypatch.setattr(module, 'declare_departures', lambda names: declared.append(names))
+        monkeypatch.setenv(module.READER_SEARCH_VARIABLE, '1')
+
+        assert module.main(['--no-budget']) == 0
+        # The artifact's field name, not the variable's: the gate resolves declarations against the
+        # artifact, and `CORTEX_MEMORY_READER_SEARCH` resolves to nothing.
+        assert declared and declared[0] == ['readerSearch'], declared
+
+    def test_the_control_declares_nothing(self, monkeypatch) -> None:  # noqa: ANN001
+        # `readerSearch: false` is the shipped arm, so declaring it would be the "names a field this run
+        # did not move" case the gate reports as an intention rather than as a departure.
+        module = _module()
+        declared: list[list[str]] = []
+        monkeypatch.setattr(module, 'req', lambda *a, **k: {'tree': {'sha': 'b' * 40}})
+        monkeypatch.setattr(module, 'remote_head', lambda: 'a' * 40)
+        monkeypatch.setattr(module, 'local_tree', lambda: 'b' * 40)
+        monkeypatch.setattr(module, 'staleness_refusal', lambda *_: None)
+        monkeypatch.setattr(module, 'write_variable', lambda name, value: value)
+        monkeypatch.setattr(module, 'declare_departures', lambda names: declared.append(names))
+        monkeypatch.setenv(module.READER_SEARCH_VARIABLE, '0')
+
+        assert module.main(['--no-budget']) == 0
+        assert declared and declared[0] == [], declared
+
+
 class TestTheReplyRepairSwitch:
     """The reply-contract repair's variable, on the same two properties as the evidence source.
 
@@ -470,11 +526,11 @@ class TestTheAdmissionGateSwitches:
 
 
 class TestTheInFlightLock:
-    """One dispatch at a time, because the channel is twelve repository variables.
+    """One dispatch at a time, because the channel is thirteen repository variables.
 
-    `main` writes the declaration, the oracle, the conflicts switch, the reply repair, the superseded
-    rendering, the index embedding, the lexical weighting, the session clock, the resolution, the
-    admission threshold, the confidence signal and the judge pin -- before the POST. The workflow
+    `main` writes the declaration, the oracle, the conflicts switch, the reader search, the reply repair,
+    the superseded rendering, the index embedding, the lexical weighting, the session clock, the
+    resolution, the admission threshold, the confidence signal and the judge pin -- before the POST. The workflow
     reads them when the job **starts**, which is not when it was dispatched, so a second dispatch
     landing in the gap makes the first run execute a configuration nobody asked for, with an artifact
     that accurately records what it applied and therefore cannot be read as wrong.
@@ -519,7 +575,7 @@ class TestTheInFlightLock:
         assert '44711018477' in refusal
         assert 'MR / llm' in refusal
         # The refusal has to say why, because "wait" with no reason reads as an arbitrary gate.
-        assert 'twelve repository variables' in refusal
+        assert 'thirteen repository variables' in refusal
         assert '--allow-concurrent' in refusal
 
     def test_main_refuses_before_writing_a_single_variable(self, monkeypatch) -> None:

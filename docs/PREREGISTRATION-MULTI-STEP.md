@@ -8,7 +8,11 @@ it now exists in the product (`CortexMemoryOptions.readerSearch`), in the arm
 ## 0. What is being tested, and why now
 
 `MR` is the only capability where this repository is level with its own reference pipeline and behind
-every published competitor: **102 of 121 (84.3%)** against Synap's 92.6 and MemCog's 92.48. Three plans
+every published competitor. The figure this paragraph quoted until §3.2 was written — **102 of 121
+(84.3%)** — is four rounds and three configurations stale: the registered arm reads **105** (86.78%) on
+`45760081761` and **108** (89.26%) on `45923435343`'s control side, and the gap to Synap's 92.6 is
+therefore **2.9 to 5.8 points rather than 8.3**. Both numbers are quoted because the spread between two
+runs of one configuration is the reason §3.2 exists. Three plans
 have been written against that gap — `[thing N]` item identity, a listing contract, and more room — and
 each was dispatched against the explanation the previous document happened to name. Two of the three
 are now retired by measurement (`RETRACTIONS` #12 for the room, #24 for the listing contract), and the
@@ -91,7 +95,7 @@ it.
 
 | field         | control                                                     | treatment                   |
 | ------------- | ----------------------------------------------------------- | --------------------------- |
-| configuration | the registered arm (`91.25%`, run `43140878641`)            | same, plus `readerSearch=1` |
+| configuration | the registered arm, **in the same job** (`CORTEX_MEMORY_AB=reader`) | same, plus `readerSearch=1` |
 | capability    | all five                                                    | all five                    |
 | questions     | 500                                                         | 500                         |
 | repetitions   | 4                                                           | 4                           |
@@ -166,6 +170,42 @@ below rather than inherited: the aimed version must clear **+3 questions** *and*
 questions it converts are ones whose first-look list was short (§6), because otherwise it is S17 with a
 longer prompt and the mechanism name is wrong even when the number is positive.
 
+### 3.2 The control had to be a side, and until this round it was a run
+
+§3 used to read "the registered arm (`91.25%`, run `43140878641`)" in its control column. That is a
+**different run**, and three numbers make the objection arithmetic rather than stylistic:
+
+| reading | run | repetitions | `MR` | share |
+| --- | --- | ---: | ---: | ---: |
+| `43140878641` (the old control) | one 500-question pass | 1 | 102 | 84.30% |
+| `45760081761` (the published arm) | two passes, `layered` | 2 | 105 | 86.78% |
+| `45923435343` (control side) | one pass, `layered` | 1 | 108 | 89.26% |
+
+Three readings of one arm, **six questions apart**, and §4's bar 1 is three. A bar smaller than the
+spread of the control it is read against cannot fail, which means it also cannot pass: the reading would
+have been the reader's prior, priced at ¥5.87.
+
+So the control is a side of the same job. `CORTEX_MEMORY_AB=reader` is the sixth one-flag pairing
+(`cortex-eval/src/arm-pairing.ts`): both sides are `CortexMemory`, the control passes no `readerSearch`
+key, the feature passes the registered configuration, and the two share the corpus, the reader, the
+judge and the clock. One dispatch, and the delta is the second look's -- not the cognitive layer's whole
+difference from the reference pipeline, and not a difference between two runs.
+
+Two consequences worth stating because they were wrong before this round:
+
+1. **`readerSearch` had no pairing, so a dispatch would have measured the wrong thing.** The switch was
+   read from `armOptions` inside `buildCortex`, which is one value per process: with the registered pair
+   the artifact would have compared *the cognitive system plus a second look* against the *reference
+   pipeline*, and the delta would have been charged to the second look while belonging to the cognitive
+   layer. The sentence in that comment — "this is not one of the axes `CORTEX_MEMORY_AB` flips, so there
+   is no second side to disagree with" — was true only because there was no way to ask the question.
+2. **The receipt that was supposed to catch that could not pass.** It read `selfIndex.queries >
+   selfIndex.indexes`, which is the *query-expansion* ratio (one index, k queries). The second look
+   issues one query against one more index, so the two counts rise together and the inequality is false
+   on every correct run: it would have thrown at the end of the dispatch, after the money was spent. It
+   now reads `indexes >= attempted + queries` — one index per question the stage reached, one more per
+   query it wrote — and `--second-look` applies the same floor to a finished artifact.
+
 ## 4. Bars, both directions, written before the dispatch
 
 | #   | bar                                                              | verdict if missed                                                  |
@@ -179,6 +219,24 @@ longer prompt and the mechanism name is wrong even when the number is positive.
 Bar 4 exists because of §2 of `MEASURE-ENUMERATED-ASK.md`: an untreated row moved 3 questions on four
 repetitions, so a two-question floor is the largest claim this sample supports.
 
+**Bars 1 and 2 cannot both hold at a net `+3`, and the exact test is what says so.** On 121 paired
+questions the two-sided exact McNemar reaches `p < 0.05` only from:
+
+| discordant, control-correct | smallest `b` | net | `p` | net one short | `p` there |
+| ---: | ---: | ---: | ---: | ---: | ---: |
+| `c = 0` | 6 | **+6** | 0.031 | +5 | 0.063 |
+| `c = 1` | 8 | **+7** | 0.039 | +6 | 0.070 |
+| `c = 2` | 10 | **+8** | 0.039 | +7 | 0.065 |
+| `c = 3` | 12 | **+9** | 0.035 | +8 | 0.057 |
+
+So bar 1 is **necessary and never sufficient**: every verdict this screen can reach is `+6` at best and
+`+6 + c` in general, and a `+3` reading lands in bar 1's second row ("a null and is not dispatched
+again") only if bar 2 is consulted at all. The row is not rewritten, because a bar written before a
+dispatch is worth more than a tidier one written after; the operative threshold is stated instead, and
+it is **+6 with no regressions**, which is a 5% `MR` effect. `S17` measured the blind form of this idea
+at +1.75 questions, so the screen's most likely verdict is "the axis closes at its price" -- and that is
+the honest reading of a ¥5.87 instrument rather than a reason to spend ¥25.
+
 ## 5. Cost
 
 | item                                                     | estimate     |
@@ -188,8 +246,11 @@ repetitions, so a two-question floor is the largest claim this sample supports.
 | total to a verdict                                       | **≈ 25 CNY** |
 
 **This price is not on the queue, and the queue's own number was for a different run.** The queue row
-that cites this document reads **¥5.87 for `MR` 121 questions in one pass** — a paired comparison at a
-fifth of the price — while §3 and §4 above register 500 questions × 4 repetitions. Two prices for one
+that cites this document reads **¥5.87 for `MR` 121 questions** — a paired comparison at a fifth of the
+price — while §3 and §4 above register 500 questions × 4 repetitions. The ¥5.87 is `MR` at **two**
+repetitions: `tools/spend-baseline.json` derives it as `5.87 / (121 × 2)` from the bill of the scoped
+dispatch that was over its projection by 3.4×, so "one pass" was a word this document added rather than
+a number it read. Two prices for one
 registration is how a row ends up approved on the cheaper one and read against the stricter criteria;
 the row is corrected in `cortex-docs` §211.9, and the criterion that survives is §4's: **exact McNemar
 on the paired `MR` roster**, which 121 questions can carry, and bar 4's `−2` capability floor, which

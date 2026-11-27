@@ -162,7 +162,7 @@ DEFAULT_BUDGET_CNY = 120.0
 # while these three are a union the arm throws on. The cost of not checking was measured on this
 # workflow's own family -- a dispatch that is accepted, billed, and then throws before its first
 # question is a round spent on a typo, and the arm's error arrives after the corpus download.
-PAIRINGS = ("reference", "carry", "clock", "resolution", "ask", "units")
+PAIRINGS = ("reference", "carry", "clock", "resolution", "ask", "units", "reader")
 
 
 _TOKEN: str | None = None

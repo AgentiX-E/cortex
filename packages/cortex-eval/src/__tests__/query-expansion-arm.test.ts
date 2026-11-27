@@ -80,16 +80,35 @@ class SecondLookSystem implements MemorySystem {
   }
 }
 
+/**
+ * A census of a stage that fired on every question and wrote a query on all but three.
+ *
+ * `attempted: 121` with `queries: 118` is the shape of a real `MR` dispatch: the stage reaches every
+ * multi-session question, and the model declines a few (`refused: 3`). The numbers are the ones the floor
+ * below is computed from, so they are named rather than inlined.
+ */
 const SECOND_LOOK_CENSUS = {
-  attempted: 3,
-  queries: 3,
-  refused: 0,
+  attempted: 121,
+  queries: 118,
+  refused: 3,
   unranked: 0,
   promoted: 1,
 };
 
+/**
+ * The bill a **correct** run writes: 121 questions ranked, plus 118 more indexes for the queries it wrote.
+ *
+ * The bill is the feature side's alone -- `censusSourcesOf` answers the instances that answer questions, so
+ * an archived reference-pair run reads `indexes: 500` over 500 questions, not 1,000.
+ */
+const FEATURE_BILL = bill({ indexes: 239, queries: 239 });
+
 describe("the second look's receipt and its census on the artifact", () => {
-  const baseline: MemorySystem = { name: 'reference-pipeline', answer: () => 'one' };
+  // The control side of a `reader` pair: the same product with the stage off. Only the feature instance is
+  // read for the config block, the bill and the census, so this double's job is to be the other side of the
+  // pair rather than to contribute a number.
+  const control = (): MemorySystem =>
+    new SecondLookSystem(bill({ indexes: 121, queries: 121 }), null);
   // Built here rather than reused from the suite below: that one is scoped to its own `describe`, and a
   // module-level fixture shared by two blocks would let a change to the other block's roster move this one's.
   const fixture: BenchmarkDataset = {
@@ -102,7 +121,11 @@ describe("the second look's receipt and its census on the artifact", () => {
       context: [],
     })),
   };
-  const runWith = (overrides: Partial<MemoryArmConfig>, system: MemorySystem) =>
+  const runWith = (
+    overrides: Partial<MemoryArmConfig>,
+    system: MemorySystem,
+    baseline: MemorySystem = control(),
+  ) =>
     runCortexMemoryArm(fixture, baseline, system, {
       runs: 1,
       scorer: exactMatchScorer,
@@ -117,7 +140,7 @@ describe("the second look's receipt and its census on the artifact", () => {
     // every job green, and a merge that refused the population.
     const { report } = await runWith(
       { readerSearch: true },
-      new SecondLookSystem(bill({ queries: 244 }), SECOND_LOOK_CENSUS),
+      new SecondLookSystem(FEATURE_BILL, SECOND_LOOK_CENSUS),
     );
     expect(report.memoryArmConfig?.readerSearch).toBe(true);
     expect(report.readerSearchCounts).toEqual(SECOND_LOOK_CENSUS);
@@ -127,10 +150,10 @@ describe("the second look's receipt and its census on the artifact", () => {
     // The absence rule: `{name, answer}` is the conformant minimum, and a zeroed census there would make
     // "this build has no second look" and "the second look reached nothing" the same row -- the shape that
     // made §10.10's wrong reading possible.
-    const { report } = await runWith(
-      { readerSearch: false },
-      { name: 'plain', answer: () => 'one' },
-    );
+    const { report } = await runWith({ readerSearch: false }, {
+      name: 'plain',
+      answer: () => 'one',
+    } as MemorySystem);
     expect(report.readerSearchCounts).toBeUndefined();
     expect(report.memoryArmConfig?.readerSearch).toBe(false);
   });
@@ -140,49 +163,83 @@ describe("the second look's receipt and its census on the artifact", () => {
     // into an artifact that still looks like a measurement.
     const { report } = await runWith(
       { readerSearch: true },
-      new SecondLookSystem(bill({ queries: 244 }), { ...SECOND_LOOK_CENSUS, promoted: 1.5 }),
+      new SecondLookSystem(FEATURE_BILL, { ...SECOND_LOOK_CENSUS, promoted: 1.5 }),
     );
     expect(report.readerSearchCounts).toBeUndefined();
   });
 
-  it('refuses a run that wrote queries and issued one index per retrieval', async () => {
-    // The receipt. A question that takes a second look builds two indexes, so a run that reached the stage
-    // must show more queries than retrievals; one each is the control wearing the treatment's name.
+  it('accepts the bill a correct run writes, at the floor and no lower', async () => {
+    // 121 reached + 118 queries = 239, and the run built 239. This is the case the previous receipt
+    // **refused**: it read `queries > indexes`, which is the expansion ratio, and under a second look the two
+    // counts rise together -- so a correct run had `queries === indexes` and threw. The equality here is the
+    // point: one index per reached question plus one per written query is exactly what the mechanism costs,
+    // and a floor set one below it would pass the control.
+    const { report } = await runWith(
+      { readerSearch: true },
+      new SecondLookSystem(FEATURE_BILL, SECOND_LOOK_CENSUS),
+    );
+    expect(report.readerSearchCounts).toEqual(SECOND_LOOK_CENSUS);
+  });
+
+  it('refuses a run that built one index per question', async () => {
+    // The control wearing the treatment's name: 121 indexes against a floor of 239, so 118 queries were
+    // written and never ranked. This is the defect the receipt exists for, and under the old ratio it was
+    // indistinguishable from the correct run above -- both had `queries === indexes`.
     await expect(
       runWith(
         { readerSearch: true },
-        new SecondLookSystem(bill({ queries: 121 }), SECOND_LOOK_CENSUS),
+        new SecondLookSystem(bill({ indexes: 121, queries: 121 }), SECOND_LOOK_CENSUS),
       ),
     ).rejects.toThrow(/second look never reached a ranking/u);
   });
 
-  it('accepts a run whose second lookup reached the index, and one that wrote no query at all', async () => {
+  it('says nothing about a system that carries no census, and counts one query in the singular', async () => {
+    // Two arms of the same guard, and both are states a conformant system can be in. The first is a build
+    // that answers `readerSearchCensus()` with nothing at all while the config block claims the switch: the
+    // receipt has no counters to check, and inventing zeroes would be the defect the absence rule forbids.
     await expect(
-      runWith(
-        { readerSearch: true },
-        new SecondLookSystem(bill({ queries: 244 }), SECOND_LOOK_CENSUS),
-      ),
+      runWith({ readerSearch: true }, {
+        name: 'no-census',
+        answer: () => 'one',
+        indexCost: () => FEATURE_BILL,
+      } as MemorySystem),
     ).resolves.toBeDefined();
-    // `queries: 0` is the stage firing and the model refusing every time. It is a finding, not a defect, and
-    // the receipt must not turn it into a failed run -- `refused` is the counter that reports it.
+    // The second is the message's own arithmetic: one query written, one index built, floor two. A message
+    // that said "1 queries" is the kind of defect a reader notices only when it is the line they are reading.
     await expect(
       runWith(
         { readerSearch: true },
-        new SecondLookSystem(bill({ queries: 121 }), {
+        new SecondLookSystem(bill({ indexes: 1, queries: 1 }), {
+          attempted: 1,
+          queries: 1,
+          refused: 0,
+          unranked: 0,
+          promoted: 0,
+        }),
+      ),
+    ).rejects.toThrow(/wrote 1 query over 1 question/u);
+  });
+
+  it('accepts a stage that fired and wrote nothing, and says nothing about a run with no bill', async () => {
+    // `queries: 0` is the stage reaching every question and the model declining every time. It is a finding,
+    // not a defect: the receipt returns before it computes a floor, and `refused` is the counter that reports
+    // it. The second half is the reference pairing -- a reference pipeline reports no index cost at all, so
+    // `indexCostAcross` answers no bill and the receipt has nothing to read.
+    await expect(
+      runWith(
+        { readerSearch: true },
+        new SecondLookSystem(bill({ indexes: 121 }), {
           ...SECOND_LOOK_CENSUS,
           queries: 0,
-          refused: 3,
+          refused: 121,
         }),
       ),
     ).resolves.toBeDefined();
-  });
-
-  it('says nothing about a run whose bill the product did not report', async () => {
-    // No bill means the product did not rank, which is `relevanceSignal=none`'s state: `assertReader-
-    // SearchReachesRanking` refuses that pairing before the run, and a system that reports no cost at all
-    // (the conformant minimum) must not fail the receipt.
     await expect(
-      runWith({ readerSearch: true }, new SecondLookSystem(undefined, SECOND_LOOK_CENSUS)),
+      runWith({ readerSearch: true }, new SecondLookSystem(FEATURE_BILL, SECOND_LOOK_CENSUS), {
+        name: 'reference-pipeline',
+        answer: () => 'one',
+      } as MemorySystem),
     ).resolves.toBeDefined();
   });
 });
