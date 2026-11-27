@@ -40,7 +40,15 @@ ABAB interleaving was named as the only instrument that could separate them, and
 | `capability`               | **`KU`**         | §2                                                                           |
 | `ablation_runs`            | **`2`**          | two repetitions per side, so a single-question flip is not read as an effect |
 | `limit`                    | **`0`**          | the whole route, not a prefix of it                                          |
+| `CORTEX_MEMORY_RESOLUTION` | **`layered`**    | the rendering the 93.40% reading was taken under -- see below                |
 | everything else            | registered       | the control side is the shipped configuration by construction                |
+
+`layered` rather than the arm's own default `raw`, and the line is in the table rather than folded into
+"everything else" because it is a declared departure: `tools/arm-config-baseline.json` carries
+`resolution: null`, which the arm resolves to `raw`, while every artifact since `45923435343` renders
+`layered`. Pairing `I6` against `raw` would measure the rendering on a configuration nothing has been
+reported on since that artifact. The pair is valid either way -- the two sides stay one key apart -- but the
+reading would be about a configuration the register does not quote.
 
 `mark` rather than `collapse` because the two are different **product decisions** and only one of them is
 reversible by the reading: `collapse` deletes text from the turn, so a null on it cannot be distinguished
