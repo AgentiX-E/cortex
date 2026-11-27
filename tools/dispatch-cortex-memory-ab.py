@@ -130,6 +130,22 @@ SESSION_CLOCKS = ("off", "on")
 RESOLUTION_VARIABLE = "CORTEX_MEMORY_RESOLUTION"
 RESOLUTIONS = ("raw", "layered")
 
+# `PREREG-TURN-FILL.md`'s instrument, and the first variable on this channel that is **not an arm
+# option**: it says which two sides exist rather than what the treatment is. That is what makes it safe
+# to carry here without trading a registered input -- `arm-config-baseline.json` compares the arm's
+# inputs, and this one answers a different question.
+#
+# Written unconditionally like the nine above, and the reset is the strongest of the ten: a stale `units`
+# does not administer a wrong treatment, it makes the next dispatch **fail before it is billed**, because
+# `units` requires a feature-side unit other than `turn` and the registered value is `turn`. A loud
+# refusal at the top of a job is the outcome this campaign wants from a leftover variable.
+#
+# The six names are duplicated from `arm-pairing.ts` rather than imported for the reason every constant in
+# this file is (this is a Python process talking to the API, and an import would make dispatching depend on
+# a TypeScript build). `test_session_clock_wiring.py` holds the two lists to each other in both directions.
+PAIRING_VARIABLE = "CORTEX_MEMORY_AB"
+PAIRINGS = ("reference", "carry", "clock", "resolution", "ask", "units")
+
 # §13.312's judge pin, reachable from the only workflow that dispatches a **pair** of arms.
 #
 # `llm-factory.ts` has read `CORTEX_JUDGE_MODEL` since §13.312 and `judge-audit.yml` exposes it as an
@@ -1156,6 +1172,35 @@ def resolution_switch(environ: dict[str, str] | None = None) -> str:
     )
 
 
+def arm_pairing(environ: dict[str, str] | None = None) -> str:
+    """Which two sides this dispatch puts in one job: `reference`, or one of the one-flag pairs.
+
+    Read from the dispatcher's environment for the reason `resolution_switch` is, and it is the tenth
+    variable on this channel for the same input-ceiling reason. Two differences from the nine above:
+
+    **It is not an arm option.** Nothing in `arm-config-baseline.json` compares it, and that is why it is
+    safe to carry here rather than trading a registered input for it: it says *which two sides exist*,
+    not *what the treatment is*. The treatment is still exactly one arm option, and
+    `pairingViolation` in `arm-pairing.ts` refuses the pair whose feature side names the control.
+
+    **The reset matters more here than anywhere above.** A stale `units` left behind by the previous
+    experiment does not silently administer the wrong treatment -- it makes the *next* dispatch fail,
+    because `units` requires a feature-side unit other than `turn` and the registered value IS `turn`.
+    That is the failure mode this campaign prefers: the run stops before it is billed, and the message
+    names the variable.
+    """
+    raw = ((environ if environ is not None else os.environ).get(PAIRING_VARIABLE) or "").strip().lower()
+    if raw == "":
+        return "reference"
+    if raw in PAIRINGS:
+        return raw
+    raise SystemExit(
+        f"{PAIRING_VARIABLE} must be one of {PAIRINGS} (or unset): got {raw!r}. Refused rather than "
+        "defaulted, because an unrecognised value would build the reference pair and publish a "
+        "two-system delta under an artifact whose configuration line named a one-flag experiment."
+    )
+
+
 def judge_pin(environ: dict[str, str] | None = None) -> str:
     """The judge this dispatch pins, or `''` when it should follow the reader.
 
@@ -1706,6 +1751,13 @@ def main(argv: list[str] | None = None) -> int:
     # record a mechanism nobody dispatched.
     write_variable(RESOLUTION_VARIABLE, resolution)
     print(f"{RESOLUTION_VARIABLE} = {resolution}{' *' if resolution != 'raw' else ''}")
+    # Written unconditionally for the reason the two lines above are. This one is not an arm option, so it
+    # does not enter the departure list: `departures()` diffs the arm's INPUTS against the registration and
+    # a pairing is not one of them. What it does enter is the artifact, as `featureConfig.unitsPair`, which
+    # is the only field that says the delta compares one unit rather than two systems.
+    pairing = arm_pairing()
+    write_variable(PAIRING_VARIABLE, pairing)
+    print(f"{PAIRING_VARIABLE} = {pairing}{' *' if pairing != 'reference' else ''}")
     print(
         f"{INDEX_EMBEDDING_VARIABLE} = {index_embedding}"
         f"{' *' if index_embedding != 'injected' else ''}"

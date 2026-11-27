@@ -1,6 +1,6 @@
 # Pre-registration: spending the room the prefix rule returns
 
-**Status:** pending — not dispatched, or dispatched and not yet read: no Result section exists for it.
+**Status:** pending — dispatched as run `45923435343`, not yet read: no Result section exists for it.
 
 Written before dispatch. The arithmetic it is conditioned on is `MEASURE-UNSPENT-ROOM.md`; the
 refutation it repairs is run `38753835652`, recorded in `prompt.ts` at `selectBySessionFill`.
@@ -186,3 +186,38 @@ the arm pays for the room and a rule that returns part of it unread has to justi
 adoption carries no score claim and the registry row says so.
 
 Nothing about accuracy is adopted from this document. It is adopted from the artifact.
+
+## 8. Dispatch record
+
+| field | value |
+| --- | --- |
+| run | `45923435343` |
+| dispatched | 2026-11-27T01:35:33Z |
+| commit | `daeb72dc` |
+| dispatcher | `tools/dispatch-cortex-memory-ab.py --set cortex_memory_relevance_units=turn-fill --set ablation_runs=1 --budget 5` |
+| pairing | `CORTEX_MEMORY_AB=units` (written by the dispatcher, reset to `reference` by the next one) |
+| declared departures | `ablation_runs`, `cortex_memory_relevance_units`, `resolution` |
+| projected bill | **3.57 CNY** at 500 x 1 |
+
+Three things about the dispatch itself are readings rather than procedure:
+
+**The projection agrees with itself from two directions.** §1.2 prices the row at `500 x 0.00713 = 3.57`
+from the file rate in `spend-baseline.json`; the dispatcher's own token-level projection -- 6.54M cached
+input at 0.20, 0.27M uncached at 2.00, 0.57M output at 3.00 -- lands on the same 3.57. Those are two
+independent paths (a bill divided by question-runs, and a token census priced at list), and the fact that
+they agree is worth recording precisely because `MEASURE-SPEND-MINIMUM.md` §206.5 says they usually do
+not: a rate rebuilt from `llmUsage` at list price came out 2.4x to 5.1x the money actually spent on
+`42467`, because 96.0% of its prompt tokens were prefix-cache hits. Here the projection *starts* from the
+cache split, which is why it lands on the bill instead of far above it.
+
+**The first dispatch was refused by the budget, and the refusal was correct.** The dispatcher's default
+ceiling is 3.00 CNY, the projection was 3.57, and it stopped. `--budget 5` was passed deliberately rather
+than raising a default, so the number that authorised the spend is in the command that made it.
+
+**A first attempt failed at the registration gate before spending anything.** Run `45922781800` was
+dispatched through the raw workflow API with four inputs, and the preflight refused it on two counts:
+`cortex_memory_max_prompt_chars` was absent (the raw API sends the default empty string, and an empty
+budget map is not the registered arm) and `cortex_memory_relevance_units` was an undeclared departure.
+Both are `tools/dispatch-cortex-memory-ab.py`'s job -- it sends all 24 registered inputs and writes the
+departure list it computed. The cost of that lesson was zero, which is the point of a preflight that runs
+before `Setup pnpm`.
