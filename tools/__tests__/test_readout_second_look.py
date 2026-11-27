@@ -179,7 +179,8 @@ class TestTheBound:
         # The cause, printed beside the effect: the census counts the empty replies and the usage
         # block is the only field that says the replies were cut rather than declined.
         assert 'llmUsage.truncatedCalls 242' in r.stdout
-        assert 'came back cut, not declined' in r.stdout
+        assert 'cut calls, not declines' in r.stdout
+        assert 'they are every attempt this stage made' in r.stdout
 
     def test_a_single_empty_reply_beside_working_queries_is_not_starvation(
         self, tmp_path: Path
@@ -213,6 +214,33 @@ class TestTheBound:
         assert r.returncode == 1
         assert 'truncatedCalls absent' in r.stdout
         assert 'starved' in r.stdout
+
+
+class TestTheBudgetThatMakesPromotionCountable:
+    """`promoted` is zero by construction on the configuration that runs the stage."""
+
+    def test_an_unbounded_budget_says_promoted_cannot_move(self, tmp_path: Path) -> None:
+        """Run `45989342121` printed `queries: 185, promoted: 0` on the registered gate.
+
+        The zero is the gate's arithmetic and not the mechanism's verdict: `sessionBudget: null`
+        resolves to unbounded, so the first pass already holds every eligible session and the final
+        selection minus the first pass is empty whatever the second query finds. Printed rather than
+        inferred by the reader, because `promoted` is the census's own headline.
+        """
+        report = _report(_counts(queries=185, refused=0, empty=57, promoted=0), indexes=427)
+        report['memoryArmConfig']['sessionBudget'] = None
+        r = _run(report, tmp_path)
+        assert r.returncode == 0, r.stderr
+        assert 'sessionBudget is unbounded' in r.stdout
+        assert 'zero by construction' in r.stdout
+
+    def test_a_finite_budget_does_not_print_that_line(self, tmp_path: Path) -> None:
+        """The finite case is the one where `promoted: 1` means a session entered a contested budget."""
+        report = _report(_counts(queries=185, refused=0, empty=57, promoted=1), indexes=427)
+        report['memoryArmConfig']['sessionBudget'] = 2
+        r = _run(report, tmp_path)
+        assert r.returncode == 0, r.stderr
+        assert 'unbounded' not in r.stdout
 
 
 class TestWhatItRefusesToScore:

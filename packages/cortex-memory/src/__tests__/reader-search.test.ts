@@ -371,6 +371,35 @@ describe('the second look on the multi-session route', () => {
     });
   });
 
+  it('reports no promotion under an unbounded session budget, because nothing can be displaced', async () => {
+    // The invariant run `45989342121` measured the hard way. `promoted` counts sessions in the final budget
+    // whose entry the second query is the only reason for -- so it can only be non-zero when the budget
+    // **bites**. `sessionBudget: null` is unbounded (`provider.ts`), the registered gate has it null, and
+    // the first pass therefore already carries every eligible session: `selected \ firstPass` is empty by
+    // construction, not by the mechanism failing.
+    //
+    // This test exists because that run's artifact reported `queries: 185, promoted: 0`, and the census's
+    // own docstring calls `promoted` "the one number that separates 'looked twice' from 'got a longer
+    // prompt'". On the only configuration that administers this stage, that number cannot move. The
+    // assertion is the invariant, not the run: a finite budget below is what makes it move.
+    const { llm } = scripted(['dog at the vet', ANSWER]);
+    const memory = system(llm, {
+      relevanceFor: querySensitive,
+      readerSearch: readerSearchOptions({ k: 2 }),
+    });
+    await memory.answerSessions(QUESTION, [PLANT_SESSION, DOG_SESSION]);
+    expect(memory.readerSearchCensus()).toEqual({
+      attempted: 1,
+      queries: 1,
+      refused: 0,
+      empty: 0,
+      unranked: 0,
+      // Not "the query found nothing": the prompt the reader receives is the same set either way, and only
+      // its order can differ. A finite budget is what turns a promotion into a countable event.
+      promoted: 0,
+    });
+  });
+
   it('is byte-identical to the control when the model refuses', async () => {
     const withStage = scripted(['NONE', ANSWER]);
     const control = scripted([ANSWER]);

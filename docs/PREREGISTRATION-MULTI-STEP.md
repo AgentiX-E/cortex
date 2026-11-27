@@ -1,9 +1,13 @@
 # Pre-registration — the reader looks twice
 
-**Status:** pending — dispatchable. The treatment existed only in this document for four rounds (§3.1);
-it now exists in the product (`CortexMemoryOptions.readerSearch`), in the arm
-(`CORTEX_MEMORY_READER_SEARCH`) and in the dispatch script, and `guard:prereg-knobs` reads it
-`buildable`. Not dispatched, and no Result section exists for it.
+**Status:** decided — the axis is off at its price. The treatment exists in the product
+(`CortexMemoryOptions.readerSearch`), in the arm (`CORTEX_MEMORY_READER_SEARCH`) and in the dispatch
+script, and `guard:prereg-knobs` reads it `buildable`. It was dispatched twice. The first dispatch
+(`45974552492`) returned a null from a run in which the stage never executed, because `maxTokens: 32`
+was spent on the `multi-session` route's reasoning tokens (§3.3). The second (`45989342121`) executed —
+185 of 242 questions wrote a query, and `selfIndex.indexes` is exactly `attempted + queries` — and read
+**−1.65 points, p = 0.2266** on 121 paired `MR` questions (§3.4). Bar 1's own failure row says `< +1`
+closes the axis, so it is closed for ¥5.87 per dispatch, ¥11.74 for the row.
 
 ## 0. What is being tested, and why now
 
@@ -257,8 +261,47 @@ Three changes follow, and the third is the one that would have caught it without
 
 The row keeps its price, its bars and its control. What it does not keep is the reading above.
 
-## 4. Bars, both directions, written before the dispatch
+### 3.4 Result — the second dispatch executed, and the axis closed
 
+`45989342121` re-ran the row at the same configuration with one change: `maxTokens` 1024. The stage ran this
+time, and the reading is negative on both bases:
+
+| basis | control | feature | difference |
+| --- | ---: | ---: | ---: |
+| first-repetition roster | 109 / 121 = 90.08% | 104 / 121 = 85.95% | −5 questions |
+| mean over two repetitions | 89.26% | 87.60% | **−1.65 points (−2 questions)** |
+
+Exact McNemar on the 121 pairs: `b = 8`, `c = 3`, **p = 0.2266**. Bar 3 passed — prompt tokens per question
+12,890 → 13,644, **1.058×** of the control — so the mechanism is cheap and the miss is not a bill.
+
+Three counters say the mechanism is what missed, and this is the whole of §3.3's repair working:
+
+| field | value | what it rules out |
+| --- | ---: | --- |
+| `readerSearchCounts.queries` | **185** of 242 reached (76.4%) | "the model wrote nothing" — 0 on the voided run |
+| `selfIndex.indexes` | **427** | "the queries never reached a ranking": the floor is 242 + 185 = 427, an exact equality |
+| feature-side `completionTokens` | 773,494 (was 592,928) | "the queries were empty": 180,566 extra tokens are the queries |
+
+**§4.1 applies, and the verdict is that the axis closes at ¥5.87 per dispatch** — ¥11.74 for the row, because
+the first ¥5.87 bought a defective instrument rather than a reading. Bar 1's failure row already said
+"`< +1` closes the axis"; the reading is −2 on the mean and −5 on the paired roster, with p nowhere near 0.05.
+
+**One counter in that artifact is not readable, and saying so is part of the record.** `promoted: 0`, and the
+census's own docstring calls it "the one number that separates *looked twice* from *got a longer prompt*". It
+counts sessions in the final budget whose entry the second query is the only reason for — and this
+configuration has `sessionBudget: null`, which `provider.ts` resolves to unbounded, so the first pass already
+holds every eligible session and `selected \ firstPass` is empty **by construction**. That is a third kind of
+dead instrument, beside §3.2's wrong formula and §3.3's missing field: a value pinned by the gate. Three
+places now say so — the census docstring, a test that pins the invariant (`queries: 1, promoted: 0` under an
+unbounded budget even when the query does reorder), and `--second-look`, which prints a `no budget` line so a
+reader cannot take the zero for a verdict.
+
+**And 1024 is still short for a quarter of the calls**: `empty: 57` and `truncatedCalls: 57` are the same 57,
+23.6% of the attempts. The queries are capped at 120 characters, so what is being cut is the `multi-session`
+route's `thinking` trace rather than the answer — a budget for any future stage on this route has to be sized
+from `completionTokens`, not from the prompt.
+
+## 4. Bars, both directions, written before the dispatch
 | #   | bar                                                              | verdict if missed                                                  |
 | --- | ---------------------------------------------------------------- | ------------------------------------------------------------------ |
 | 1   | `MR` **≥ +3 questions** (102 → ≥105)                             | < +1 closes the axis; +1..+2 is a null and is not dispatched again |

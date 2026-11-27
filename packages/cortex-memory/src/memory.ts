@@ -323,12 +323,21 @@ export class CortexMemory implements SessionAwareMemorySystem {
   /**
    * What the second look did, across every question this instance answered.
    *
-   * Five counters rather than one pair, because each names a *paid* outcome the others cannot stand in
+   * Six counters rather than one pair, because each names a *paid* outcome the others cannot stand in
    * for. `refused` is a consultation the model answered `NONE` to and is the mechanism's own stop rule;
-   * `unranked` is a question that reached the stage with no signal to search by, which is a
-   * configuration finding rather than a model finding; `promoted` counts sessions whose entry into the
-   * budget the second query is the only reason for, and it is the one number that separates "looked
-   * twice" from "got a longer prompt".
+   * `empty` is a consultation that came back with no usable line at all, which is a bound in this stage's
+   * own configuration rather than an answer; `unranked` is a question that reached the stage with no
+   * signal to search by, which is a configuration finding rather than a model finding; `promoted` counts
+   * sessions whose entry into the budget the second query is the only reason for, and it is the one
+   * number that separates "looked twice" from "got a longer prompt".
+   *
+   * `promoted` **can only be non-zero when the session budget bites.** With `sessionBudget` unbounded --
+   * which is what the registered gate carries, and what `null` resolves to in `provider.ts` -- the first
+   * pass already holds every eligible session, so the final selection minus the first pass is empty by
+   * construction rather than by the mechanism failing. Run `45989342121` is the reading that made this
+   * explicit: `queries: 185, promoted: 0`. The counter is still the right counter; it is simply not
+   * readable on a configuration with no budget to compete for, and a reader who takes that zero for a
+   * verdict on the mechanism is reading `§208.10`'s shape one level down.
    *
    * Cumulative rather than per question. Every per-question slot on this class is cleared by
    * `#resetPerQuestion` because the arm reads it once per question; this one is read once per **run**,

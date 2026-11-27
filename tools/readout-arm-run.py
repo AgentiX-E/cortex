@@ -1524,10 +1524,20 @@ def second_look_section(report: dict) -> tuple[str, bool]:
     truncated = usage.get('truncatedCalls')
     if isinstance(truncated, int) and not isinstance(truncated, bool):
         lines.append(f'  the bound    llmUsage.truncatedCalls {truncated}')
-        if counts['empty'] and truncated:
+        if counts['empty'] and truncated == counts['empty']:
+            # Equal counts, not a correlation: every call the census could not read a line from is a call
+            # the transport recorded as cut. `45989342121` is the second reading of this, at a bound four
+            # times the first one -- 57 of 242 still came back short, which is a statement about how long
+            # the route's `thinking` trace is rather than about the query's width.
+            whole = truncated == counts['attempted']
             lines.append(
-                '               the replies came back cut, not declined: `empty` and `truncatedCalls` naming '
-                'the same calls means the stage answered no question and the budget is the reason'
+                f'               all {truncated} empty replies are cut calls, not declines'
+                + (
+                    ' -- and they are every attempt this stage made, so it answered nothing'
+                    if whole
+                    else f' -- {counts["empty"]} of {counts["attempted"]} attempts, so the bound is too '
+                    'small for those and the rest did answer'
+                )
             )
     else:
         lines.append('  the bound    llmUsage.truncatedCalls absent (a build that does not report it)')
@@ -1549,6 +1559,21 @@ def second_look_section(report: dict) -> tuple[str, bool]:
         f'  promoted     {counts["promoted"]}: the only number that separates "looked twice" from '
         '"got a longer prompt"'
     )
+    # `promoted` counts sessions whose entry into the budget the second query is the only reason for, so it
+    # can only move when the budget **bites**. The registered gate carries `sessionBudget: null`, which
+    # resolves to unbounded, and then the first pass already holds every eligible session: the counter is
+    # zero by construction. Run `45989342121` printed `queries: 185, promoted: 0` on exactly that
+    # configuration -- a reader who takes the zero for a verdict on the mechanism is reading a property of
+    # the gate.
+    budget = config.get('sessionBudget')
+    unbounded = budget is None or (
+        isinstance(budget, int) and not isinstance(budget, bool) and budget >= 2**53 - 1
+    )
+    if unbounded:
+        lines.append(
+            '  no budget    sessionBudget is unbounded, so no session can be displaced and `promoted` is '
+            'zero by construction: this run can only show a reordering, never an admission'
+        )
     verdict = ranked and reach == 0 and not starved
     return '\n'.join(lines), verdict
 

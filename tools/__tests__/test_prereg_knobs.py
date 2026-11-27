@@ -70,18 +70,32 @@ class TestThisRepository(unittest.TestCase):
         result = _run()
         self.assertEqual(result.returncode, 0, result.stderr)
 
-    def test_reader_search_is_buildable_rather_than_blocked_or_missing(self) -> None:
-        # This assertion is the one that flipped. It read `blocked` while the treatment existed only in
-        # the document; `cortex-memory`'s `readerSearch` option, the arm's switch and the dispatch
-        # script's unconditional write are what moved it. A regression to `blocked` or `missing` means
-        # the queued row is once again a price, a bar and a control run with no way to dispatch it.
+    def test_a_decided_registration_is_not_read_and_its_mechanism_still_exists(self) -> None:
+        # This assertion has now flipped twice. It read `blocked` while the treatment existed only in the
+        # document, then `buildable` once `cortex-memory`'s option, the arm's switch and the dispatch
+        # script's write landed. It reads *absent* today, and absent is the gate working rather than the
+        # gate going blind: `PREREGISTRATION-MULTI-STEP.md` declares `decided` with a Result section, and
+        # the knob census skips a decided file on purpose.
+        #
+        # So the second half is what this test is for now. "Closed" is a statement about an axis, and the
+        # failure mode it invites is deleting the mechanism that answered it -- which would make the row
+        # undispatchable again and take the census that proves it apart with it. The three layers the row
+        # was priced against are asserted to still be in the tree.
         rows = json.loads(_run("--json").stdout)["rows"]
-        row = next(
-            row
-            for row in rows
-            if row["file"] == "PREREGISTRATION-MULTI-STEP.md" and row["knob"] == "readerSearch"
+        self.assertFalse(
+            [
+                row
+                for row in rows
+                if row["file"] == "PREREGISTRATION-MULTI-STEP.md" and row["knob"] == "readerSearch"
+            ],
+            "a decided registration must not be censused as a pending one",
         )
-        self.assertEqual(row["state"], "buildable")
+        for relative, needle in (
+            ("packages/cortex-memory/src/reader-search.ts", "ReaderSearchOptions"),
+            ("packages/cortex-eval/src/bench-memory-arm.ts", "CORTEX_MEMORY_READER_SEARCH"),
+            ("tools/dispatch-cortex-memory-ab.py", "READER_SEARCH_VARIABLE"),
+        ):
+            self.assertIn(needle, (ROOT / relative).read_text(), f"{relative} lost {needle}")
 
     def test_every_pending_knob_is_buildable(self) -> None:
         # The gate's own false-positive rate, asserted rather than described: every knob name in every
