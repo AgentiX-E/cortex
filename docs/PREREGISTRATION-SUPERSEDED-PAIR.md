@@ -1,6 +1,6 @@
 # Pre-registration: the inline superseded rendering, measured in one job
 
-**Status:** pending — dispatchable. The treatment has existed in the product since §18 (sixteen unit tests,
+**Status:** decided — the axis is off at its price. Dispatched as run `46011982917` at master `fab2c727`. The treatment has existed in the product since §18 (sixteen unit tests,
 an assembly test, `CORTEX_MEMORY_SUPERSEDED` on the workflow) and has never been dispatched. Its price was
 written down as `14.26 CNY` with the note "needs ABAB interleaving"; §3 replaces that note with an
 instrument, and the price with `3.48 CNY`.
@@ -164,3 +164,78 @@ sides cannot be the same configuration, and the reader refuses it rather than pr
 - **Not an adoption.** `mark` becomes the shipped default only after the full-population reading, and that
   dispatch is contingent on this one.
 - **Not a verdict on `collapse`.** The two forms differ in what they delete, and this run does not delete.
+
+## 7. Result — the rendering executed on 67 of 72 questions and moved no question
+
+Run `46011982917` at master `fab2c727`: `KU`, 72 questions, two repetitions, both sides in one job,
+`superseded: mark` against `off`, 1.03 CNY as `projected_spend` estimated it.
+
+| bar                             | threshold                             | reading                                                                                                    | verdict                                                                                             |
+| ------------------------------- | ------------------------------------- | ---------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------- |
+| **P1** the mechanism executed   | every question's bytes moved          | **67 of 72** digests differ; the five that agree are the questions with no replaceable value in the window | **pass** -- and the marks are countable: 2, 4, 2 and 5 on the four failures below, 0 on the refusal |
+| **P2** paired accuracy          | net ≥ +4, exact McNemar `p < 0.05`    | **net 0**, `b = 1`, `c = 1`, `p = 1.0000`                                                                  | **fail**                                                                                            |
+| **P3** the stale twins          | ≥ 3 stop answering with the old value | **none did**, and §7.1 is why the denominator was not what this document said                              | **fail**                                                                                            |
+| **P4** no capability regression | no capability down ≥ 3                | only `KU` was dispatched                                                                                   | n/a                                                                                                 |
+| **P5** the bill                 | prompt tokens ≤ 1.02×                 | **1.0034×** (+2,518 tokens over 144 calls, 17.5 per call)                                                  | **pass**                                                                                            |
+
+Both sides read 68 of 72 on the first repetition and 93.75% over two. The two discordant questions are the
+whole of the difference between the systems:
+
+| question                          | baseline | feature                                      | what happened next                        |
+| --------------------------------- | -------- | -------------------------------------------- | ----------------------------------------- |
+| `852ce960` mortgage pre-approval  | correct  | **wrong** (`$350,000`, the superseded value) | **wrong on both sides** in repetition two |
+| `07741c45` where the sneakers are | wrong    | **correct**                                  | **wrong on both sides** in repetition two |
+
+So the rendering moved one question each way and **both movements disappeared on the second
+repetition**. That is not an effect with a sign; it is `b = c = 1` produced by two unstable questions, and
+the exact test says so with `p = 1`.
+
+### 7.1 The registration's own population was stale, and this document wrote it
+
+`P3` was defined on the seven `KU` failures of `45923435343`. This run's **control side** already answers
+three of them correctly:
+
+| question             | `45923435343`     | this run, `superseded: off`                 |
+| -------------------- | ----------------- | ------------------------------------------- |
+| `59524333` gym time  | wrong (`7:00 pm`) | **correct on both sides, both repetitions** |
+| `a2f3aa27` followers | wrong (`1,250`)   | **correct on both sides, both repetitions** |
+| `07741c45` sneakers  | wrong             | correct once, wrong once, on both sides     |
+
+The first two are between-run drift on a question the treatment never touched, and the third is
+instability. So the population the criterion was written on is **four questions, not seven** -- and three of
+those four are the ones below, which are the ones the mechanism cannot reach anyway:
+
+| question   | gold   | answer, both sides, both repetitions | marks | why the marker cannot help                                                                    |
+| ---------- | ------ | ------------------------------------ | ----: | --------------------------------------------------------------------------------------------- |
+| `ce6d2d27` | Friday | Thursday                             |     5 | the day is not stated as a _replacement_; the two turns are two sessions about the same class |
+| `69fee5aa` | 38     | 37                                   |     4 | `38` is a **derivation** (`37 + 1`), so no turn states it and no marker can be put on it      |
+| `c4ea545c` | Yes    | `None`                               |     0 | a prose refusal, and `replyRepair` is `off` in this arm                                       |
+
+**This is the same defect §215.3 of the tracking report charged to other documents, committed by this one
+in the same round**: a criterion whose population was measured on an earlier artifact. The number was
+correct when it was written and it was stale before the dispatch. What the rule should have been is the one
+the artifact can compute -- _of the questions this run's control answers wrongly, how many does the feature
+answer correctly_ -- which is exactly `c`, and `c = 1` with a second repetition that reverses it.
+
+### 7.2 What the reading establishes about the mechanism
+
+The two questions that carry marks and stay wrong are the useful half of this result. `ce6d2d27` has
+**five** marked turns and the reader answers with the superseded day anyway; `69fee5aa` has four and answers
+with the value the marker does not cover. So an in-line clause placed **on the sentence that states the old
+value** does not make a reader prefer the newer one, and that is the same finding
+`AUDIT-MR-ENUMERATION.md` §4 recorded about the four instruction sentences already in the preamble.
+
+The two mechanisms fail the same way, and knowing that is worth more than the 1.03 CNY: **this project's
+`KU` loss is not a presentation problem.** It is three questions with three different causes -- a temporal
+relation the evidence does not mark as a replacement, a derivation no turn states, and a refusal -- and none
+of them is reached by showing the transcript differently.
+
+### 7.3 What this does not close
+
+`collapse` was never dispatched, and it is not retired here. The two forms differ in what they **delete**,
+and a null on `mark` says nothing about a rendering that removes the superseded sentence instead of
+labelling it. It stays unregistered rather than refused, for the reason §1 gives: `mark` was chosen because
+a null on it is interpretable, and `collapse`'s null would not have been.
+
+What is closed is the price: the axis cost **1.03 CNY** rather than the 14.26 the register carried, and the
+next in-line-rendering idea can be priced the same way -- one job, one route, one key.
