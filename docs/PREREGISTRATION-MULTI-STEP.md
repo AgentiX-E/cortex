@@ -1,6 +1,8 @@
 # Pre-registration — the reader looks twice
 
-**Status:** pending — not dispatched, or dispatched and not yet read: no Result section exists for it.
+**Status:** pending — blocked on `readerSearch`, which exists in no arm (§3.1). Not dispatched, and no
+Result section exists for it.
+**Blocked on:** `readerSearch` — no workflow input, no arm option and no dispatch script reads it.
 
 ## 0. What is being tested, and why now
 
@@ -100,6 +102,52 @@ query, the product's index answers it, and the union is ranked by the same relev
 room is applied. Not a re-render of everything found — the union goes through the registered ranking,
 so the second look costs ordering, not characters.
 
+### 3.1 The treatment does not exist, and the nearest thing that does already ran
+
+`guard:prereg-knobs` (`tools/prereg-knobs.mjs`) reads every `pending` registration, extracts the
+assignments it writes in backticks, and refuses a build where one of them is in no workflow input, no
+arm option and no dispatch script. On its first run it reads:
+
+```
+registration                       knob                  state
+PREREGISTRATION-MULTI-STEP.md      maxSteps              buildable
+PREREGISTRATION-MULTI-STEP.md      readerSearch          missing
+PREREGISTRATION-MULTI-STEP.md      thinking              buildable
+```
+
+`readerSearch` is the treatment this document was written for, and `grep -r readerSearch` returns
+**nothing** in the repository. Nothing about §2's mechanism is wrong; what is wrong is that this file
+has been cited as the queue's first row — at a price, with a bar, with a control run — for a run that
+cannot be dispatched. That is `§209.1`'s shape (a pre-registration describing an instrument the harness
+cannot build) arriving a third time, and the first two were caught by reading, which is not a method.
+
+**Where the knob would go, since the seam is now known.** `queryExpansion=llm` already produces
+phrases **before** the index is built, one model call per multi-session question, and delivers them to
+the ranking through `RelevanceCase.queries` and `SearchIndexOptions.queryPlan`
+(`packages/cortex-eval/src/bench-memory-arm.ts`, `packages/cortex-memory/bench/run-ablation.ts`).
+`readerSearch` is that path plus one thing: the query is written **after** a first pass has been
+ranked, so the digest the model reads is a line from each of the top turns rather than the question
+alone. The product change this document originally sketched — a public `search()` — shipped
+(`packages/cortex-memory/src/memory.ts`), so the remaining work is arm-side and is one call site.
+
+**And the nearest measurement has already been taken, which re-prices this row.** `S17`
+(`ACCEPTANCE-MATRIX.md`) is `queryExpansion: llm` on the product's own ranking, paired, 121 `MR`
+questions: it read **+1.75 points against a bar of +5** and is marked `aim`. That is the *blind*
+version of this mechanism — the model writes phrases from the question with no view of what retrieval
+found — and on the same denominator it is inside the campaign's own 2.5-question cross-run noise floor
+(`MEASURE-PAIRED-POWER.md` §1). So the honest description of the gap this document was written for is:
+
+| | value |
+| --- | --- |
+| blind phrase expansion on this arm (`S17`) | **+1.75 points**, bar was +5 |
+| the bar this document registers for the aimed version | **+3 questions** of 121 = 2.48 points |
+| the difference between them | the model reads a digest before writing the query |
+
+A bar *below* the measurement of the mechanism's blind half is not a bar. §4 is therefore re-derived
+below rather than inherited: the aimed version must clear **+3 questions** *and* show that the
+questions it converts are ones whose first-look list was short (§6), because otherwise it is S17 with a
+longer prompt and the mechanism name is wrong even when the number is positive.
+
 ## 4. Bars, both directions, written before the dispatch
 
 | #   | bar                                                              | verdict if missed                                                  |
@@ -121,9 +169,34 @@ repetitions, so a two-question floor is the largest claim this sample supports.
 | the probe re-run before dispatch (121 questions, 1 step) | ≈ 0.6 CNY    |
 | total to a verdict                                       | **≈ 25 CNY** |
 
+**This price is not on the queue, and the queue's own number was for a different run.** The queue row
+that cites this document reads **¥5.87 for `MR` 121 questions in one pass** — a paired comparison at a
+fifth of the price — while §3 and §4 above register 500 questions × 4 repetitions. Two prices for one
+registration is how a row ends up approved on the cheaper one and read against the stricter criteria;
+the row is corrected in `cortex-docs` §211.9, and the criterion that survives is §4's: **exact McNemar
+on the paired `MR` roster**, which 121 questions can carry, and bar 4's `−2` capability floor, which
+they cannot (four capabilities are not on that run). A 121-question dispatch therefore prices at
+¥5.87 and answers `MR` only, and it is a *different* registration from this one — `§4.1` below.
+
 The budget is stated before the dispatch for the reason `03-execution-plan.md` §13.147.3 gives: a run
 whose price is discovered afterwards is a run nobody can decide about in advance, and the last three
 dispatches in this campaign were approved on an estimate that had been computed the same way.
+
+### 4.1 The cheap form, and what it cannot answer
+
+| | 121-question paired run (¥5.87) | 500×4 run (¥25) |
+| --- | --- | --- |
+| `MR` bar 1 / bar 2 | answerable | answerable |
+| bar 3 (prompt tokens ≤ 1.30×) | answerable on `MR` | answerable on all five |
+| bar 4 (no capability down 3) | **not answerable** — four capabilities absent | answerable |
+| bar 5 (total accuracy) | **not answerable** | answerable |
+
+So the cheap form is a **screen**, and this campaign has a measurement of what its screens are worth:
+`MEASURE-READER-LADDER.md` §4 records a 200-question pair reading **+0.5** and the 500-question
+completion of the same pair reading **−4.35**. A screen that reverses sign at scale is not evidence for
+spending the larger sum; it is evidence about the instrument. The cheap form is therefore registered as
+a screen with a **stop rule**: a positive `MR` delta at `p < 0.05` licenses the 500×4 run, and anything
+else closes the axis at ¥5.87 rather than at ¥25.
 
 ## 6. What would falsify the mechanism being the one that mattered
 
