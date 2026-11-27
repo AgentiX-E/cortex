@@ -87,6 +87,25 @@ describe('parseJson', () => {
   it('throws on non-JSON input', () => {
     expect(() => parseJson('no json here')).toThrow();
   });
+
+  // The proposer prompt carries a worked example, so a reasoning model can restate it before its
+  // answer. The first-to-last slice spanned both objects and threw; the answer is the last one.
+  it('reads the final object when a reasoning reply echoes an example first', () => {
+    expect(parseJson('Example: {"facts":["old"]} then answer: {"facts":["new"]}')).toEqual({
+      facts: ['new'],
+    });
+  });
+
+  it('keeps braces inside strings and skips an object that does not parse', () => {
+    expect(parseJson('junk } {"text":"a } b"}')).toEqual({ text: 'a } b' });
+    expect(parseJson('{"bad":} {"good":1}')).toEqual({ good: 1 });
+    // An escaped quote keeps the string open, so braces after it stay inside the value.
+    expect(parseJson('{"text":"a \\"b\\" } c"}')).toEqual({ text: 'a "b" } c' });
+  });
+
+  it('throws when the only objects present do not parse', () => {
+    expect(() => parseJson('{"bad":}')).toThrow();
+  });
 });
 
 describe('OpenAICompatibleLLM (real local server)', () => {

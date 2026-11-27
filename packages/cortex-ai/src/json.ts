@@ -20,15 +20,67 @@
  * makes every importer heavy, and nothing fails.
  */
 
-/** Extract the first JSON object from a possibly-fenced LLM response. */
+/**
+ * Every brace-balanced top-level object in `text`, in order.
+ *
+ * ## Why not `indexOf('{') .. lastIndexOf('}')`
+ *
+ * That slice is not an object when a reply carries more than one: a reasoning model restates a
+ * schema example while it thinks, then emits its answer. The prose and both objects between the
+ * first brace and the last parse as nothing, so a structured call throws instead of reading the
+ * answer. Depth and double-quote tracking keep a `}` inside a string value from ending an object.
+ */
+function jsonObjects(text: string): string[] {
+  const slices: string[] = [];
+  let depth = 0;
+  let start = -1;
+  let inString = false;
+  let escape = false;
+  for (let i = 0; i < text.length; i += 1) {
+    const ch = text[i]!;
+    if (inString) {
+      if (escape) {
+        escape = false;
+      } else if (ch === '\\') {
+        escape = true;
+      } else if (ch === '"') {
+        inString = false;
+      }
+      continue;
+    }
+    if (ch === '"') {
+      inString = true;
+    } else if (ch === '{') {
+      if (depth === 0) start = i;
+      depth += 1;
+    } else if (ch === '}' && depth > 0) {
+      depth -= 1;
+      if (depth === 0) {
+        slices.push(text.slice(start, i + 1));
+        start = -1;
+      }
+    }
+  }
+  return slices;
+}
+
+/** Extract the structured object from a possibly-fenced LLM response. */
 export function parseJson<T>(raw: string): T {
   const trimmed = raw.trim();
   const fenced = trimmed.match(/```(?:json)?\s*([\s\S]*?)```/);
   const candidate = fenced ? fenced[1]! : trimmed;
-  const start = candidate.indexOf('{');
-  const end = candidate.lastIndexOf('}');
-  if (start === -1 || end === -1 || end <= start) {
+  const objects = jsonObjects(candidate);
+  if (objects.length === 0) {
     throw new Error(`LLM did not return a JSON object: ${raw.slice(0, 200)}`);
   }
-  return JSON.parse(candidate.slice(start, end + 1)) as T;
+  // The last parseable object wins: reasoning precedes the conclusion, so a trailing object is the
+  // one the model settled on. An earlier example that still parses is superseded by it.
+  for (let i = objects.length - 1; i >= 0; i -= 1) {
+    try {
+      return JSON.parse(objects[i]!) as T;
+    } catch {
+      // An object that does not parse is an aside; keep looking backwards.
+    }
+  }
+  throw new Error(`LLM did not return a JSON object: ${raw.slice(0, 200)}`);
 }

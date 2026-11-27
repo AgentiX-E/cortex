@@ -106,21 +106,71 @@ export type EventSpec = {
 /** How many filters a conjunction may carry before it stops being a specification. */
 const MAX_PREDICATES = 4;
 
-/** Read a JSON object out of a response that may have been wrapped in prose or a fence. */
+/**
+ * Every brace-balanced top-level object in `body`, in order.
+ *
+ * A first-to-last slice is not an object when the reply carries more than one: the plan prompt
+ * prints an example plan and several predicate examples, and a reasoning reader can restate one
+ * before emitting its decision. The scan tracks depth and double-quoted strings so a `}` inside a
+ * value (a date, a keyword) is not mistaken for a boundary.
+ */
+function objectSlices(body: string): string[] {
+  const slices: string[] = [];
+  let depth = 0;
+  let start = -1;
+  let inString = false;
+  let escape = false;
+  for (let i = 0; i < body.length; i += 1) {
+    const ch = body[i]!;
+    if (inString) {
+      if (escape) {
+        escape = false;
+      } else if (ch === '\\') {
+        escape = true;
+      } else if (ch === '"') {
+        inString = false;
+      }
+      continue;
+    }
+    if (ch === '"') {
+      inString = true;
+    } else if (ch === '{') {
+      if (depth === 0) start = i;
+      depth += 1;
+    } else if (ch === '}' && depth > 0) {
+      depth -= 1;
+      if (depth === 0) {
+        slices.push(body.slice(start, i + 1));
+        start = -1;
+      }
+    }
+  }
+  return slices;
+}
+
+/**
+ * Read the plan object out of a response wrapped in prose or a fence.
+ *
+ * The last parseable object wins: reasoning precedes the conclusion, so a later object is the one
+ * the reader settled on, while an echoed example or a trailing remark comes before it. Objects that
+ * do not parse are skipped rather than refusing the whole reply, so one malformed aside cannot
+ * discard a valid plan.
+ */
 function readObject(raw: string): Record<string, unknown> | null {
   const fenced = /```(?:json)?\s*([\s\S]*?)```/.exec(raw);
   const body = fenced?.[1] ?? raw;
-  const start = body.indexOf('{');
-  const end = body.lastIndexOf('}');
-  if (start === -1 || end <= start) return null;
-  try {
-    const parsed: unknown = JSON.parse(body.slice(start, end + 1));
-    return typeof parsed === 'object' && parsed !== null && !Array.isArray(parsed)
-      ? (parsed as Record<string, unknown>)
-      : null;
-  } catch {
-    return null;
+  let last: Record<string, unknown> | null = null;
+  for (const slice of objectSlices(body)) {
+    try {
+      const parsed: unknown = JSON.parse(slice);
+      if (typeof parsed === 'object' && parsed !== null && !Array.isArray(parsed)) {
+        last = parsed as Record<string, unknown>;
+      }
+    } catch {
+      // An object that does not parse is an aside, not the plan; keep looking.
+    }
   }
+  return last;
 }
 
 /** Whether a value is a whole number that could be a step index. */

@@ -22,13 +22,73 @@
  */
 import type { Decision } from './types.js';
 
-/** The first balanced-looking JSON object in `raw`, or `undefined`. */
-function objectSlice(raw: string): string | undefined {
-  const start = raw.indexOf('{');
-  if (start < 0) return undefined;
-  const end = raw.lastIndexOf('}');
-  if (end <= start) return undefined;
-  return raw.slice(start, end + 1);
+/**
+ * Every brace-balanced top-level object in `raw`, in order.
+ *
+ * ## Why this is a scan and not `indexOf('{') .. lastIndexOf('}')`
+ *
+ * That slice was the first version, and it was wrong on a reply that carries more than one object:
+ * a thinking model restates the three example shapes while it reasons and then emits its decision,
+ * and a model that adds a remark after its decision can put another object in the remark. From the
+ * first `{` to the last `}` is then not an object at all -- it is two objects and the prose between
+ * them -- so `JSON.parse` fails and a decision the reader actually made is recorded as `not-json`.
+ * One lost question per such reply, with a reason that blames the JSON.
+ *
+ * The scan counts depth and tracks double-quoted strings, so a `}` inside a query value is not a
+ * boundary and a nested object does not end the outer one early. Escapes inside strings are
+ * honoured for the same reason. Curly quotes need no state here: they carry no braces, and the
+ * repair below converts them after the slice is cut.
+ */
+function objectSlices(raw: string): string[] {
+  const slices: string[] = [];
+  let depth = 0;
+  let start = -1;
+  let inString = false;
+  let escape = false;
+  for (let i = 0; i < raw.length; i += 1) {
+    const ch = raw[i]!;
+    if (inString) {
+      if (escape) {
+        escape = false;
+      } else if (ch === '\\') {
+        escape = true;
+      } else if (ch === '"') {
+        inString = false;
+      }
+      continue;
+    }
+    if (ch === '"') {
+      inString = true;
+    } else if (ch === '{') {
+      if (depth === 0) start = i;
+      depth += 1;
+    } else if (ch === '}' && depth > 0) {
+      depth -= 1;
+      if (depth === 0) {
+        slices.push(raw.slice(start, i + 1));
+        start = -1;
+      }
+    }
+  }
+  return slices;
+}
+
+/** One sliced object, as a record, or `undefined` when neither parse nor repair succeeded. */
+function parseObject(slice: string): Record<string, unknown> | undefined {
+  try {
+    return JSON.parse(slice) as Record<string, unknown>;
+  } catch {
+    // The two repairs that are unambiguous: a trailing comma before a closing brace, and the
+    // typographic quotes a model produces when it has been trained on prose.
+    try {
+      return JSON.parse(slice.replace(/,\s*([}\]])/g, '$1').replace(/[“”]/g, '"')) as Record<
+        string,
+        unknown
+      >;
+    } catch {
+      return undefined;
+    }
+  }
 }
 
 /**
@@ -38,27 +98,26 @@ function objectSlice(raw: string): string | undefined {
  * place a dispatch's reader behaviour survives, and "eleven of these were `not-json`" is the
  * sentence that decides whether the next iteration changes the contract or the model.
  */
-export function parseDecision(raw: string): Decision {
-  const slice = objectSlice(raw);
-  if (slice === undefined) return { action: 'unparsed', reason: 'not-json' };
-  let parsed: unknown;
-  try {
-    parsed = JSON.parse(slice);
-  } catch {
-    // One retry with the two repairs that are unambiguous: a trailing comma before a closing
-    // brace, and the typographic quotes a model produces when it has been trained on prose.
-    try {
-      parsed = JSON.parse(slice.replace(/,\s*([}\]])/g, '$1').replace(/[“”]/g, '"'));
-    } catch {
-      return { action: 'unparsed', reason: 'not-json' };
-    }
-  }
-  // No `typeof` guard here, and that is a measurement rather than an oversight: `objectSlice` only
-  // returns text that starts with `{` and ends with `}`, so `JSON.parse` of it is an object or a
-  // throw, and a `not-object` branch would be a branch no reply could reach. The campaign's rule for
-  // an unreachable branch is to delete it, because a branch that no test can take is a branch whose
-  // behaviour is a guess.
-  const record = parsed as Record<string, unknown>;
+/**
+ * Which object wins when a reply carries several.
+ *
+ * ## Why the last decision, and why non-decisions are skipped
+ *
+ * A reasoning model writes the three example shapes back while it deliberates and then emits its
+ * conclusion, so among objects that carry a decision the **last** is the one it settled on. An
+ * object with no recognised `action` is not a decision -- it is a remark, an example with a
+ * placeholder, or a nested value -- and skipping it keeps a trailing aside from overriding the
+ * verdict. If no object parses at all, that is the same `not-json` as a reply with no object; if
+ * objects parse but none carries a recognised action, the last such object names the failure
+ * (`unknown-action:…`), which is the diagnostic a contract change needs.
+ *
+ * No `typeof` guard on the parsed value, and that is a measurement rather than an oversight: every
+ * slice starts with `{` and ends with `}`, so `JSON.parse` yields an object or throws, and a
+ * `not-object` branch would be a branch no reply could reach. The campaign's rule for an
+ * unreachable branch is to delete it, because a branch no test can take is a branch whose behaviour
+ * is a guess.
+ */
+function decisionFromRecord(record: Record<string, unknown>): Decision {
   const action = record['action'];
   if (action === 'answer') return { action: 'answer' };
   if (action === 'search') {
@@ -79,4 +138,22 @@ export function parseDecision(raw: string): Decision {
     return { action: 'session', turn: id };
   }
   return { action: 'unparsed', reason: `unknown-action:${String(action)}` };
+}
+
+export function parseDecision(raw: string): Decision {
+  let lastDecision: Decision | undefined;
+  let lastUnknown: Decision | undefined;
+  for (const slice of objectSlices(raw)) {
+    const record = parseObject(slice);
+    if (record === undefined) continue;
+    const decision = decisionFromRecord(record);
+    if (decision.action === 'unparsed') {
+      lastUnknown = decision;
+    } else {
+      // A recognised action is a decision the reader actually made; a later one supersedes an
+      // earlier restatement of the contract. Non-decisions never displace it.
+      lastDecision = decision;
+    }
+  }
+  return lastDecision ?? lastUnknown ?? { action: 'unparsed', reason: 'not-json' };
 }

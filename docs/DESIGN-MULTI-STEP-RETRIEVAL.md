@@ -227,3 +227,52 @@ longer a free id (query expansion took it).
   `loop.ts`'s import closure can reach `goldTurns`.
 - **No provider adapter, no vector channel, no cross-encoder.** All three are injections the caller
   owns; the loop is the same code with or without them.
+
+## 8. Reader reply parsing: the brace-balanced object scan
+
+### 8.1 The defect, reproduced
+
+`agent/parse.ts` turns one reader reply into one `Decision`. Its first version cut the reply from the
+**first** `{` to the **last** `}` and parsed that slice. That is only an object when the reply carries
+exactly one. A reasoning model restates the three answer shapes while it deliberates and then emits
+its conclusion, so a reply such as
+
+```
+Thinking: the format is {"action":"search","query":"x"} but that is only an example.
+I conclude {"action":"answer"}
+```
+
+produces a slice containing two objects and the prose between them. `JSON.parse` fails, the reader is
+recorded as `unparsed / not-json`, and a question the reader actually answered is lost. The same
+shape appears in `cortex-memory/src/aggregation/spec.ts` (the plan prompt prints an example plan and
+several predicate examples) and in `cortex-ai/src/json.ts` (`completeStructured` pastes a schema whose
+shape a model can echo). All three are on the strong/reasoning-model path that the contract in §2
+promises to support.
+
+### 8.2 The fix, and why "last decision wins"
+
+All three parsers now scan the reply instead of slicing it. The scan counts brace depth and tracks
+double-quoted strings (with escapes), so a `}` inside a value and a nested object do not end an
+object early. It yields every brace-balanced top-level object in order. The resolution rules are:
+
+| parser | policy | reason |
+| --- | --- | --- |
+| `agent/parse.ts` | last object with a recognised `action` wins; non-decisions skipped | reasoning precedes the conclusion; an echoed example or a trailing remark is not a decision |
+| `aggregation/spec.ts` | last parseable object wins | the plan is the reader's conclusion, not the example printed in the prompt |
+| `json.ts` | last parseable object wins | `completeStructured` wants the object the model settled on |
+
+An object that does not parse is an aside and is skipped, not a refusal of the whole reply. If no
+object parses, the result is the same `not-json` / throw as a reply with no object at all. No fallback
+defaults were added: a wrong-but-plausible default is how a contract failure becomes a silent wrong
+answer.
+
+### 8.3 Acceptance, measured not asserted
+
+Each fix was written test-first: the new cases were observed failing (red) before the parser changed,
+then passing (green) after. The cases cover echoed examples, braces and escaped quotes inside string
+values, stray `}` outside an object, nested objects, and the all-objects-unparseable path. Coverage on
+all three files is **100% statements / 100% branches / 100% functions / 100% lines**; the per-file gate
+(`tools/coverage-per-file.mjs`) reports 206 files gated, 0 ratcheted. This is a correctness repair to
+code already inside the coverage boundary, not a new mechanism, so it needs no benchmark dispatch: a
+question that used to be lost to `not-json` is now read, and no question that parsed before changed
+its answer (the single-object slice equals the single-object scan).

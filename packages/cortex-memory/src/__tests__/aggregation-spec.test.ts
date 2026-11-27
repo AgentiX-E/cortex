@@ -74,6 +74,19 @@ describe('a plan that parses', () => {
     expect(parseEventSpec('```\n' + plan + '\n```', STEPS, SESSIONS).kind).toBe('spec');
   });
 
+  it('reads the final plan object when a reasoning reply echoes the example first', () => {
+    // The plan prompt shows an example object and several predicate examples. A reasoning reader
+    // can restate one before emitting its plan; the first-to-last slice then spans both objects and
+    // the prose between them, and a valid plan is refused as non-JSON.
+    const plan =
+      '{"scope":[0,9],"predicates":[{"field":"text","op":"contains","value":"a"}],"operation":"count"}';
+    const echo = '{"field":"date","op":"on-or-after","value":"YYYY/MM/DD"}';
+    expect(
+      parseEventSpec(`Thinking: an example is ${echo}, but my plan is ${plan}`, STEPS, SESSIONS)
+        .kind,
+    ).toBe('spec');
+  });
+
   it('lowercases a speaker and a unit, because the ledger stores them lowercased', () => {
     const parsed = parse({
       scope: [0, 9],

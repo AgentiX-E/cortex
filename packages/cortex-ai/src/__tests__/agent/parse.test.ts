@@ -98,4 +98,42 @@ describe('parseDecision', () => {
       reason: 'unknown-action:browse',
     });
   });
+
+  // A reasoning model restates the three example shapes while it thinks, then emits its decision.
+  // The object that governs the loop is the LAST well-formed decision object: earlier ones are the
+  // model quoting the contract back at itself, and the conclusion is what it settled on. The old
+  // first-to-last slice swallowed every object plus the prose between them and returned `not-json`,
+  // losing a question the reader had actually answered.
+  it('reads the final decision object out of a reply that echoes the example shapes first', () => {
+    expect(
+      parseDecision(
+        'Thinking: the format is {"action":"search","query":"x"} but that is only an example. ' +
+          'I conclude {"action":"answer"}',
+      ),
+    ).toEqual({ action: 'answer' });
+    expect(
+      parseDecision(
+        'Let me consider {"action":"session","turn":3} then decide. Final: {"action":"answer"}',
+      ),
+    ).toEqual({ action: 'answer' });
+  });
+
+  it('does not let a brace inside a string or a trailing non-decision object hide the decision', () => {
+    // A `}` inside a quoted value is not a boundary; a brace-blind lastIndexOf would cut there.
+    expect(parseDecision('{"action":"search","query":"a } b"}')).toEqual({
+      action: 'search',
+      query: 'a } b',
+    });
+    // An escaped quote keeps the string open, so the `}` after it is still inside the value.
+    expect(parseDecision('{"action":"search","query":"a \\"b\\" } c"}')).toEqual({
+      action: 'search',
+      query: 'a "b" } c',
+    });
+    // A trailing remark that is not a decision must not override the one decision present.
+    expect(
+      parseDecision('{"action":"answer"}\n(For reference: {"note":"search was considered"})'),
+    ).toEqual({ action: 'answer' });
+    // A stray `}` before any object is not a close; the real object is still read.
+    expect(parseDecision('stray } then {"action":"answer"}')).toEqual({ action: 'answer' });
+  });
 });
