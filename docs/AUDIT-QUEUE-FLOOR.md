@@ -46,7 +46,7 @@ read it; the queue did, and this table is the queue's instrument.
 | quantity | one-sample (what was printed) | two-proportion (what the column asks) |
 | --- | ---: | ---: |
 | `MR`, p = 0.893, n = 121 | 7.87 points = 9.5 questions | **11.13 points = 13.5 questions** |
-| suite, p = 0.935, n = 500 | 3.16 points = 15.8 questions | **4.47 points = 22.3 questions** |
+| suite, n = 500 (the printed value, scaled) | 3.16 points = 15.8 questions | **4.47 points = 22.3 questions** |
 
 **What the correction changes, and what it does not.** The section's conclusion is unchanged and
 stronger: the queue should be read by the paired floor, and the unpaired one now disagrees with it by
