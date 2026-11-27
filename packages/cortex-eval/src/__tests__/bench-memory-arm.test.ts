@@ -1052,6 +1052,9 @@ describe('source trust reaches the artifact', () => {
       replyRepair: 'off',
       reviewBareDecline: false,
       queryExpansion: 'none',
+      // The second look is a state on every artifact, `false` included, for the reason the repair above is:
+      // a field present only under treatment makes "ran the control" and "predates the field" one row.
+      readerSearch: false,
       selfConsistency: 'none',
       effectivePromptChars: DEFAULT_ROOMS,
     });
@@ -1597,6 +1600,7 @@ describe('runCortexMemoryArm', () => {
         replyRepair: 'off',
         reviewBareDecline: false,
         queryExpansion: 'none',
+        readerSearch: false,
         selfConsistency: 'none',
         effectivePromptChars: DEFAULT_ROOMS,
       });
@@ -2091,6 +2095,9 @@ describe('blank values from unfilled dispatch inputs', () => {
       replyRepair: 'off',
       reviewBareDecline: false,
       queryExpansion: 'none',
+      // The second look is a state on every artifact, `false` included, for the reason the repair above is:
+      // a field present only under treatment makes "ran the control" and "predates the field" one row.
+      readerSearch: false,
       selfConsistency: 'none',
       effectivePromptChars: DEFAULT_ROOMS,
     });

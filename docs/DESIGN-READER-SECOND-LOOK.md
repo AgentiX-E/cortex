@@ -1,7 +1,8 @@
 # Design — giving the reader a second look
 
-Status: **design only**. `PREREGISTRATION-MULTI-STEP.md` registers the measurement; this file registers
-how the product gets the capability, and what it costs to keep the reading honest.
+Status: **shipped** (2026-11-27). `PREREGISTRATION-MULTI-STEP.md` registers the measurement; this file
+records how the product got the capability, and §7 records where the built mechanism differs from the
+design below — which it does in two places, one of them a cost the design over-estimated.
 
 ## 1. Why the obvious implementation is wrong
 
@@ -100,3 +101,67 @@ ranks differently from the first, and without 5 the control moved.
 
 Step 2 exists because this campaign has twice read a dispatch whose control had moved
 (`RETRACTIONS` #22's +14 reference cells). A zero-cost reproduction is cheaper than a wrong delta.
+
+## 7. What shipped, and the two places it differs from the design above
+
+### 7.1 The call site is the product's, not the arm's
+
+§3's five-step sketch puts the second look in the arm: `answerSessions`, then `search`, then `answer`.
+That cannot be built, and the reason is the one §3's own step 2 half-admits ("over the block it just
+received"): the block is decided **inside** `answerSessions` — `selectSessionBudget` spends the session
+budget on a ranking `#relevanceFor` built per question — and the arm receives an `Answer`, not the
+selection. An arm-side implementation would therefore have to reconstruct the first pass, which is the
+second ranking §1 rejects option **A** for.
+
+So the mechanism is `#secondLook`, a private method on `CortexMemory` called from `answerSessions`
+between the first pass and the prompt. The public `search(query, context, {k})` §2 sketched was built
+first and is still what it is: a user-facing question and the loop's tool — but it was not the missing
+piece, and `PREREGISTRATION-MULTI-STEP.md` §3.1 records the four rounds in which the queue's first row
+was a price, a bar and a control run with no way to dispatch it.
+
+### 7.2 The corpus is not embedded twice
+
+§4 predicts a duplicated embedding pass and asks for an `embeddedTurns` receipt to catch it. The shipped
+mechanism does not pay it: `#secondLook` calls `#relevanceFor(query, turns, …)`, which builds its
+`SearchIndex` with the instance's own `#embedStore`, so the turns are memo hits and the only new text
+embedded is the query.
+
+The receipt is finer than `embeddedTurns` anyway, because a count that doubles under a bug is weaker
+than a counter that can only read what happened:
+
+| counter | what it says |
+| --- | --- |
+| `attempted` | questions that reached the stage (switch on **and** a signal existed) |
+| `queries` | decision calls whose reply became a query |
+| `refused` | replies answered `NONE`, an apology, or an echo of the question |
+| `unranked` | questions that reached the stage with no signal to search by |
+| `promoted` | sessions whose entry into the room the second query is the only reason for |
+
+`attempted: 121, queries: 118, promoted: 0` is a stage that fired 118 times and moved nothing — a
+finding, and a different one from `queries: 0`. Two guards enforce the pair:
+`assertReaderSearchReachesRanking` refuses the stage beside `relevanceSignal=none` (no first pass ⇒
+§10.10's inert configuration), and `assertReaderSearchReached` refuses an artifact whose queries no index
+answered (a second look builds **two** indexes per question, so one query per retrieval is the control).
+
+### 7.3 The unit `promoted` is measured in
+
+A **session**, not a turn. The room on this route is spent by `selectSessionBudget`, so the only way the
+second look can change what the reader sees is by promoting a session across the budget line. A turn
+count would move on every question and would report the mechanism as reaching everything.
+
+### 7.4 The union is a maximum, and the reason is §1's rejected option
+
+A turn's score is its best score under either query, and the room is then spent by the selector that was
+already there. Concatenating the two rankings would need a second comparator — a second ranking, the
+class of defect §14.97.8 priced at −3.75 questions. The maximum is also monotone, which is what makes
+`promoted` readable: the second look can only promote, never demote.
+
+### 7.5 What the tests assert, and the one that had to be debugged
+
+`reader-search.test.ts` pins the parser's six verdicts, the digest's cut and tie-break, the promotion,
+the "fired and promoted nothing" state, the byte-identical control, the unranked state and the route
+reach. Its first draft passed for the wrong reason: the fixture's plant session did not contain the word
+"plant", so both sessions scored `0.2` on the question and the promotion it asserted came from the
+second query winning a tie rather than from the mechanism. The fixture now says "plant", and the
+sentence is here because a green test on a fixture that cannot express the claim is this campaign's most
+expensive recurring defect.

@@ -591,6 +591,7 @@ Three fields are required and each is required for a reason:
 | `replyRepair` | `'off' \| 'commitment' \| 'shape' \| 'both'` | `'off'` | Re-ask once when the reply broke the contract it was given: a refusal in prose, or a list of quotations instead of an answer. Excludes `reviewPass`. |
 | `selfConsistency` | `number` | absent (1) | Consultations per question and majority reduction. Must be a positive integer; refused with `reviewPass: 'audit'`. |
 | `conflicts` | `boolean` | absent (off) | Prints the statements that state one detail twice, in evidence order, between the evidence and the question. Reaches flat, temporal, knowledge-update and assistant; abstention and multi-session are excluded. §6.4. |
+| `readerSearch` | `ReaderSearchOptions` | absent (off) | The second look on the multi-session route, forwarded rather than defaulted: after the first pass ranks, the reader reads a digest of what it is about to see, writes one query, and the product's own index answers it. The union is ordered by the same signal the room is spent with. Five counters ride the artifact and `installation.memory.readerSearchCensus()` reads them. Absent reproduces every archived prompt byte for byte. §6.14.1. |
 | `windowOrdering` | `{ dateOf, windowOf }` | absent | The reference pipeline's time-window reorder as two injections: the date a delivered turn carries, and the window the question names. A resolver that names no window reproduces the unordered prompt byte for byte. |
 | `supersededRendering` | `'off' \| 'mark' \| 'collapse'` | absent (off) | Marks the turn whose own words state a value the evidence later replaces, **inside** that turn's rendering. `'mark'` appends one bracketed clause; `'collapse'` keeps only the sentence at issue. Reaches multi-session and the four flat routes; abstention is excluded. §6.7. |
 | `sessionClock` | `boolean` | absent (off) | Writes each session boundary's own date into the boundary line — `Session 3 (2023-05-21)`, or a range when the block spans days. Reaches multi-session, the only route that draws boundaries. Off by default: absent reproduces every archived prompt byte for byte. §6.11. |
@@ -979,6 +980,7 @@ reachable as a default any more; state it per route if you want to reproduce an 
 | `widthPlan` | `{ coverage, floorChars, renderMargin }` | absent (the route's room is the only bound) | A per-**question** evidence budget: the share of the question's relevance mass the delivered evidence must explain. The one option here that exists to spend less — `§14.126` priced the fixed room at 9,168 prompt tokens per question and 3,703 at twice the gold evidence. Its registered negative form closes the family, so naming it is an experiment and `lastWidth()` says so. |
 | `windowOrdering` | `{ dateOf, windowOf }` | absent | The reference pipeline's time-window reorder as two injections: the date a delivered turn carries, and the window the question names. A resolver that names no window reproduces the unordered prompt byte for byte. |
 | `conflicts` | `boolean` | absent (off) | Insert the related-statements block: the earliest and the latest statement of one detail that the question also matches, printed in evidence order between the evidence and the question, each with its date. It reaches `flat`, `knowledge-update`, `temporal` and `assistant`; `abstention` is excluded because its gold is a decline, and `multi-session` because a block that flattened the sessions back into one order would undo the boundaries that builder exists for. The registered arm is **off** and the mechanism has a reach reading rather than an accuracy reading — four of the seven `KU` questions that fail in all four repetitions of run `42355323615` carry the replacing statement inside the delivered window (`MEASURE-CONFLICT-SURFACING.md` §2) — so naming it buys those characters and no measured point yet. The evidence, the question and the instruction block are byte-identical with it on: only the block is inserted. |
+| `readerSearch` | `ReaderSearchOptions` | absent (off) | The second look on the multi-session route, forwarded rather than defaulted: after the first pass ranks, the reader reads a digest of what it is about to read, writes one query, and the product's own index answers it. The union is ordered by the same signal the room is spent with, so the stage spends ordering and no characters. Five counters ride the artifact and `installation.memory.readerSearchCensus()` reads them. Absent reproduces every archived prompt byte for byte. §6.14.1. |
 <!-- /contract-table -->
 
 ```ts
@@ -2059,6 +2061,59 @@ find evidence the static retrieval missed?** It runs the loop over a labelled po
 prompt, and reports gold turns found by the reader against gold turns the seed already had. Run it with
 `pnpm --filter @agentix-e/cortex-memory probe:multi-step` and a `LONGMEMEVAL_PATH`; it is a diagnostic, not a
 score, and it never calls a judge.
+
+### 6.14.1 The same look, driven by the engine
+
+§6.14 is the loop, and the loop is a tool the reader drives. There is a second shape that costs one call
+instead of two and needs no loop: the **engine** takes the second look itself, on the route where its
+failures are not delivery failures.
+
+```ts
+import type { LLM } from '@agentix-e/cortex-core';
+import { assembleMemory, readerSearchOptions } from '@agentix-e/cortex-memory';
+import { SqliteStorage } from '@agentix-e/cortex-storage/sqlite';
+
+declare const llm: LLM;
+declare const sessions: string[][];
+
+const memory = assembleMemory({
+  llm, now: Date.now(), storage: new SqliteStorage(),
+  // The registered configuration: 16 digest lines of 120 characters, a 16-turn second ranking, one query of
+  // at most 120 characters, and 32 output tokens for the deciding call.
+  readerSearch: readerSearchOptions(),
+});
+
+const answer = await memory.memory.answerSessions('How many projects did I lead last year?', sessions);
+// What the stage did, or `null` when this assembly does not carry it.
+console.log(memory.memory.readerSearchCensus());
+```
+
+What it does, in the order it happens: the first pass ranks every eligible turn and spends the session
+budget; the highest-ranked sixteen turns become a digest; one call asks for a single query (or the word
+`NONE`); the same index ranks the corpus for that query; and a turn's score becomes `max(score under the
+question, score under the query)`. The budget is then spent again over the union — so a session the second
+look promoted competes for the room rather than being appended after it.
+
+Four properties are worth knowing before you turn it on:
+
+- **It cannot change the answer when it does not fire.** A refusal (`NONE`, an apology, an echo of the
+  question) leaves the prompt byte-identical to the first pass's, which the test suite asserts as a string
+  comparison rather than as an answer comparison.
+- **The prompt and the budget still rank by one signal.** The composite is what the prompt receives, so a
+  session admitted under the second query is not then ordered under the first — the invariant this route
+  already held before the stage existed.
+- **The bill is one decision call and one query embedding per multi-session question.** The second index
+  pass reuses this instance's embedding store, so the corpus is not embedded twice.
+- **`promoted` is the counter to read.** `attempted: 121, queries: 118, promoted: 0` is a stage that fired
+  and moved nothing; `promoted > 0` is the only number that separates "looked twice" from "got a longer
+  prompt". `readerSearchCensus()` answers `null` on an instance that does not carry the option, which is a
+  different statement from a census of zeros.
+
+**Off by default, like every option in this manual.** The mechanism has a registration
+(`docs/PREREGISTRATION-MULTI-STEP.md`) with a bar, a price and a control run, and no accuracy reading yet —
+`S17` measured the *blind* version of it (`queryExpansion: 'llm'`) at +1.75 points against a bar of +5. A
+default changed before the reading exists is the rule this page states in §6.11 and this repository has
+paid for twice.
 
 ### 6.15 Four mechanisms that used to require building the class by hand
 

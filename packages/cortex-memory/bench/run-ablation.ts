@@ -39,6 +39,7 @@
  */
 import {
   assertExpansionReachesRanking,
+  assertReaderSearchReachesRanking,
   assertRerankReachesRanking,
   expansionQueryPlan,
   // §13.197.4's pair rather than the single reader: a route-scoped `thinking` value names the routes
@@ -197,6 +198,10 @@ import {
   // because `cortex-eval` cannot import this package, and the cast at the constructor states that the
   // value has already been validated against the product's own list rather than re-checking it.
   type SupersededRendering,
+  // The second look's registered configuration, named here rather than spelled as a literal: the bounds are
+  // the product's (16 digest lines of 120 characters, a 16-turn second ranking, 32 output tokens), and a copy
+  // in this file would be a second registration the manager of one would not update.
+  DEFAULT_READER_SEARCH,
 } from '../src/index.js';
 import { readFileSync, writeFileSync } from 'node:fs';
 import {
@@ -869,6 +874,8 @@ async function main(): Promise<void> {
   // The same refusal for §13.97's phrases: `none` compares no query against a turn, so the expansion
   // would be produced, counted, and never read.
   assertExpansionReachesRanking(armOptions.relevanceSignal, armOptions.queryExpansion);
+  // The same refusal for the second look: it reads the first pass, and `none` produces none.
+  assertReaderSearchReachesRanking(armOptions.relevanceSignal, armOptions.readerSearch);
   if (rerank !== undefined) {
     console.log(
       `Rerank stage: ${rerankIdentity.provider}` +
@@ -1149,6 +1156,17 @@ async function main(): Promise<void> {
       // does not name it reproduces the previous prompt byte for byte -- which `conflict-reach.test.ts`
       // asserts on all six routes rather than assuming.
       ...(armOptions.conflicts === true ? { conflicts: true } : {}),
+      // The second look (§`readerSearch`). Spread conditionally for the reason every option above is:
+      // absent IS the shipped behaviour and is expressed by NOT passing the key, so a run that names nothing
+      // reproduces every archived prompt byte for byte.
+      //
+      // `armOptions` rather than a `treatment` key, for the reason `conflicts` reads it: this is not one of
+      // the axes `CORTEX_MEMORY_AB` flips, so there is no second side to disagree with. The guard that the
+      // ranking can serve it is `assertReaderSearchReachesRanking` below, and the receipt that the query
+      // reached an index is `assertReaderSearchReached` in `bench-memory-arm.ts` -- a stage that consults the
+      // model, spends nothing on retrieval and reports a treatment is the §10.10 shape this repository has
+      // paid for three times.
+      ...(armOptions.readerSearch === true ? { readerSearch: DEFAULT_READER_SEARCH } : {}),
       // §13.386. The boundary clock. Spread conditionally for the reason `conflicts` is: `off` IS the
       // shipped behaviour and is expressed by NOT passing the key, so a run that names nothing reproduces
       // every archived prompt byte for byte -- which `turn-clock.test.ts` asserts on the rendering side and

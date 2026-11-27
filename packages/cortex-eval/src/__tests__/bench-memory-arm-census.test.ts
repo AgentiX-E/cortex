@@ -84,6 +84,58 @@ function run(feature: MemorySystem, gate: MemoryArmConfig = GATE) {
   });
 }
 
+describe("the second look's census is read defensively", () => {
+  // Four payloads, four different reasons the field must be absent rather than zeroed. The reader is
+  // optional on `MemorySystem`, so a throw, a `null`, a malformed counter and a missing method are all states
+  // a conformant system can be in -- and each of them, summed, would publish a number the run never took.
+  const cases: [string, unknown][] = [
+    ['throws', new Error('no census here')],
+    ['answers null', null],
+    ['carries a float', { attempted: 1, queries: 1, refused: 0, unranked: 0, promoted: 0.5 }],
+    ['carries a negative', { attempted: 1, queries: 1, refused: 0, unranked: 0, promoted: -1 }],
+  ];
+
+  for (const [what, payload] of cases) {
+    it(`writes no field when the census ${what}`, async () => {
+      const feature: MemorySystem = {
+        name: 'second-look-double',
+        answer: () => 'one',
+        readerSearchCensus: () => {
+          if (payload instanceof Error) throw payload;
+          return payload;
+        },
+      } as MemorySystem;
+      const report = await run(feature);
+      // Only the absence is asserted here: this fixture's `GATE` predates the switch, and the arm records the
+      // configuration it was handed rather than one it invents -- which is the same rule that makes
+      // `readerSearch` meaningful on a real dispatch.
+      expect(report.report.readerSearchCounts).toBeUndefined();
+    });
+  }
+
+  it('sums the five counters when every one of them is an integer', async () => {
+    const feature: MemorySystem = {
+      name: 'second-look-double',
+      answer: () => 'one',
+      readerSearchCensus: () => ({
+        attempted: 2,
+        queries: 1,
+        refused: 1,
+        unranked: 0,
+        promoted: 1,
+      }),
+    } as MemorySystem;
+    const report = await run(feature);
+    expect(report.report.readerSearchCounts).toEqual({
+      attempted: 2,
+      queries: 1,
+      refused: 1,
+      unranked: 0,
+      promoted: 1,
+    });
+  });
+});
+
 /**
  * The same arm over two questions, so a per-question field has somewhere to differ.
  *

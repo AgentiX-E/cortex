@@ -81,6 +81,13 @@ REPLY_REPAIR_VARIABLE = "CORTEX_MEMORY_REPLY_REPAIR"
 # dispatch, so a run can never inherit the previous experiment's treatment.
 CONFLICTS_VARIABLE = "CORTEX_MEMORY_CONFLICTS"
 
+# The second look (`PREREGISTRATION-MULTI-STEP.md` §3.1). A repository variable for the same reason
+# the four above are -- this workflow sits one below GitHub's ceiling of 25 dispatch inputs -- and with
+# the same protection: written on every dispatch, so a run can never inherit the previous experiment's
+# switch. It exists at all because the row was queued, priced and barred for four rounds while
+# `grep -r readerSearch` returned nothing.
+READER_SEARCH_VARIABLE = "CORTEX_MEMORY_READER_SEARCH"
+
 # §18's inline superseded rendering. A repository variable for the same three reasons the three above
 # are, and with one difference that is worth stating: its value is a *name* rather than a toggle, so a
 # stale `mark` left behind would administer a rendering the next dispatch did not ask for while the
@@ -1070,6 +1077,24 @@ def conflicts_switch(environ: dict[str, str] | None = None) -> str:
     )
 
 
+def reader_search_switch(environ: dict[str, str] | None = None) -> str:
+    """`'1'` when this dispatch takes a second look on the multi-session route, `'0'` otherwise.
+
+    Read from the dispatcher's environment for the reason `conflicts_switch` is: it is deliberately not
+    a workflow input. Strict on the value, and for the same reason: a typo that fell back to `0` would
+    publish the control's reading under a dispatch that asked for the treatment, and the artifact's
+    `readerSearch: false` would be true and useless.
+    """
+    raw = ((environ if environ is not None else os.environ).get(READER_SEARCH_VARIABLE) or "").strip()
+    if raw in ("", "0", "1"):
+        return raw or "0"
+    raise SystemExit(
+        f"{READER_SEARCH_VARIABLE} must be 0 or 1 (or unset): got {raw!r}. An unrecognised value is "
+        "refused rather than defaulted, because a dispatch that silently ran the first pass alone would "
+        "publish the control reading under the mechanism's name."
+    )
+
+
 def superseded_switch(environ: dict[str, str] | None = None) -> str:
     """The rendering this dispatch asks for: `off`, `mark` or `collapse`.
 
@@ -1664,6 +1689,7 @@ def main(argv: list[str] | None = None) -> int:
     # only when the condition is on -- declaring a field the run left at its registered value would be
     # the "names a field this run did not move" case the gate reports as an intention.
     conflicts = conflicts_switch()
+    reader_search = reader_search_switch()
     # §18. Read here, before the declaration, because the declaration is derived from it: the artifact's
     # own field name joins the list only when the run moves it, and `off` is the registered value.
     superseded = superseded_switch()
@@ -1725,6 +1751,11 @@ def main(argv: list[str] | None = None) -> int:
     # previous experiment would turn the next control dispatch into an unannounced treatment of this
     # section, and nothing in the artifact would say the value had been inherited.
     write_variable(CONFLICTS_VARIABLE, conflicts)
+    # Written before the dispatch for the same reason, and unconditionally: a `1` left over from the
+    # previous experiment would turn the next control dispatch into an unannounced second look, and
+    # nothing in the artifact would say the value had been inherited -- the field would read `true` and
+    # be accurate about a run nobody dispatched.
+    write_variable(READER_SEARCH_VARIABLE, reader_search)
     print(f"{ORACLE_VARIABLE} = {oracle}{' *' if oracle == '1' else ''}")
     # Written unconditionally for the same reason, and it is the second variable that has to be: a stale
     # `both` left behind by the last experiment would administer a treatment this dispatch did not name.

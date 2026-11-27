@@ -1,8 +1,9 @@
 # Pre-registration — the reader looks twice
 
-**Status:** pending — blocked on `readerSearch`, which exists in no arm (§3.1). Not dispatched, and no
-Result section exists for it.
-**Blocked on:** `readerSearch` — no workflow input, no arm option and no dispatch script reads it.
+**Status:** pending — dispatchable. The treatment existed only in this document for four rounds (§3.1);
+it now exists in the product (`CortexMemoryOptions.readerSearch`), in the arm
+(`CORTEX_MEMORY_READER_SEARCH`) and in the dispatch script, and `guard:prereg-knobs` reads it
+`buildable`. Not dispatched, and no Result section exists for it.
 
 ## 0. What is being tested, and why now
 
@@ -102,7 +103,7 @@ query, the product's index answers it, and the union is ranked by the same relev
 room is applied. Not a re-render of everything found — the union goes through the registered ranking,
 so the second look costs ordering, not characters.
 
-### 3.1 The treatment does not exist, and the nearest thing that does already ran
+### 3.1 The treatment did not exist, and the nearest thing that does already ran
 
 `guard:prereg-knobs` (`tools/prereg-knobs.mjs`) reads every `pending` registration, extracts the
 assignments it writes in backticks, and refuses a build where one of them is in no workflow input, no
@@ -115,11 +116,28 @@ PREREGISTRATION-MULTI-STEP.md      readerSearch          missing
 PREREGISTRATION-MULTI-STEP.md      thinking              buildable
 ```
 
-`readerSearch` is the treatment this document was written for, and `grep -r readerSearch` returns
-**nothing** in the repository. Nothing about §2's mechanism is wrong; what is wrong is that this file
-has been cited as the queue's first row — at a price, with a bar, with a control run — for a run that
-cannot be dispatched. That is `§209.1`'s shape (a pre-registration describing an instrument the harness
-cannot build) arriving a third time, and the first two were caught by reading, which is not a method.
+`readerSearch` is the treatment this document was written for, and `grep -r readerSearch` returned
+**nothing** in the repository — for four rounds, while this file was cited as the queue's first row at a
+price, with a bar and with a control run. That is `§209.1`'s shape (a pre-registration describing an
+instrument the harness cannot build) arriving a third time, and the first two were caught by reading,
+which is not a method. The gate above is the method; it was added to catch this one and it did.
+
+**Where it is now.** The mechanism shipped on 2026-11-27, after the gate named the row:
+
+| layer | what was added |
+| --- | --- |
+| product | `CortexMemoryOptions.readerSearch` (`cortex-memory/src/reader-search.ts`, `memory.ts`) |
+| arm | `CORTEX_MEMORY_READER_SEARCH` → `CortexMemoryArmOptions.readerSearch` → the product option |
+| gate | `assertReaderSearchReachesRanking` before the run, `assertReaderSearchReached` after it |
+| receipt | `readerSearchCounts` on the artifact, beside `semanticCarry` rather than in the config block |
+| dispatch | `tools/dispatch-cortex-memory-ab.py` writes the variable on **every** dispatch |
+
+The seam is the one §3.1 predicted, and it is worth recording where it actually is because it is one
+frame higher than the sketch: `#relevanceFor` builds the product's index per question, so the first pass
+exists only inside `answerSessions`, and the public `search()` this document sketched — though it
+shipped — was not the missing piece. The digest has to be a line from each turn the prompt is about to
+carry, and only that method knows which turns those are. `#secondLook` is therefore a private method on
+the class, and the arm-side work is the five rows above rather than one call site.
 
 **Where the knob would go, since the seam is now known.** `queryExpansion=llm` already produces
 phrases **before** the index is built, one model call per multi-session question, and delivers them to

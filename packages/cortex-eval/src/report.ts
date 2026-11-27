@@ -274,6 +274,30 @@ export type AblationReport = {
    */
   semanticCarry?: SemanticCarryCensus | undefined;
   /**
+   * What the second look reached, when the run carried it.
+   *
+   * Five counters rather than one, because each names a paid outcome the others cannot stand in for: `refused`
+   * is a consultation the model answered `NONE` to (the mechanism's own stop rule), `unranked` is a question
+   * that reached the stage with no signal to search by, and `promoted` counts sessions whose entry into the
+   * room the second query is the only reason for. `queries: 0, promoted: 0` on a run that named the treatment
+   * is a stage that fired and converted nothing -- a different finding from a run that never reached it, and
+   * the reason the switch alone cannot be the whole record.
+   *
+   * Beside the switch rather than inside `memoryArmConfig` for the reason `semanticCarry` is: this counts what
+   * happened, and the configuration block is required to be a function of the configuration -- the merge over
+   * the shards of one dispatch refuses a census that differs between jobs that read different corpora
+   * (`45543010618`, twelve yuan of answers unread).
+   */
+  readerSearchCounts?:
+    | {
+        readonly attempted: number;
+        readonly queries: number;
+        readonly refused: number;
+        readonly unranked: number;
+        readonly promoted: number;
+      }
+    | undefined;
+  /**
    * The switches this run was configured with, recorded in the report itself.
    *
    * Every number in the report is conditioned on this object, and without it the
@@ -813,6 +837,20 @@ export type MemoryArmConfig = {
    */
   readonly queryExpansion?: string | undefined;
   /**
+   * Whether the multi-session route asked its reader for one more query after the first pass ranked.
+   *
+   * Always present, `false` included, for the reason {@link MemoryArmConfig.queryExpansion} is: an artifact
+   * has to answer what the run did, and a field that is only present under treatment makes "ran the control"
+   * and "predates the field" the same row.
+   *
+   * It is a separate field from `queryExpansion` rather than a third value of it, because the two are
+   * different mechanisms on the same route with different bills: that one writes phrases **blind** before any
+   * index exists (`S17`: +1.75 points against a bar of +5), and this one writes one query **after** a first
+   * pass has been ranked and searched. A single field would make the reading of one under the name of the
+   * other, which is the class of defect §10.10 recorded for an inert configuration.
+   */
+  readonly readerSearch?: boolean | undefined;
+  /**
    * Whether the product printed the statements that state one detail twice (§13.352).
    *
    * Always present, `false` included, for the reason {@link MemoryArmConfig.reviewPass} is: an
@@ -937,6 +975,7 @@ export type MemoryArmConfig = {
         readonly refused: number;
       }
     | undefined;
+
   /**
    * Source trust stamped on every memory admission constructs. In `[0, 1]`.
    *

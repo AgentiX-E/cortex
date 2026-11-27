@@ -645,6 +645,16 @@ jobs:
           # Not an input: section 13.352.5. Empty when the variable is unset, which `readToggle`
           # reads as the control -- the state every archived run is in.
           CORTEX_MEMORY_CONFLICTS: ${{ vars.CORTEX_MEMORY_CONFLICTS }}
+          # The second look. A repository variable for the same reason `CORTEX_MEMORY_CONFLICTS` is one --
+          # this workflow sits one below GitHub's ceiling of 25 dispatch inputs -- with the same protection:
+          # `tools/dispatch-cortex-memory-ab.py` writes it on every dispatch, so a run cannot inherit the
+          # previous experiment's switch. The literal `0` is the fallback rather than a blank, because
+          # `readToggle` reads a present-but-unrecognised value as off and the control has to be sayable.
+          #
+          # This line is also what `guard:prereg-knobs` reads: `PREREGISTRATION-MULTI-STEP.md` §3.1 named
+          # `readerSearch` as the queue's first row and `grep` returned nothing, so the row was priced,
+          # barred and controlled for four rounds without a way to dispatch it.
+          CORTEX_MEMORY_READER_SEARCH: ${{ vars.CORTEX_MEMORY_READER_SEARCH || '0' }}
           # Section 18's inline superseded rendering. A repository variable for the same reason
           # `CORTEX_MEMORY_CONFLICTS` is one -- this workflow sits one below GitHub's ceiling of 25
           # dispatch inputs -- with the same protection: the dispatcher writes it on every dispatch,

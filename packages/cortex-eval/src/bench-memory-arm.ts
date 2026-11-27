@@ -317,6 +317,20 @@ export type CortexMemoryArmOptions = {
    */
   conflicts?: boolean | undefined;
   /**
+   * Whether the multi-session route takes a second look (§`readerSearch`).
+   *
+   * A boolean rather than a string, for the reason `conflicts` is one: "ran the control" is the absence of
+   * the block. The mechanism lives in `cortex-memory/src/reader-search.ts` and its seam is
+   * `CortexMemory.answerSessions`: after the first pass has ranked, the reader is shown a digest of what it
+   * is about to read and writes **one** query, the product's own index answers it, and the union is ordered
+   * by the same signal the room is spent with.
+   *
+   * Registered because the queued row was un-dispatchable for four rounds: `PREREGISTRATION-MULTI-STEP.md`
+   * §3.1 named `readerSearch` as the queue's first row -- with a price, a bar and a control run -- while
+   * `grep -r readerSearch` returned nothing. This field is what makes the row a run.
+   */
+  readerSearch?: boolean | undefined;
+  /**
    * What the product does to a turn a later turn replaces (§18).
    *
    * ## Why the arm needs its own switch rather than reading `conflicts`
@@ -1493,6 +1507,10 @@ export function cortextMemoryArmOptions(env: CortexMemoryArmEnv): CortexMemoryAr
     replyRepair: readReplyRepair(env[REPLY_REPAIR_VARIABLE]),
     queryExpansion: readQueryExpansion(env[QUERY_EXPANSION_VARIABLE]),
     conflicts: readToggle(env, CONFLICTS_VARIABLE),
+    // The second look. `readToggle` for the reason the three above use it: an unset variable is the control,
+    // which is the state of every archived artifact, and a value it cannot read is refused where the run was
+    // configured.
+    readerSearch: readToggle(env, READER_SEARCH_VARIABLE),
     semanticCarry: readToggle(env, SEMANTIC_CARRY_VARIABLE),
     factTimeline: readToggle(env, FACT_TIMELINE_VARIABLE),
     selfConsistency: readSelfConsistency(env[SELF_CONSISTENCY_VARIABLE]),
@@ -2202,6 +2220,17 @@ const SEMANTIC_CARRY_VARIABLE = 'CORTEX_MEMORY_SEMANTIC_CARRY';
  */
 const FACT_TIMELINE_VARIABLE = 'CORTEX_MEMORY_FACT_TIMELINE';
 const QUERY_EXPANSION_VARIABLE = 'CORTEX_MEMORY_QUERY_EXPANSION';
+
+/**
+ * The second look's switch.
+ *
+ * A separate variable from `QUERY_EXPANSION_VARIABLE` rather than a third value of it, because the two are
+ * different stages on the same route with different bills and different prompts: that one writes phrases
+ * blind, before any index exists; this one writes a query after a first pass has ranked. One variable would
+ * make a dispatch of the treatment indistinguishable in the artifact from a dispatch of the control it is
+ * measured against.
+ */
+const READER_SEARCH_VARIABLE = 'CORTEX_MEMORY_READER_SEARCH';
 
 /** The variable this arm reads for §18's inline superseded rendering. */
 const SUPERSEDED_VARIABLE = 'CORTEX_MEMORY_SUPERSEDED';
@@ -3340,6 +3369,34 @@ export function assertExpansionReachesRanking(
   );
 }
 
+/**
+ * Refuse a second look that no ranking can serve.
+ *
+ * The stage is `answerSessions`': it reads the first pass the product ranked, and every path that produces
+ * no ranking -- `relevanceSignal: none` with no `index` -- makes `#secondLook` answer `undefined` before it
+ * consults the model. A dispatch of `readerSearch=1` on such an arm would then announce a treatment whose
+ * `readerSearchCounts.attempted` is zero, and the artifact would publish the control's reading under the
+ * treatment's name.
+ *
+ * That is §10.10's shape: an inert configuration that reports a number. The refusal is here rather than in
+ * `bench/run-ablation.ts` for the reason {@link assertExpansionReachesRanking} is: `bench/**` is outside the
+ * coverage boundary, and a guard written in the file no test can import has already cost this repository
+ * once (§14).
+ */
+export function assertReaderSearchReachesRanking(
+  relevanceSignal: string,
+  readerSearch: boolean | undefined,
+): void {
+  if (readerSearch !== true) return;
+  if (relevanceSignal !== 'none') return;
+  throw new Error(
+    `CORTEX_MEMORY_READER_SEARCH=1 but relevanceSignal="none" ranks no turn: the second look reads the ` +
+      'first pass, so it would be skipped on every question and the artifact would report a treatment that ' +
+      'reached nothing. Set CORTEX_MEMORY_RELEVANCE=retrieval, retrieval-hybrid, retrieval-anchored, ' +
+      'retrieval-session or self-index, or leave the second look off.',
+  );
+}
+
 export function toMemoryArmConfig(
   options: CortexMemoryArmOptions,
   /**
@@ -3431,6 +3488,10 @@ export function toMemoryArmConfig(
     // dispatched to, so an artifact that spelled nothing would leave "ran the control" and
     // "predates the field" as the same bytes.
     queryExpansion: options.queryExpansion ?? 'none',
+    // The second look. Always present for the reason `conflicts` is: `false` is a state a run is dispatched
+    // to, so an artifact that spelled nothing would leave "ran the control" and "predates the field" as the
+    // same bytes -- and this is the switch the queued first row is measured under.
+    readerSearch: options.readerSearch === true,
     // §13.352. Always present for the reason `queryExpansion` is: `false` is a state a run can be
     // dispatched to, so an artifact that spelled nothing would leave "ran the control" and "predates
     // the field" as the same bytes.
@@ -4621,6 +4682,10 @@ export async function runCortexMemoryArm(
     // criterion for the semantic layer could not fail -- which is the defect this field exists to make
     // unavailable rather than to describe.
     ...semanticCarryAcross(censusSystems),
+    // The second look's reach. Beside the switch for the reason `semanticCarry` is: `readerSearch: true` with
+    // `attempted: 0` is a stage that reached nothing, while `promoted: 0` on a stage that ran is a different
+    // finding -- and neither number means anything without the other.
+    ...readerSearchAcross(censusSystems),
   };
   const questions = buildArmRoster(
     dataset,
@@ -4672,6 +4737,10 @@ export async function runCortexMemoryArm(
   // §13.97's receipt, read from the same place and for the same reason: the artifact may not claim a
   // treatment whose queries the index never issued.
   assertQueryExpansionReached(report.memoryArmConfig, indexCost.selfIndex);
+  // The second look's receipt, read from the same place and for the same reason: an artifact may not claim a
+  // treatment the reader never issued a query for. `attempted` is the reach -- a dispatch whose switch is on
+  // but whose digest never formed (no signal, no multi-session question) leaves it at zero.
+  assertReaderSearchReached(report.memoryArmConfig, census.readerSearchCounts, indexCost.selfIndex);
   // The write gate's own census, read here for the same reason: it counts what the gate did
   // rather than what it was configured with, so it can only be taken after the questions were
   // answered. §14.146 records why the counts are over candidates -- a census of admitted turns
@@ -4774,6 +4843,13 @@ export async function runCortexMemoryArm(
     // §E6's reach, on the same absence rule as the two above: a build without the carry path writes no field, so
     // "the layer reached no window" and "this build has no layer" are different bytes rather than the same zeros.
     ...(census.semanticCarry === undefined ? {} : { semanticCarry: census.semanticCarry }),
+    // The second look's reach, on the same absence rule and at the same level: beside the switch rather than
+    // inside `memoryArmConfig`, because the config block is required to be a function of the configuration and
+    // this counts what happened. A build without the stage writes no field, so "the stage reached nothing" and
+    // "this build has no stage" are different bytes rather than the same zeros.
+    ...(census.readerSearchCounts === undefined
+      ? {}
+      : { readerSearchCounts: census.readerSearchCounts }),
     // `S10`'s `P1`, as a field. The reading this replaces could not be made from the prompt text at all
     // (`MEASURE-TURN-WINDOW.md` §9.3: two parsers, 53 of 200 prompts splitting differently), so the count
     // travels from the code that decides whether to cut. Absent when no question reported one, which is a
@@ -5565,6 +5641,62 @@ function recoveryAcross(systems: readonly MemorySystem[]): { recovery?: Recovery
   };
 }
 
+/**
+ * What the second look reached, summed over the workers that ran it.
+ *
+ * A copy of `bareRetryOf`'s shape rather than a generic reader, for the reason that one is a copy of
+ * `recoveryOf`'s: the payload is a shape on the **product's** public API, and a generic reader would move the
+ * refusal of a malformed payload into a place no test of this module can reach. Every counter is validated,
+ * because a payload with one non-integer would otherwise be summed into an artifact that looks like a
+ * measurement.
+ */
+function readerSearchOf(
+  system: MemorySystem,
+): { readerSearch: Record<string, number> } | Record<string, never> {
+  const candidate = (system as { readerSearchCensus?: unknown }).readerSearchCensus;
+  if (typeof candidate !== 'function') return {};
+  let payload: unknown;
+  try {
+    payload = (candidate as () => unknown).call(system);
+  } catch {
+    return {};
+  }
+  if (payload === null || typeof payload !== 'object') return {};
+  const record = payload as Record<string, unknown>;
+  for (const key of READER_SEARCH_COUNTERS) {
+    const value = record[key];
+    if (typeof value !== 'number' || !Number.isInteger(value) || value < 0) return {};
+  }
+  const census: Record<string, number> = {};
+  for (const key of READER_SEARCH_COUNTERS) census[key] = record[key] as number;
+  return { readerSearch: census };
+}
+
+/** The counters a second-look census must carry before any of them is published. */
+const READER_SEARCH_COUNTERS = ['attempted', 'queries', 'refused', 'unranked', 'promoted'] as const;
+
+function readerSearchAcross(systems: readonly MemorySystem[]): {
+  readerSearchCounts?: {
+    attempted: number;
+    queries: number;
+    refused: number;
+    unranked: number;
+    promoted: number;
+  };
+} {
+  const total = summedOver(systems, (system) => readerSearchOf(system).readerSearch);
+  if (total === undefined) return {};
+  return {
+    readerSearchCounts: {
+      attempted: total.attempted as number,
+      queries: total.queries as number,
+      refused: total.refused as number,
+      unranked: total.unranked as number,
+      promoted: total.promoted as number,
+    },
+  };
+}
+
 function bareRetryAcross(systems: readonly MemorySystem[]): { bareRetry?: BareRetryCensus } {
   const total = summedOver(systems, (system) => bareRetryOf(system).bareRetry);
   if (total === undefined) return {};
@@ -5665,6 +5797,33 @@ function assertQueryExpansionReached(
       '`relevanceSignal=self-index` builds its index inside the product, so it needs ' +
       '`index.queryPlan`, not `RelevanceCase.queries`. Dispatch `retrieval`, `retrieval-hybrid`, ' +
       '`retrieval-anchored` or `retrieval-session`, or pass the plan.',
+  );
+}
+
+/**
+ * Refuse an artifact whose second look produced queries no index answered.
+ *
+ * The receipt is the ratio `assertQueryExpansionReached` reads, one stage later: a question that takes a
+ * second look builds **two** indexes (`#relevanceFor` once for the question, once for the query), so a run
+ * that reached the stage must show more queries than indexes. A run reporting `queries > 0` with one query
+ * per retrieval is a stage whose query the *reader* wrote and the *ranking* never saw -- which is exactly the
+ * state `PREREGISTRATION-MULTI-STEP.md` §3.1 found the queued row in before the seam existed: a knobs table
+ * entry, a price, a bar, and no call site.
+ */
+function assertReaderSearchReached(
+  config: MemoryArmConfig | undefined,
+  counts: { readonly queries: number } | undefined,
+  bill: IndexCostRecord | undefined,
+): void {
+  if (config?.readerSearch !== true) return;
+  if (counts === undefined || counts.queries === 0) return;
+  if (bill === undefined) return;
+  if (bill.queries > bill.indexes) return;
+  throw new Error(
+    `readerSearch produced ${String(counts.queries)} quer${counts.queries === 1 ? 'y' : 'ies'} and the ` +
+      `product's index issued ${String(bill.queries)} for ${String(bill.indexes)} retrieval(s) -- one each, ` +
+      'which is the control. The second look never reached a ranking. Check that the arm passed the switch ' +
+      'to the product (`CortexMemory.readerSearch`) and that the route resolved a signal.',
   );
 }
 

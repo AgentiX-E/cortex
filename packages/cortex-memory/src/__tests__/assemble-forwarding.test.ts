@@ -97,6 +97,24 @@ describe('the composition root forwards every remaining option', () => {
     expect(cut.length).toBeLessThan(full.length);
   });
 
+  it('`readerSearch` reaches the class: the stage runs, and its census is readable', async () => {
+    // The consequence is the **census**, not the prompt: an assembly that dropped the field would answer
+    // identically on this fixture (the stub's reply becomes a query the product may not be able to rank), and
+    // the only difference a caller could observe is that `readerSearchCensus()` answered `null`. That is the
+    // exact shape requirement ⑯ names -- a capability the arm can dispatch and the published entry point
+    // cannot reach -- and it has shipped here twice (`readerByRoute`, and the three options before this one).
+    const sessions = [EVIDENCE.slice(0, 2), EVIDENCE.slice(2, 4)];
+    const carrying = build(stub('1300'), { readerSearch: { k: 4 } });
+    await carrying.answerSessions(QUESTION, sessions);
+    const census = carrying.readerSearchCensus();
+    expect(census).not.toBeNull();
+    expect(census?.attempted).toBe(1);
+
+    const control = build(stub('1300'));
+    await control.answerSessions(QUESTION, sessions);
+    expect(control.readerSearchCensus()).toBeNull();
+  });
+
   it('`relevanceUnits` reaches the guard: `session-text` refuses a route with no boundaries', async () => {
     const llm = stub('1300');
     const memory = build(llm, { relevanceUnits: 'session-text' });

@@ -71,6 +71,15 @@ import {
 } from './abstention-recovery.js';
 import { planReplyRepair } from './reply-repair.js';
 import {
+  buildSecondLookPrompt,
+  digestOf,
+  parseSecondLookQuery,
+  readerSearchOptions,
+  type DigestRow,
+  type ReaderSearchOptions,
+  type SecondLookVerdict,
+} from './reader-search.js';
+import {
   SearchIndex,
   assertLexicalWeighting,
   foldIndexCost,
@@ -301,6 +310,38 @@ export class CortexMemory implements SessionAwareMemorySystem {
    * fired and changed nothing" are different findings about the same run, and a single tally collapses them.
    */
   readonly #bareRetries: { attempted: number; answered: number } = { attempted: 0, answered: 0 };
+
+  /**
+   * The second look, resolved once at construction and `undefined` when the build does not carry it.
+   *
+   * Resolved through {@link readerSearchOptions} rather than stored as handed in, because every field of
+   * it is a bound on a prompt or on a bill and a hand-built caller can pass a `NaN` that compares false
+   * against every total. The refusal happens once, at the place the value was chosen.
+   */
+  readonly #secondLookOptions: ReaderSearchOptions | undefined;
+
+  /**
+   * What the second look did, across every question this instance answered.
+   *
+   * Five counters rather than one pair, because each names a *paid* outcome the others cannot stand in
+   * for. `refused` is a consultation the model answered `NONE` to and is the mechanism's own stop rule;
+   * `unranked` is a question that reached the stage with no signal to search by, which is a
+   * configuration finding rather than a model finding; `promoted` counts sessions whose entry into the
+   * budget the second query is the only reason for, and it is the one number that separates "looked
+   * twice" from "got a longer prompt".
+   *
+   * Cumulative rather than per question. Every per-question slot on this class is cleared by
+   * `#resetPerQuestion` because the arm reads it once per question; this one is read once per **run**,
+   * and a slot that a decline cleared would report a mechanism that stopped firing on the questions it
+   * declined -- which is `#reasons`' defect one level down.
+   */
+  readonly #secondLookCensus: {
+    attempted: number;
+    queries: number;
+    refused: number;
+    unranked: number;
+    promoted: number;
+  } = { attempted: 0, queries: 0, refused: 0, unranked: 0, promoted: 0 };
 
   /**
    * The reply-contract repair, counted by kind.
@@ -969,6 +1010,12 @@ export class CortexMemory implements SessionAwareMemorySystem {
     this.#llm = options.llm;
     this.#now = options.now;
     this.#options = options;
+    // Resolved here rather than read through `#options` at each question, and *validated* rather than
+    // stored as handed in: every field is a bound on a prompt or a bill, and a `NaN` compares false against
+    // every total -- so a hand-built value would silently produce a stage that never stopped. Absent stays
+    // absent, which is the first pass alone.
+    this.#secondLookOptions =
+      options.readerSearch === undefined ? undefined : readerSearchOptions(options.readerSearch);
     this.#corpus = options.corpus;
 
     // The retrieval stack is resolved once, here, rather than per question, because one of the two things
@@ -1642,6 +1689,27 @@ export class CortexMemory implements SessionAwareMemorySystem {
   }
 
   /**
+   * What the second look did, or `null` when this build was not configured to carry it.
+   *
+   * `null` rather than a zeroed census, for the reason {@link replyRepairCensus} answers `null`: a run
+   * reporting `attempted: 0` on every counter is "the stage reached nothing" only if the stage was on, and
+   * a build that never carried it must say so by omission. The arm reads an absent or `null` payload as
+   * "this system has no second look", which is the statement its artifact then makes by leaving the field
+   * out -- the defect `assertQueryExpansionReached` exists for is an artifact that claims a treatment the
+   * index never issued, and the only defence is a census that can be absent.
+   */
+  readerSearchCensus(): {
+    attempted: number;
+    queries: number;
+    refused: number;
+    unranked: number;
+    promoted: number;
+  } | null {
+    if (this.#secondLookOptions === undefined) return null;
+    return { ...this.#secondLookCensus };
+  }
+
+  /**
    * What the reply-contract repair did, by kind, or `null` when this build was not configured to carry it.
    *
    * `null` rather than a zeroed pair, for the reason `auditCensus` answers `null` (§13.268): a run with
@@ -2052,20 +2120,23 @@ export class CortexMemory implements SessionAwareMemorySystem {
     // prompt rank the same corpus. Resolving twice would let the product's index narrow one set and rank
     // another -- and with a vector channel that is not a hypothetical: the budget would order sessions by a
     // signal the prompt never received.
+    //
+    // Hoisted out of the call below because the second look reads it too: the digest is ranked over
+    // **exactly** the array the first pass ranked, and a second flattening would be the same turns in the
+    // same order only by coincidence of an immutable input.
+    const rankedTurns = eligible.flatMap((session) => session.turns);
     const relevance = await this.#relevanceFor(
       question,
-      eligible.flatMap((session) => session.turns),
+      rankedTurns,
       // The boundaries, for the one unit that scores a session as a document. Passed unconditionally rather
       // than only when that unit is configured: the argument is what the route *has*, and a caller-side
       // `if` would make this the second place that knows which unit needs what.
       eligible.map((session) => session.turns),
     );
-    const selected = selectSessionBudget(
-      eligible,
-      this.#options.gate.sessionBudget,
+    const asked =
       relevance === undefined
         ? undefined
-        : (session) =>
+        : (session: AdmittedSession): number =>
             session.turns.reduce(
               (best, turn) => Math.max(best, relevance(question, turn.content)),
               // `-Infinity` rather than `0`: `relevanceFor` may legitimately return
@@ -2073,13 +2144,154 @@ export class CortexMemory implements SessionAwareMemorySystem {
               // report that signal's best turn as `0` -- a value it never
               // produced.
               Number.NEGATIVE_INFINITY,
-            ),
-    );
+            );
+    const firstPass = selectSessionBudget(eligible, this.#options.gate.sessionBudget, asked);
 
+    // The second look (§`readerSearch`). It returns `undefined` on every path that must leave the first
+    // pass alone -- the stage is off, no signal ranked the corpus, the model said `NONE`, or its query was
+    // refused -- and the branch below is the *only* caller-visible difference, so a run that turns this on
+    // and reaches none of those is byte-identical to the control.
+    const second = await this.#secondLook(question, firstPass, eligible, rankedTurns, relevance);
     // The boundary label is the reason this path exists. Flattening the
     // sessions here would reproduce exactly the behaviour of the flat path and
     // make the MR route decorative.
-    return this.#promptSessionAware(question, selected, relevance);
+    if (second === undefined) return this.#promptSessionAware(question, firstPass, relevance);
+
+    // The room is spent a second time over the same candidates, so a session the second query promoted
+    // competes for the budget rather than being appended after it. The prompt receives the **composite**
+    // signal, because the invariant this route already holds -- the budget and the prompt rank the same
+    // corpus by the same signal -- would otherwise be broken by the very stage that widened the corpus:
+    // a session admitted under a second query and then ordered under the first would be ranked by a
+    // signal that did not admit it.
+    const selected = selectSessionBudget(eligible, this.#options.gate.sessionBudget, second.score);
+    const firstPassIndexes = new Set(firstPass.map((session) => session.index));
+    for (const session of selected) {
+      if (!firstPassIndexes.has(session.index)) this.#secondLookCensus.promoted += 1;
+    }
+    return this.#promptSessionAware(question, selected, second.signal);
+  }
+
+  /**
+   * One additional query, written after a first pass has ranked, searched through the same index.
+   *
+   * ## Why this is here and not in a caller
+   *
+   * The digest has to be a line from each turn the reader is about to read, and the only place that set
+   * exists is one frame up: `#relevanceFor` builds the product's index per question, so a caller that
+   * wanted to aim a query at "what the first pass showed" would have to build a second index to see it --
+   * and a second index is a second ranking. `docs/PREREGISTRATION-MULTI-STEP.md` §3.1 named this seam and
+   * it is the reason the queued row sat un-dispatchable for four rounds: the *public* `search()` shipped,
+   * but the set it would have to read is this frame's.
+   *
+   * ## Why the digest is the first pass and not the whole corpus
+   *
+   * The mechanism is "look again at what you saw". A digest of the corpus would be the blind expansion
+   * `queryExpansion` already administers -- `S17` read **+1.75 points against a bar of +5** on the paired
+   * roster -- and the only difference between the two stages is what the model has in front of it. Ranked
+   * over `firstPass` rather than over the eligible corpus for the same reason: the turns the reader is
+   * about to read are the only ones whose absence from the answer is its failure.
+   *
+   * ## Why the union is a maximum and not a concatenation
+   *
+   * A turn's score is its best score under either query, and the room is then spent by
+   * `selectSessionBudget` exactly as before. Concatenating the two rankings would need a second
+   * comparator, and a second comparator is a second ranking -- the class of defect §14.97.8 priced at
+   * −3.75 questions. The maximum is also monotone, which is what makes the mechanism's reach readable:
+   * the second look can only *promote* a session, never demote one, so a question that lost a place did
+   * so to a session the second query found.
+   *
+   * The boost is keyed by turn **text**, not by ordinal or identity: the signal is a function of
+   * `(query, text)`, and two turns with identical text are the same document to an embedder. The
+   * occurrence rule is `SearchIndex.lookup`'s -- first occurrence wins, duplicates cannot be equal or
+   * better, since the index scores the text once.
+   */
+  async #secondLook(
+    question: string,
+    firstPass: readonly AdmittedSession[],
+    eligible: readonly AdmittedSession[],
+    turns: readonly AdmittedTurn[],
+    relevance: ((question: string, turn: string) => number) | undefined,
+  ): Promise<
+    | {
+        readonly score: (session: AdmittedSession) => number;
+        readonly signal: (question: string, turn: string) => number;
+      }
+    | undefined
+  > {
+    const options = this.#secondLookOptions;
+    if (options === undefined) return undefined;
+    this.#secondLookCensus.attempted += 1;
+    // No signal means no ranking to widen and no digest to rank: the stage would consult the model, search
+    // arrival order, and report a treatment. Counted rather than thrown, because a caller can legally
+    // answer through this route without an index -- `relevanceFor` is an override that ranks nothing.
+    if (relevance === undefined) {
+      this.#secondLookCensus.unranked += 1;
+      return undefined;
+    }
+
+    // Typed at the call site rather than inferred, which is what keeps `DigestRow` and `SecondLookVerdict` from
+    // being exports nothing names: `tools/export-census.mjs` counts a type whose only mention is its own
+    // declaration as an orphan, and a barrel entry inferred at every call site is exactly that.
+    const rows: DigestRow[] = rankedCandidates(
+      question,
+      firstPass.flatMap((session) => session.turns),
+      relevance,
+    ).map((row) => ({ text: row.turn.content, score: row.relevance }));
+    const digest = digestOf(rows, options);
+    // The reader's own route, so a run that names a stronger model for `multi-session` gets the stronger
+    // model here too: a stage that quietly used `#llm` would be a second reader under one configuration line.
+    const reply = await this.#readerFor('multi-session').complete(
+      buildSecondLookPrompt(question, digest, options),
+      { maxTokens: options.maxTokens, temperature: 0 },
+    );
+    const verdict: SecondLookVerdict = parseSecondLookQuery(reply, question, options);
+    if (verdict.kind === 'refused') {
+      this.#secondLookCensus.refused += 1;
+      return undefined;
+    }
+    this.#secondLookCensus.queries += 1;
+
+    // `record: false` -- this call did not ask the question, so it must not claim the per-question slots an
+    // answer owns. The **cost** is still folded, because the index was built and the bill is real.
+    //
+    // The boundaries travel with it: `relevanceUnits: 'session-text'` scores a session as one document and
+    // refuses without them, and passing `undefined` here would make the second look throw on a
+    // configuration the first look supports.
+    //
+    // Assigned rather than narrowed, and the cast is the statement of an invariant: `#relevanceFor` answers
+    // `undefined` only when this class ranks nothing at all (`no index` and `no override`), and that state is
+    // excluded one frame up -- `relevance` **is** this same resolution for these same turns. A second
+    // `undefined` guard here would be a branch no test can enter, which this repository counts as a finding
+    // rather than as a safety net.
+    const second = (await this.#relevanceFor(
+      verdict.query,
+      turns,
+      eligible.map((session) => session.turns),
+      { record: false },
+    )) as (question: string, turn: string) => number;
+    const ranked = rankedCandidates(verdict.query, turns, second).slice(0, options.k);
+    // First occurrence wins, which is `SearchIndex.lookup`'s own rule for a repeated text: `rankedCandidates`
+    // is best-first, so a duplicate can only be equal or worse and the map holds the best score the query gave
+    // that document. Written as a reversed map construction rather than a loop with a `has` guard, because
+    // `Map` lets the last write win -- reversed, the last write is the best-first entry -- and the guard would
+    // be a branch a corpus without a repeated turn cannot enter. This corpus *does* repeat turns verbatim; the
+    // branchless form is the one that stays correct on the corpora that do not.
+    const boost = new Map(
+      ranked.map((row) => [row.turn.content, row.relevance] as const).reverse(),
+    );
+    const signal = (query: string, text: string): number => {
+      const base = relevance(query, text);
+      const extra = boost.get(text);
+      return extra === undefined ? base : Math.max(base, extra);
+    };
+    return {
+      signal,
+      score: (session) =>
+        session.turns.reduce(
+          (best, turn) => Math.max(best, signal(question, turn.content)),
+          Number.NEGATIVE_INFINITY,
+        ),
+    };
   }
 
   /** Relative-time answering. The date is the reference point, and only this path gets it. */

@@ -10,6 +10,7 @@
 import type { LLM, ValueFunction } from '@agentix-e/cortex-core';
 import type { Corpus } from './corpus.js';
 import type { EvidenceAsk, PromptContract, RelevanceUnits, TurnCutMarker } from './prompt.js';
+import type { ReaderSearchOptions } from './reader-search.js';
 import type { SearchIndexOptions } from './retrieval/search-index.js';
 import type { SupersededRendering } from './superseded.js';
 import type { WidthPlanOptions } from './width.js';
@@ -497,6 +498,44 @@ export type CortexMemoryOptions = {
    * turns does not cover a third. A caller with a stable corpus can still hold one `SearchIndex` itself.
    */
   index?: SearchIndexOptions | undefined;
+
+  /**
+   * The second look: one query written after a first pass has ranked, searched through the same index.
+   *
+   * ## The measured deficit this exists for
+   *
+   * The multi-session route's failures are not delivery failures. Run `44962474136`'s wrong `MR`
+   * questions carried **every** gold turn (`goldOverlap.carried == total`, 17/17 and 11/11) inside a room
+   * they did not fill, and the reader still listed two of three and two of four. The reader was shown the
+   * evidence and stopped enumerating it. Three prompt-side repairs were measured against that population
+   * -- structure (`enumerated`), membership review (`audit`), and the first pass's own ledger (`sweep`) --
+   * and the first made `MR` worse by 6.2 questions.
+   *
+   * What has not been tried is giving the reader a **second look aimed by what it saw**: the model reads a
+   * line from each of the turns the first pass ranked, writes one query for what is missing, and the
+   * product's own index answers it. A reader that lists two of three and then asks for the third has a
+   * chance; a reader handed the same turns twice does not.
+   *
+   * ## Why the query has to be written here rather than by a caller
+   *
+   * Because the first pass does not exist until this class has ranked: `answerSessions` builds the index
+   * per question (`index` above), so a caller that wanted to aim a query at "what the first pass showed"
+   * would have to build a second index to see it -- and a second index is a second ranking. The blind
+   * version of this mechanism is already measured and is `queryExpansion`, which writes phrases from the
+   * question alone: `S17` read **+1.75 points against a bar of +5** on the paired `MR` roster.
+   *
+   * ## What it costs, and what it can move
+   *
+   * One decision call (a digest of `digestTurns` lines, `maxTokens` out) plus one index pass per
+   * multi-session question, on the route that is 121 of 500. Nothing else moves: the flat, temporal,
+   * knowledge-update, abstention and assistant routes never call this, which is what makes a dispatch of it
+   * a single-capability measurement rather than a corpus-wide change.
+   *
+   * `k` bounds the turns the second ranking may contribute a score to. The union is then ordered by the
+   * **same** signal the budget and the prompt use -- a turn's score is its best score under either query --
+   * so the second look spends ordering and no characters. Absent means the first pass alone, byte for byte.
+   */
+  readerSearch?: ReaderSearchOptions | undefined;
 
   /**
    * The unit the evidence room is spent in. Absent means `'turn'`.

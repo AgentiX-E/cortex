@@ -91,6 +91,7 @@ import type {
 import type { EvidenceAsk, PromptContract, RelevanceUnits, TurnCutMarker } from './prompt.js';
 import type { TurnWindow } from './excerpt.js';
 import type { ResolutionMode } from './resolution.js';
+import { readerSearchOptions, type ReaderSearchOptions } from './reader-search.js';
 import type { WidthPlanOptions } from './width.js';
 
 /** How much of the product one call wires up. See the table in the module comment. */
@@ -592,6 +593,20 @@ export type AssembleOptions = {
    * which is why it is a `boolean` and not a mode: there is nothing to choose between.
    */
   readonly factTimeline?: boolean | undefined;
+  /**
+   * The second look on the multi-session route: one query written after the first pass has ranked.
+   *
+   * Forwarded rather than defaulted, for the reason every field above is: `undefined` is the historical
+   * silence -- the prompt every published number was produced under -- and a composition root that turns a
+   * mechanism on is a second arm with no control. `Types.readerSearch` carries the mechanism, its bill and
+   * the counters it writes; `docs/DESIGN-READER-SECOND-LOOK.md` §7 records where the shipped stage differs
+   * from the design and why the call site is the product's rather than an arm's.
+   *
+   * It is here because of requirement ⑯'s asymmetry one field further out: a capability the arm can dispatch
+   * and the published composition root cannot reach is a capability a customer does not have, and this
+   * repository has shipped that shape twice (`readerByRoute`, and the three options above this one).
+   */
+  readonly readerSearch?: ReaderSearchOptions | undefined;
 };
 
 /** What a profile wires up, as the objects themselves rather than as a bag of booleans. */
@@ -865,6 +880,11 @@ export function assembleMemory(options: AssembleOptions): Installation {
     // `assemble-options.test.ts` asserts rather than assumes.
     ...(options.semanticCarry === undefined ? {} : { semanticCarry: options.semanticCarry }),
     ...(options.factTimeline === undefined ? {} : { factTimeline: options.factTimeline }),
+    // Forwarded, not defaulted, for the reason recorded on the field: a composition root that turns the
+    // second look on would be a second arm, and the registered configuration is the absence of this key.
+    ...(options.readerSearch === undefined
+      ? {}
+      : { readerSearch: readerSearchOptions(options.readerSearch) }),
   });
 
   return { profile, memory, corpus, disclosure };

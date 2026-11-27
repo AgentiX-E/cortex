@@ -1,5 +1,9 @@
 import { describe, expect, it } from 'vitest';
-import { assertExpansionReachesRanking, runCortexMemoryArm } from '../bench-memory-arm.js';
+import {
+  assertExpansionReachesRanking,
+  assertReaderSearchReachesRanking,
+  runCortexMemoryArm,
+} from '../bench-memory-arm.js';
 import { exactMatchScorer } from '../metrics.js';
 import type { MemoryArmConfig } from '../report.js';
 import type { Answer, BenchmarkDataset, MemorySystem } from '../types.js';
@@ -45,6 +49,169 @@ function bill(overrides: Partial<Bill> = {}): Bill {
     ...overrides,
   };
 }
+
+/**
+ * A product-index bill **and** a second-look census, since the receipt reads both.
+ *
+ * One class rather than two doubles: the field the receipt compares is a ratio across the two payloads, and
+ * a test that could supply one without the other would be able to construct a state the product cannot
+ * produce.
+ */
+class SecondLookSystem implements MemorySystem {
+  readonly name = 'second-look';
+  readonly #bill: Bill | undefined;
+  readonly #census: unknown;
+
+  constructor(billPayload: Bill | undefined, census: unknown) {
+    this.#bill = billPayload;
+    this.#census = census;
+  }
+
+  async answer(): Promise<Answer> {
+    return 'one';
+  }
+
+  indexCost(): unknown {
+    return this.#bill;
+  }
+
+  readerSearchCensus(): unknown {
+    return this.#census;
+  }
+}
+
+const SECOND_LOOK_CENSUS = {
+  attempted: 3,
+  queries: 3,
+  refused: 0,
+  unranked: 0,
+  promoted: 1,
+};
+
+describe("the second look's receipt and its census on the artifact", () => {
+  const baseline: MemorySystem = { name: 'reference-pipeline', answer: () => 'one' };
+  // Built here rather than reused from the suite below: that one is scoped to its own `describe`, and a
+  // module-level fixture shared by two blocks would let a change to the other block's roster move this one's.
+  const fixture: BenchmarkDataset = {
+    name: 'fixture',
+    questions: [0, 1, 2].map((index) => ({
+      id: `q${index}`,
+      capability: 'IE',
+      question: `Question ${index}?`,
+      expected: 'one',
+      context: [],
+    })),
+  };
+  const runWith = (overrides: Partial<MemoryArmConfig>, system: MemorySystem) =>
+    runCortexMemoryArm(fixture, baseline, system, {
+      runs: 1,
+      scorer: exactMatchScorer,
+      generatedAt: '1970-01-01T00:00:00.000Z',
+      memoryArmConfig: { ...config(), ...overrides },
+    });
+
+  it('carries the five counters at the top level and the switch inside the config block', async () => {
+    // Two places on purpose, and the split is the claim: the switch is configuration (so `--registration` and
+    // the shard merge compare it), the counters are what happened (so they may differ between jobs that read
+    // different corpora). Run `45543010618` is what a census inside the config block costs -- eight shards,
+    // every job green, and a merge that refused the population.
+    const { report } = await runWith(
+      { readerSearch: true },
+      new SecondLookSystem(bill({ queries: 244 }), SECOND_LOOK_CENSUS),
+    );
+    expect(report.memoryArmConfig?.readerSearch).toBe(true);
+    expect(report.readerSearchCounts).toEqual(SECOND_LOOK_CENSUS);
+  });
+
+  it('writes no census for a system that does not carry the stage', async () => {
+    // The absence rule: `{name, answer}` is the conformant minimum, and a zeroed census there would make
+    // "this build has no second look" and "the second look reached nothing" the same row -- the shape that
+    // made §10.10's wrong reading possible.
+    const { report } = await runWith(
+      { readerSearch: false },
+      { name: 'plain', answer: () => 'one' },
+    );
+    expect(report.readerSearchCounts).toBeUndefined();
+    expect(report.memoryArmConfig?.readerSearch).toBe(false);
+  });
+
+  it('refuses a census whose counters are not all non-negative integers', async () => {
+    // A malformed payload is dropped rather than summed: a census with one float would otherwise be added
+    // into an artifact that still looks like a measurement.
+    const { report } = await runWith(
+      { readerSearch: true },
+      new SecondLookSystem(bill({ queries: 244 }), { ...SECOND_LOOK_CENSUS, promoted: 1.5 }),
+    );
+    expect(report.readerSearchCounts).toBeUndefined();
+  });
+
+  it('refuses a run that wrote queries and issued one index per retrieval', async () => {
+    // The receipt. A question that takes a second look builds two indexes, so a run that reached the stage
+    // must show more queries than retrievals; one each is the control wearing the treatment's name.
+    await expect(
+      runWith(
+        { readerSearch: true },
+        new SecondLookSystem(bill({ queries: 121 }), SECOND_LOOK_CENSUS),
+      ),
+    ).rejects.toThrow(/second look never reached a ranking/u);
+  });
+
+  it('accepts a run whose second lookup reached the index, and one that wrote no query at all', async () => {
+    await expect(
+      runWith(
+        { readerSearch: true },
+        new SecondLookSystem(bill({ queries: 244 }), SECOND_LOOK_CENSUS),
+      ),
+    ).resolves.toBeDefined();
+    // `queries: 0` is the stage firing and the model refusing every time. It is a finding, not a defect, and
+    // the receipt must not turn it into a failed run -- `refused` is the counter that reports it.
+    await expect(
+      runWith(
+        { readerSearch: true },
+        new SecondLookSystem(bill({ queries: 121 }), {
+          ...SECOND_LOOK_CENSUS,
+          queries: 0,
+          refused: 3,
+        }),
+      ),
+    ).resolves.toBeDefined();
+  });
+
+  it('says nothing about a run whose bill the product did not report', async () => {
+    // No bill means the product did not rank, which is `relevanceSignal=none`'s state: `assertReader-
+    // SearchReachesRanking` refuses that pairing before the run, and a system that reports no cost at all
+    // (the conformant minimum) must not fail the receipt.
+    await expect(
+      runWith({ readerSearch: true }, new SecondLookSystem(undefined, SECOND_LOOK_CENSUS)),
+    ).resolves.toBeDefined();
+  });
+});
+
+describe('assertReaderSearchReachesRanking', () => {
+  it('refuses a second look beside a signal that ranks no turn', () => {
+    // The stage reads the first pass, and `relevanceSignal=none` produces none: `#secondLook` answers
+    // `undefined` before it consults the model, so `readerSearchCounts.attempted` would be zero and the
+    // artifact would publish the control's reading under the treatment's name. The refusal is the same
+    // shape as the expansion's, one stage later, and it is here for the same reason: `bench/**` is outside
+    // coverage, so a check written there is a check no test can enter.
+    expect(() => assertReaderSearchReachesRanking('none', true)).toThrow(/ranks no turn/);
+  });
+
+  it('allows every signal that does rank, and the control on any signal', () => {
+    for (const signal of [
+      'retrieval',
+      'retrieval-hybrid',
+      'retrieval-anchored',
+      'retrieval-session',
+      'self-index',
+    ]) {
+      expect(() => assertReaderSearchReachesRanking(signal, true)).not.toThrow();
+    }
+    // The control: every archived artifact, and the arm of every dispatch that names nothing.
+    expect(() => assertReaderSearchReachesRanking('none', undefined)).not.toThrow();
+    expect(() => assertReaderSearchReachesRanking('none', false)).not.toThrow();
+  });
+});
 
 describe('assertExpansionReachesRanking', () => {
   it('refuses an expansion beside a signal that compares no query against a turn', () => {

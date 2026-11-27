@@ -196,6 +196,13 @@ UNPROJECTED: dict[str, tuple[str, str]] = {
         "dispatch-time repository variable (`CORTEX_MEMORY_SEMANTIC_CARRY`); the artifact records whether "
         "the layer ran, and the census beside it records what it reached",
     ),
+    "readerSearch": (
+        "identity",
+        "dispatch-time repository variable (`CORTEX_MEMORY_READER_SEARCH`) on the same rule; the artifact "
+        "records whether the second look ran, and `readerSearchCounts` beside it is the independent reading "
+        "that can contradict it -- `readerSearch: true` with `attempted: 0` is a switch that reached nothing, "
+        "which is the pair `assertReaderSearchReached` refuses to publish",
+    ),
     "factTimeline": (
         "identity",
         "dispatch input of `semantic-carry.yml` (`fact_timeline`) rather than of the arm's own workflow; the "

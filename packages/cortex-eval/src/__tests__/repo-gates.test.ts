@@ -385,6 +385,9 @@ describe('an arm variable is nameable from a dispatch or its gap is written down
     CORTEX_MEMORY_REPLY_REPAIR: 'settings; the repair pass rides `vars.` with an `off` fallback',
     CORTEX_MEMORY_CONFLICTS:
       'settings; the KU conflict block rides `vars.` with no fallback at all',
+    CORTEX_MEMORY_READER_SEARCH:
+      'settings; the second look rides `vars.` with a `0` fallback -- the row `PREREGISTRATION-MULTI-STEP.md` ' +
+      '§3.1 priced for four rounds before the switch existed',
     CORTEX_MEMORY_SUPERSEDED:
       'settings; the superseded rendering rides `vars.` with an `off` fallback',
     CORTEX_MEMORY_INDEX_EMBEDDING:

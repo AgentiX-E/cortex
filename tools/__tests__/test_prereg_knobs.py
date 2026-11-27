@@ -16,9 +16,13 @@ the harness cannot build -- and the first two were caught by reading, which is n
 
 1. the tool's own self-test covers the five states (buildable, missing, declared block, wrong
    declaration, and a decided file that must not be read at all);
-2. on this repository, `readerSearch` reads **blocked** rather than `missing` or `buildable`: the
-   document declares it, and the declaration is the state a reader of the queue needs to see;
-3. a fixture whose registration names an unknown knob and declares nothing exits non-zero and names
+2. on this repository, `readerSearch` reads **buildable**: the mechanism shipped (`cortex-memory`'s
+   `readerSearch` option, the arm's `CORTEX_MEMORY_READER_SEARCH`, the dispatch script's write), so the
+   row that was priced and barred for four rounds is now a run. `blocked` or `missing` would mean it is
+   still not, and this assertion is the one that flips when the treatment lands;
+3. every pending knob reads buildable, which is the gate's false-positive rate asserted rather than
+   described;
+4. a fixture whose registration names an unknown knob and declares nothing exits non-zero and names
    the knob, so the gate cannot pass by finding nothing to check.
 """
 
@@ -66,25 +70,26 @@ class TestThisRepository(unittest.TestCase):
         result = _run()
         self.assertEqual(result.returncode, 0, result.stderr)
 
-    def test_reader_search_is_blocked_rather_than_missing_or_buildable(self) -> None:
-        # `blocked` is the state that keeps the row visible without turning the build red. `missing`
-        # would mean the document does not say so; `buildable` would mean the knob exists, and it does
-        # not -- `grep -r readerSearch` over the repository returns no source file.
+    def test_reader_search_is_buildable_rather_than_blocked_or_missing(self) -> None:
+        # This assertion is the one that flipped. It read `blocked` while the treatment existed only in
+        # the document; `cortex-memory`'s `readerSearch` option, the arm's switch and the dispatch
+        # script's unconditional write are what moved it. A regression to `blocked` or `missing` means
+        # the queued row is once again a price, a bar and a control run with no way to dispatch it.
         rows = json.loads(_run("--json").stdout)["rows"]
         row = next(
             row
             for row in rows
             if row["file"] == "PREREGISTRATION-MULTI-STEP.md" and row["knob"] == "readerSearch"
         )
-        self.assertEqual(row["state"], "blocked")
+        self.assertEqual(row["state"], "buildable")
 
-    def test_every_other_pending_knob_is_buildable(self) -> None:
-        # The gate's own false-positive rate, asserted rather than described: nine other knob names in
-        # five pending registrations, and every one of them is in the dispatch path.
+    def test_every_pending_knob_is_buildable(self) -> None:
+        # The gate's own false-positive rate, asserted rather than described: every knob name in every
+        # pending registration, and every one of them is in the dispatch path. A gate whose whole
+        # population reads `missing` would pass this file's first assertion and be useless.
         rows = json.loads(_run("--json").stdout)["rows"]
-        others = [row for row in rows if row["knob"] != "readerSearch"]
-        self.assertTrue(others)
-        self.assertEqual({row["state"] for row in others}, {"buildable"})
+        self.assertTrue(rows)
+        self.assertEqual({row["state"] for row in rows}, {"buildable"})
 
 
 class TestAFixtureThatShouldFail(unittest.TestCase):

@@ -234,6 +234,19 @@ export {
 } from './abstention-recovery.js';
 export { classifyReply, planReplyRepair } from './reply-repair.js';
 
+// The second look: the digest, the decision prompt and the parser are pure functions, and a caller that
+// wants to price the stage offline -- or that has its own reader -- needs them without an instance.
+export {
+  DEFAULT_READER_SEARCH,
+  buildSecondLookPrompt,
+  digestOf,
+  parseSecondLookQuery,
+  readerSearchOptions,
+  type DigestRow,
+  type ReaderSearchOptions,
+  type SecondLookVerdict,
+} from './reader-search.js';
+
 // composition
 export { CortexMemory } from './memory.js';
 
