@@ -105,6 +105,24 @@ cannot read any of the others.
 | **P4** | no capability regression | no other capability loses **≥ 3** questions                                                                                          | the rendering reaches the four flat routes too, so a gain bought by breaking them is not a gain |
 | **P5** | the bill                 | prompt tokens per question **≤ 1.02×**                                                                                               | one bracketed clause per superseded turn, on the turns that have one                            |
 
+**The seven questions `P3` is read on, named before the dispatch.** They are the `KU` failures of
+`45923435343` (the 500-question artifact the 93.40% reading came from), and six of the seven answered with a
+value the evidence later replaced rather than refusing:
+
+| question id | gold                        | what the run answered                         |
+| ----------- | --------------------------- | --------------------------------------------- |
+| `852ce960`  | $400,000                    | **$350,000** -- the superseded pre-approval   |
+| `a2f3aa27`  | 1,300                       | **1,250** -- the superseded follower count    |
+| `69fee5aa`  | 38                          | **37** -- the count before the coin was added |
+| `59524333`  | 6:00 pm                     | **7:00 pm** -- the superseded gym time        |
+| `07741c45`  | in a shoe rack in my closet | **Under my bed** -- the previous location     |
+| `ce6d2d27`  | Friday                      | **Thursday** -- the day the class used to be  |
+| `c4ea545c`  | Yes                         | **None** -- declined in prose                 |
+
+Naming them is what makes `P3` a criterion rather than an impression: the reading is which of these six
+identities stops answering with the old value, and the seventh is listed because a rendering that turns a
+prose decline into a number would move it too -- in either direction.
+
 `P1`'s threshold is 72 of 72 rather than "most of them" because `mark` fires on a property of the corpus
 rather than of the question: if a `KU` question's evidence contains no superseded value, its digest is
 legitimately unchanged. The receipt therefore reads `promptDigest` **and** the count of turns the renderer
