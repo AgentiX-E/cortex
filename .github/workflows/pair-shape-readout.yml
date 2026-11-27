@@ -1,0 +1,101 @@
+name: Pair shape readout
+
+# What a within-job pair changed, per question, read where the artifact already is.
+#
+# `PREREG-TURN-FILL.md` §9.1 records `P1` as partly verified for a reason that had nothing to do with the
+# arm: the shape it predicts (215 questions up, 285 unchanged) lives in per-question vectors, the vector
+# for the control side is `ablation.baselinePromptChars`, and the artifact carrying it is 63 MB. The
+# development sandbox moved that file at roughly 25 KB/s, so the reading was forty minutes of transfer to
+# print four hundred kilobytes of integers. That is the instrument being the bottleneck, and it is the
+# third time in this campaign -- `prompt-digest-pair.yml` exists for the same reason one axis over.
+#
+# So the reading happens on a runner, where the artifact is one API call away in the same datacentre, and
+# what leaves the job is a table rather than a download.
+#
+# ## What a red job means, and what it deliberately does not
+#
+# `--fail-on-defect` goes red for `internal control` and `guard` and stays green for `population` and
+# `cost`. The two red ones breach only if the code is wrong -- a fill that reached room the cap had taken,
+# or a capability that dropped three questions. The two green ones breach on a legitimate negative result,
+# and a job that goes red for a null teaches its reader to ignore red. A refusal -- an artifact with no
+# control side, an all-null vector, two vectors of different lengths -- always goes red, because an
+# artifact the instrument cannot read is not a result. Zero model calls: it reads integers.
+on:
+  workflow_dispatch:
+    inputs:
+      run_id:
+        description: 'Benchmark run id whose pair artifact is read'
+        required: true
+        type: string
+      artifact_name:
+        description: 'Artifact to read on that run'
+        required: false
+        default: 'longmemeval-s-report'
+        type: string
+
+permissions:
+  contents: read
+  actions: read
+
+concurrency:
+  group: pair-shape-${{ inputs.run_id }}
+  cancel-in-progress: false
+
+jobs:
+  read:
+    name: The shape of the pair, per question and per route
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    env:
+      RUN_ID: ${{ inputs.run_id }}
+      ARTIFACT: ${{ inputs.artifact_name }}
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      # No `pnpm install` and no build: this tool imports `node:fs` and `node:url` and nothing else, so a
+      # job that installed the workspace to run it would be paying four minutes for a dependency it does
+      # not have.
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Fetch the artifact under read
+        run: |
+          set -euo pipefail
+          mkdir -p readings/artifact
+          gh run download "$RUN_ID" --repo "$GITHUB_REPOSITORY" \
+            --name "$ARTIFACT" --dir readings/artifact
+          du -sh readings/artifact
+          find readings/artifact -name 'benchmark-cortex-memory-ablation-report.json'
+
+      - name: Read the shape and every gate
+        run: |
+          set -o pipefail
+          node tools/pair-shape-readout.mjs \
+            readings/artifact/benchmark-cortex-memory-ablation-report.json \
+            --fail-on-defect 2>&1 | tee readings/pair-shape.txt
+
+      # The same reading as data, because the table is for a reader and this file is for the next tool:
+      # `--json` carries the per-capability and per-route groups the console table rounds.
+      - name: Record the reading
+        if: always()
+        run: |
+          set -o pipefail
+          node tools/pair-shape-readout.mjs \
+            readings/artifact/benchmark-cortex-memory-ablation-report.json \
+            --json > readings/pair-shape.json 2>&1 || true
+          cat readings/pair-shape.json
+
+      - name: Upload readings
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: pair-shape-readout
+          path: |
+            readings/pair-shape.txt
+            readings/pair-shape.json
+          retention-days: 30
+          if-no-files-found: warn
