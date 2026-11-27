@@ -29,6 +29,7 @@ import {
   type RetrievalCaptureVectors,
 } from './benchmark.js';
 import type { BenchmarkProgressCallback } from './benchmark.js';
+import { promptDigest } from './prompt-digest.js';
 import { correctnessMask } from './question-record.js';
 import { transportRetryReport } from './retrieval-diagnostics.js';
 import {
@@ -887,7 +888,14 @@ export async function runAblation(
     // safety net. What a `reference` pairing produces is an all-`null` vector, not an absent one -- the
     // reference pipeline exposes no classifier -- and that distinction is the one `F3`'s reader needs.
     baselineRoleCensuses: baseFirst.roleCensuses!,
+    // The two halves of the same fact about the control's prompt: how long it was, and whether it was the
+    // same prompt. A length cannot separate "unchanged" from "changed within the budget", and run
+    // `45923435343` proved that case exists -- twelve questions flipped at `temperature 0` while their
+    // lengths were level -- so a pair artifact without the digest can only report an upper bound on how
+    // many prompts the mechanism reached. Sixteen hex characters per question against the 12 MB the texts
+    // would cost, for a reading that then needs one job instead of two.
     baselinePromptChars: baseFirst.promptTexts!.map((text) => text?.length ?? null),
+    baselinePromptDigests: baseFirst.promptTexts!.map((text) => promptDigest(text ?? null)),
     // What the cap did to the window each question was shown. Beside the role census because they are the
     // two fields that describe the delivered turn set, and both are asserted present for the same reason:
     // the capture is requested unconditionally on this call, so an absent vector is a capture that failed

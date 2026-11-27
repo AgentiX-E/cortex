@@ -416,6 +416,28 @@ describe('runAblation: the baseline side of the density reading', () => {
     expect(result.featurePromptTexts?.map((text) => text?.length)).toEqual([500, 501, 502]);
   });
 
+  it('records the baseline prompt’s fingerprint, because a length cannot say "the same prompt"', async () => {
+    const ds = numberedDataset(3);
+    const baseline = reportingSystem('base', 7, 400);
+    const feature = reportingSystem('feat', 9, 500);
+    const result = await runAblation(ds, baseline, feature, { runs: 1 });
+    // `45923435343` flipped twelve questions at `temperature 0`, so twelve prompts differed; whether
+    // any of them had an unchanged length was unanswerable, because the control side carried only
+    // lengths. Sixteen hex characters per question make it answerable inside one job.
+    expect(result.baselinePromptDigests).toHaveLength(3);
+    for (const digest of result.baselinePromptDigests ?? []) {
+      expect(digest).toMatch(/^[0-9a-f]{16}$/);
+    }
+    // Three distinct prompts, three distinct fingerprints: a digest that ignored its input would pass
+    // the shape assertions above and fail this one.
+    expect(new Set(result.baselinePromptDigests).size).toBe(3);
+
+    // The same system on the same dataset is the same prompt, and the digest has to say so -- this is
+    // the property `prompt-digest-pair.mjs` compares across two artifacts, asserted here inside one.
+    const again = await runAblation(ds, reportingSystem('base', 7, 400), feature, { runs: 1 });
+    expect(again.baselinePromptDigests).toEqual(result.baselinePromptDigests);
+  });
+
   it('reports null rather than zero for a baseline that exposes no capture', async () => {
     const ds = numberedDataset(2);
     const baseline = new FactMemorySystem('silent', { fallback: 'unknown' });
@@ -425,5 +447,8 @@ describe('runAblation: the baseline side of the density reading', () => {
     // two would be a number about neither. `null` is the shape `featureRetrievedContexts` already uses.
     expect(result.baselineRoleCensuses).toEqual([null, null]);
     expect(result.baselinePromptChars).toEqual([null, null]);
+    // Absent capture, absent fingerprint -- not the digest of an empty string, which would be the same
+    // sixteen characters on every such question and would read as a prompt that was identical.
+    expect(result.baselinePromptDigests).toEqual([null, null]);
   });
 });

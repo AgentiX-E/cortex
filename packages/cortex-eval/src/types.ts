@@ -988,6 +988,28 @@ export type AblationResult = {
    */
   baselinePromptChars?: readonly (number | null)[];
   /**
+   * The fingerprint of the **baseline's** prompt, per question, in dataset order (`§13.168.8`'s digest).
+   *
+   * ## Why a length was not enough, stated as the reading that found it
+   *
+   * `PREREG-TURN-FILL.md` §4 registers a comparison of two selections inside one job, and its first
+   * prediction is phrased as "215 questions up, 285 byte-identical". Run `45923435343` produced twelve
+   * flips at `temperature 0` -- and at `temperature 0` one prompt has one answer, so twelve prompts
+   * differed. Whether those twelve were among the 285 could not be answered: `baselinePromptChars` says
+   * how long the control's prompt was and nothing about its bytes, so **equal length and equal prompt are
+   * indistinguishable on the artifact**, and the digest comparison that would separate them needs two
+   * runs rather than one job (`tools/prompt-digest-pair.mjs`).
+   *
+   * A digest is the cheap half of the text: sixteen hex characters per question, about 8 KB for a 500
+   * question population against the 12 MB the texts would cost. It turns "the same length" into "the
+   * same prompt" for every pair that carries it, which is what makes a within-job shape reading able to
+   * say *which* questions the mechanism reached rather than how many characters it moved.
+   *
+   * `null` per question on the same condition as the length vector: a baseline that exposes no prompt has
+   * no fingerprint, and `promptDigest(null)` is `null` rather than the digest of an empty string.
+   */
+  baselinePromptDigests?: readonly (string | null)[];
+  /**
    * What the turn cap did to the delivered window, per question, in dataset order.
    *
    * `cut` counts delivered turns the cap shortened, `marked` the subset that says so, and `whole` the turns
