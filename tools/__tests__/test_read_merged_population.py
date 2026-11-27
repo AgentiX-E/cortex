@@ -238,12 +238,19 @@ def test_the_pairing_vocabulary_is_the_arms_vocabulary():
     This is the check whose absence cost run `44891901371` its conclusion: the dispatcher's copy was
     held to `arm-pairing.ts` and this tool's copy was not, so `clock` passed the gate that was
     written for it and failed the one that was not.
+
+    The union is read with `\\s*` after the `=` rather than a single space, and the reason is a repair
+    rather than a convenience: eight members do not fit on one line at the repository's print width, so
+    Prettier breaks the union into a leading-`|` list and a pattern anchored on `" = "` stops matching.
+    The first thing that happened when the eighth key was added was this test failing with "arm-pairing.ts
+    has no `ArmPairing` union" -- a message about the file's *layout* standing in for a check on its
+    *vocabulary*. The set is what the two copies have to agree about; the whitespace is not.
     """
     import re
 
     root = pathlib.Path(__file__).resolve().parents[2]
     source = (root / "packages/cortex-eval/src/arm-pairing.ts").read_text(encoding="utf-8")
-    union = re.search(r"type ArmPairing = ([^;]+);", source)
+    union = re.search(r"type ArmPairing =[ \t]*\n?([^;]+);", source)
     assert union is not None, "arm-pairing.ts has no `ArmPairing` union"
     arm = sorted(re.findall(r"'(\w+)'", union.group(1)))
     tool = (root / "tools/read-merged-population.py").read_text(encoding="utf-8")

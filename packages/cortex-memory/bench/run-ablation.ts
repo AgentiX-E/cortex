@@ -1060,6 +1060,15 @@ async function main(): Promise<void> {
     // same construction is asked for twice with one flag between the two sides, and a read of the parsed
     // option there would put the second look on both -- the `resolution` defect, nine rounds long.
     reader: armOptions.readerSearch === true,
+    // The inline superseded rendering's side of the pair. The same argument as `reader`'s, one axis over:
+    // `armOptions.supersededRendering` is a single process-wide value, so leaving `buildCortex` to read it
+    // would put the rendering on **both** sides of `pairing=superseded` -- the `resolution` defect, which
+    // cost nine rounds before the resolution pairing existed to expose it.
+    //
+    // `'off'` rather than `undefined` for the absent case, because this record is a statement about what a
+    // side **is**: `undefined` says "the key was not passed", and `'off'` says "this side renders nothing
+    // special", which is the control the treatment is measured against.
+    superseded: armOptions.supersededRendering ?? 'off',
   };
 
   // The two readers the product asks for. Absent unless the run named it, so a dispatch of any other
@@ -1194,11 +1203,16 @@ async function main(): Promise<void> {
       // runs the other way, and `readSuperseded` validates it against the arm's own list at parse time,
       // throwing on anything unrecognised -- so by the time execution reaches here the value IS one of
       // the union's members, and the assertion states that rather than re-checking it.
-      ...(armOptions.supersededRendering === undefined || armOptions.supersededRendering === 'off'
+      //
+      // `treatment.superseded` rather than `armOptions.supersededRendering`, for the reason
+      // `treatment.clock` gives two spreads up: this is now one of the axes `CORTEX_MEMORY_AB` flips
+      // (`pairing=superseded`), and a read of the parsed option here would put the rendering on **both**
+      // sides of its own instrument -- a zero delta for a comparison that never had a control. The comment
+      // this replaces said "no second side to disagree with", which was true only while there was no way to
+      // ask the question; `reader`'s argument one axis over says the same thing and has the same history.
+      ...(treatment.superseded === 'off'
         ? {}
-        : {
-            supersededRendering: armOptions.supersededRendering as SupersededRendering,
-          }),
+        : { supersededRendering: treatment.superseded as SupersededRendering }),
       // §E6. The semantic layer's carry switch, and the option whose absence is why six rounds recorded
       // "E6 is `unrun`" as though the obstacle were a dispatch: the treatment had no on-switch in any
       // measurement this project can run, so `deltaQuestions` would have been `0` for the same reason a
@@ -1444,6 +1458,14 @@ async function main(): Promise<void> {
         // rather than the registered value for the reason `ask`'s `'route'` is: the control is the
         // configuration the 93.40% reading was produced under, and it must not move when the product adopts.
         return buildCortex({ ...armTreatment, units: 'turn' });
+      case 'superseded':
+        // The control is `'off'`, which is both the shipped default and a **named** value rather than an
+        // absent key -- so this branch writes it rather than relying on the conditional spread in
+        // `buildCortex` to express it. The difference matters for the artifact rather than for the prompt:
+        // `memoryArmConfig` records `supersededRendering: 'off'` on both sides of a `reference` pair, and a
+        // `superseded` pair that left the key undefined would record the same field two different ways
+        // depending on which branch built the instance.
+        return buildCortex({ ...armTreatment, superseded: 'off' });
     }
   };
 
@@ -1681,6 +1703,12 @@ async function main(): Promise<void> {
       // pairing, so an artifact that omitted it would be read as the registered pair and the delta would
       // be attributed to two systems instead of one flag.
       readerPair: pairing === 'reader',
+      // §18's counterpart, and the reason it is a separate entry rather than a value of `readerPair`: the
+      // two pairings put two different keys between their sides, and a reader of the JSON that saw one flag
+      // for both would have no way to tell which key the delta belongs to. `read-merged-population.py`'s
+      // `PAIR_FLAGS` carries the same table on the reading side, and a pairing added here without an entry
+      // there is an artifact read as the registered pair -- the failure `readerPair`'s comment documents.
+      supersededPair: pairing === 'superseded',
     },
     datasetFingerprint,
     // §E6's population, when the run multiplied it or answered one part of a split dispatch. Absent

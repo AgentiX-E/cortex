@@ -175,13 +175,27 @@ def test_the_constructor_passes_it_and_absence_is_the_archived_state() -> None:
     `off` is the shipped behaviour and is expressed by NOT passing the key, so a run that names nothing
     reproduces every archived prompt byte for byte -- which is the property the digest comparison in the
     product's own tests depends on.
+
+    **The source of the value changed, and this test changed with it.** It used to look for
+    `armOptions.supersededRendering`, and the assertion was true for the whole time the rendering had no
+    pairing -- because a single process-wide value cannot be wrong on one side of a comparison that does not
+    exist. `CORTEX_MEMORY_AB=superseded` creates that comparison, and a read of `armOptions` inside
+    `buildCortex` would then put the rendering on **both** sides: the `resolution` defect, which cost nine
+    rounds and is why `treatment.*` is the spelling every other axis already uses. The three assertions below
+    are the pair, the control branch, and the absence rule, in that order -- the first two are what make the
+    treatment reachable by a dispatch, and the third is what keeps every archived prompt byte-identical.
     """
     constructor = read(CONSTRUCTOR)
-    assert 'supersededRendering: armOptions.supersededRendering as SupersededRendering' in constructor, (
-        'the constructor never passes the rendering to the product, so the arm option reaches nothing '
-        'past `CortexMemoryArmOptions`'
+    assert 'supersededRendering: treatment.superseded as SupersededRendering' in constructor, (
+        'the constructor never passes the rendering to the product, so nothing reaches `CortexMemory` -- '
+        'and a read of `armOptions` here would put the rendering on both sides of its own pair'
     )
-    assert "armOptions.supersededRendering === 'off'" in constructor, (
+    assert "treatment.superseded === 'off'" in constructor, (
         'the rendering is passed unconditionally, so `off` is a present key rather than the archived '
         'absence -- and a present-but-inert key reads as configured to every `!== undefined` check'
+    )
+    assert "case 'superseded':" in constructor, (
+        'the arm has no `superseded` branch in `buildPairBaseline`, so `CORTEX_MEMORY_AB=superseded` '
+        'builds a control named `reference` -- two systems rather than one rendering, and the delta would '
+        'be the cognitive layer whole difference from the reference pipeline'
     )

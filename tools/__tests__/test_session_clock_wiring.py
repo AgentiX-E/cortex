@@ -273,13 +273,19 @@ def test_the_paired_workflow_derives_the_clock_from_the_pairing() -> None:
 def test_the_pair_dispatcher_and_the_arm_agree_on_the_closed_set() -> None:
     """Two copies of one grammar, held to each other by reading both.
 
+    The union is read with `\\s*` after the `=` rather than a literal single space: eight members do
+    not fit on one line at the repository's print width, so Prettier breaks the union into a
+    leading-`|` list and a pattern anchored on `" = "` stops matching. Adding the eighth key failed this
+    test with "arm-pairing.ts has no `ArmPairing` union" -- a message about layout standing in for a
+    check on vocabulary.
+
     The dispatcher refuses a value the arm would throw on, but only after the run is accepted and billed --
     so the check is a money gate, and a money gate whose vocabulary drifted from the arm's would pass a typo
     straight through to the arm.
     """
     module = load(PAIR_DISPATCH, 'dispatch_semantic_carry')
     source = read(ROOT / 'packages/cortex-eval/src/arm-pairing.ts')
-    union = re.search(r"type ArmPairing = ([^;]+);", source)
+    union = re.search(r"type ArmPairing =[ \t]*\n?([^;]+);", source)
     assert union is not None, 'arm-pairing.ts has no `ArmPairing` union'
     arm_names = sorted(re.findall(r"'(\w+)'", union.group(1)))
     assert arm_names == sorted(module.PAIRINGS), (

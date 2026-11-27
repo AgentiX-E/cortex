@@ -65,6 +65,7 @@ describe('readArmPairing', () => {
     expect(readArmPairing(' ASK ')).toBe('ask');
     expect(readArmPairing(' UNITS ')).toBe('units');
     expect(readArmPairing(' Reader ')).toBe('reader');
+    expect(readArmPairing(' Superseded ')).toBe('superseded');
   });
 
   it('refuses a pairing it cannot build, and names every one it can', () => {
@@ -79,13 +80,14 @@ describe('readArmPairing', () => {
     expect(() => readArmPairing('two-window')).toThrow(/`ask`/);
     expect(() => readArmPairing('two-window')).toThrow(/`units`/);
     expect(() => readArmPairing('two-window')).toThrow(/`reader`/);
+    expect(() => readArmPairing('two-window')).toThrow(/`superseded`/);
     // The count is asserted in prose as well as by enumeration: "The three are" survived a fourth
     // member once already in this campaign's sibling selector, "The four are" survived a fifth one three
     // rounds ago, "The five are" survived a sixth, and "The six are" would have survived this seventh --
     // the prose count is the sentence a reader trusts first, and it has now been wrong four times.
     // Asserted as a number so an eighth member has to edit this line rather than append a branch.
-    expect(() => readArmPairing('two-window')).toThrow(/The seven are/);
-    expect(() => readArmPairing('two-window')).not.toThrow(/The six are/);
+    expect(() => readArmPairing('two-window')).toThrow(/The eight are/);
+    expect(() => readArmPairing('two-window')).not.toThrow(/The seven are/);
   });
 });
 
@@ -105,6 +107,7 @@ describe('pairingViolation', () => {
     ask: 'verbatim-acts',
     units: 'turn-fill',
     reader: true,
+    superseded: 'mark',
   };
 
   it('has nothing to require of the registered pair', () => {
@@ -119,6 +122,7 @@ describe('pairingViolation', () => {
         ask: 'route',
         units: 'turn',
         reader: false,
+        superseded: 'off',
       }),
     ).toBeNull();
   });
@@ -161,6 +165,7 @@ describe('pairingViolation', () => {
         ask: 'route',
         units: 'turn',
         reader: false,
+        superseded: 'off',
       });
       expect({ pairing, saysWhatZeroMeans: /\b(null|zero)\b/.test(message ?? '') }).toEqual({
         pairing,
@@ -177,6 +182,7 @@ describe('pairingViolation', () => {
         ask: 'route',
         units: 'turn',
         reader: false,
+        superseded: 'off',
       }),
     ).toContain('F1');
     // `units` names the pre-registration section whose falsification rule it protects (§5.1: "`promptChars`
@@ -189,6 +195,7 @@ describe('pairingViolation', () => {
         ask: 'route',
         units: 'turn',
         reader: false,
+        superseded: 'off',
       }),
     ).toContain('PREREG-TURN-FILL.md');
   });
@@ -196,8 +203,12 @@ describe('pairingViolation', () => {
   it('requires exactly the one key its pairing splits, and nothing else', () => {
     // The Cartesian product, because the defect this catches is a condition that reads a SECOND key: a
     // `carry` rung that also demanded the clock would pass every single-axis test above and refuse three
-    // quarters of the dispatches that ran. 6 x 96 = 576 readings, each compared as a whole object so a
+    // quarters of the dispatches that ran. 8 x 288 = 2,304 readings, each compared as a whole object so a
     // failure prints which combination disagreed rather than which boolean did.
+    //
+    // The product grew a third state per key twice (`ask`, then `superseded`), which is why the number above
+    // is written as a product rather than as a total: the axes are what the loop below enumerates, and a
+    // total that is not the product of them is a number nobody can re-derive.
     const satisfactions: Record<string, (treatment: PairingTreatment) => boolean> = {
       carry: (treatment) => treatment.carry,
       clock: (treatment) => treatment.clock,
@@ -210,6 +221,11 @@ describe('pairingViolation', () => {
       // A boolean like `carry` and `clock`, and for the same reason: the control is the absence of the
       // option, so `false` is the only value that is a control.
       reader: (treatment) => treatment.reader,
+      // A named control like `units`, with two treatments rather than one: `mark` and `collapse` render the
+      // same fact two ways, and a rung that accepted only `mark` would refuse a dispatch asking for
+      // `collapse` -- which is a different product decision about how a transcript is shown, not a weaker
+      // version of the same one.
+      superseded: (treatment) => treatment.superseded !== 'off',
     };
     for (const [pairing, satisfied] of Object.entries(satisfactions)) {
       for (const carry of [true, false]) {
@@ -218,12 +234,14 @@ describe('pairingViolation', () => {
             for (const ask of ['route', 'verbatim-acts', 'verbatim-scope']) {
               for (const units of ['turn', 'turn-fill']) {
                 for (const reader of [true, false]) {
-                  const treatment = { carry, clock, resolution, ask, units, reader };
-                  expect({
-                    pairing,
-                    ...treatment,
-                    refused: pairingViolation(pairing as 'carry', treatment) !== null,
-                  }).toEqual({ pairing, ...treatment, refused: !satisfied(treatment) });
+                  for (const superseded of ['off', 'mark', 'collapse']) {
+                    const treatment = { carry, clock, resolution, ask, units, reader, superseded };
+                    expect({
+                      pairing,
+                      ...treatment,
+                      refused: pairingViolation(pairing as 'carry', treatment) !== null,
+                    }).toEqual({ pairing, ...treatment, refused: !satisfied(treatment) });
+                  }
                 }
               }
             }

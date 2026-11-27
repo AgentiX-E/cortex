@@ -151,7 +151,7 @@ RESOLUTIONS = ("raw", "layered")
 # this file is (this is a Python process talking to the API, and an import would make dispatching depend on
 # a TypeScript build). `test_session_clock_wiring.py` holds the two lists to each other in both directions.
 PAIRING_VARIABLE = "CORTEX_MEMORY_AB"
-PAIRINGS = ("reference", "carry", "clock", "resolution", "ask", "units", "reader")
+PAIRINGS = ("reference", "carry", "clock", "resolution", "ask", "units", "reader", "superseded")
 
 # §13.312's judge pin, reachable from the only workflow that dispatches a **pair** of arms.
 #

@@ -800,6 +800,35 @@
       "kind": "self",
       "source": "vendor comparison page (2026), LongMemEval-S 500 questions, GPT-4o answering: 97% overall, per-category 97 single-session-user / 100 single-session-assistant / 95 single-session-preference / 100 knowledge-update / 95 temporal-reasoning / 96 multi-session",
       "note": "The same vendor publishes 84.6 with a GPT-5 reader and 66.07 in OmniMemEval's harness, and an independent comparison measures 81.6 with a GPT-4o reader. Four readings of one system span 31 points, and the harness field is what separates them: only the last was run by someone other than the vendor."
+    },
+    {
+      "system": "ContextStream",
+      "score": 96.8,
+      "correct": 484,
+      "total": 500,
+      "dataset": "LongMemEval",
+      "variant": "S",
+      "scoring": "single",
+      "answerModel": "Claude Opus 5.5, routed from the question text",
+      "judge": "gpt-4o, the benchmark's own pinned judge",
+      "harness": "contextstream-published",
+      "kind": "self",
+      "source": "contextstream.io/benchmarks, 'Results as of October 27, 2026': 96.8% (484 of 500) on the full LongMemEval-S, Wilson 95% CI [94.9%, 98.0%]",
+      "note": "The highest reading here that states its own uncertainty, and the note is where the three things that make it readable are: a Wilson interval, a held-out half (239 of 249 = 96.0% on the questions never used to choose the setup, against a bar of 237 written before the run), and the sentence 'Competitor scores are vendor-published, not re-run' -- the same disclaimer this file's `$comment` makes about itself. It is `self` for the reason every vendor row is: the authors ran their own system. The two conditions it does NOT state are the two this ledger treats as conditions: no token count per question, so it cannot enter the cost axis and no ratio against it is a ratio, and no reader fixed across the suite -- the answer model is chosen from the question text, which is itself the mechanism being claimed (a per-question strategy rather than a per-route one).",
+      "deployment": "vendor cloud"
+    },
+    {
+      "system": "agentmemory",
+      "score": 96.2,
+      "dataset": "LongMemEval",
+      "variant": "S",
+      "scoring": "single",
+      "answerModel": "unknown",
+      "judge": "unknown",
+      "harness": "agentmemory-self-reported",
+      "kind": "third",
+      "source": "Quoted by contextstream.io/benchmarks as 'agentmemory's self-reported 96.2%, the highest published score we know of'",
+      "note": "`third` rather than `self`, and the distinction is the only thing this row has to say: no primary publication by the system's authors was located, so every field past the score is `unknown` -- including the answer model, which is the field that decides whether a score is comparable at all. It is in the ledger because another system's confidence interval was computed against it ('agentmemory sits within our 95% confidence interval'), and a ledger that omitted the number an interval is anchored on could not be checked against that claim. It is not evidence that anything beats this project; it is the anchor of somebody else's claim, recorded as such."
     }
   ]
 }

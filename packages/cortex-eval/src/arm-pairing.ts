@@ -77,14 +77,31 @@ const UNIT_PAIRING_CONTROL = 'turn';
  *   registered arm, run `43140878641`" -- a **different run**, whose `MR` reading is seven questions stale
  *   and whose between-run drift this file's opening paragraph prices at 1.7-2.1pp (8.5-10.5 questions on
  *   500) against a bar of three questions. A bar smaller than the drift of the control it is read against
- *   is not a bar. This value is the sixth key, and it is the reason the paragraph below counts six keys
- *   rather than five.
+ *   is not a bar.
+ * - `superseded`: the same cognitive system twice, the inline superseded rendering (`'mark'` or
+ *   `'collapse'`) off against the configuration the dispatch names in `CORTEX_MEMORY_SUPERSEDED`.
+ *   `PREREGISTRATION-CORTEX-MEMORY-ARM.md` §18's `I6` is the reason: it is the one product mechanism the
+ *   register carried a **score** for, and its price was written down as `14.26 CNY` with the note "needs
+ *   ABAB interleaving" -- four dispatches, because a cross-run comparison on this corpus cannot resolve an
+ *   effect below 2.5 questions (`AUDIT-MR-ENUMERATION.md` §9 measured that floor) and the register knew it.
+ *   A pairing is the instrument that note assumed did not exist: one job, one corpus, both sides, and the
+ *   treatment is the only difference. It is also the only key here whose treatment changes the bytes
+ *   **inside** a turn rather than which turns are carried, which is why `DESIGN-MULTI-STEP-RETRIEVAL.md`
+ *   §6.1's oracle-evidence ceiling (C − S = 1.00 point, `p = 0.44`) does not bound it: that ceiling is a
+ *   statement about the **set** of turns in the prompt, and this key leaves the set alone.
  *
- * The last six are one instrument with six keys, and that is why they live here rather than in six
- * files: each asks "what is this one switch worth", each is built by calling the same constructor twice,
- * and each must keep the OTHER keys equal on the two sides. A second selector for the second flag would
- * be a second place that has to remember the same rule, and the rule is the whole instrument -- a pair
- * that differs by two keys publishes a delta neither key can claim.
+ * Every key above is one instrument with one key each, and that is why they live here rather than in one
+ * file apiece: each asks "what is this one switch worth", each is built by calling the same constructor
+ * twice, and each must keep the OTHER keys equal on the two sides. A second selector for the second flag
+ * would be a second place that has to remember the same rule, and the rule is the whole instrument -- a
+ * pair that differs by two keys publishes a delta neither key can claim.
+ *
+ * **Why nothing here counts its own keys.** This paragraph said "the last six are one instrument with six
+ * keys" while there were seven, and the sentence above it said "this value is the sixth key" one round
+ * after `units` had made it the sixth. Neither was caught by anything, because a count in prose has no
+ * reader that can disagree with it -- the same defect `readArmPairing`'s message documents, arriving in the
+ * docstring beside it. The repair is not a corrected number: it is to list the keys and never to number
+ * them, so the next key cannot make this paragraph false.
  *
  * `ask` is the one key whose "off" state is not a `false`: the control is the reference block, which the
  * arm spells `'route'` because it is the *absence* of the option. That is the same shape `resolution`
@@ -93,7 +110,8 @@ const UNIT_PAIRING_CONTROL = 'turn';
  * Not exported: `readArmPairing` is the only way to obtain one, and the export census reports a
  * type nothing names. The union travels in the function's signature, which is where a caller reads it.
  */
-type ArmPairing = 'reference' | 'carry' | 'clock' | 'resolution' | 'ask' | 'units' | 'reader';
+type ArmPairing =
+  'reference' | 'carry' | 'clock' | 'resolution' | 'ask' | 'units' | 'reader' | 'superseded';
 
 /**
  * The pairing this environment asks for. Absent and blank mean `reference`.
@@ -116,8 +134,9 @@ export function readArmPairing(raw: string | undefined): ArmPairing {
   if (trimmed === 'ask') return 'ask';
   if (trimmed === 'units') return 'units';
   if (trimmed === 'reader') return 'reader';
+  if (trimmed === 'superseded') return 'superseded';
   throw new Error(
-    `${PAIRING_VARIABLE} does not name a pairing: got ${JSON.stringify(raw)}. The seven are ` +
+    `${PAIRING_VARIABLE} does not name a pairing: got ${JSON.stringify(raw)}. The eight are ` +
       '`reference` (the reference pipeline against the cognitive one, which is the registered ' +
       'pair and what an unset variable means), `carry` (the cognitive system against itself ' +
       "with `semanticCarry` off, which is `S12`'s instrument), `clock` (the cognitive system " +
@@ -127,26 +146,29 @@ export function readArmPairing(raw: string | undefined): ArmPairing {
       'against itself with each route’s reference instruction block on the control side, which is the ' +
       'pair `§13.291`’s adoption should have been priced with), `units` (the cognitive system ' +
       'against itself with the registered `turn` evidence unit on the control side, which is the pair ' +
-      '`PREREG-TURN-FILL.md` was written against and could not be dispatched to) and `reader` (the ' +
+      '`PREREG-TURN-FILL.md` was written against and could not be dispatched to), `reader` (the ' +
       'cognitive system against itself with the second look off, which is the pair ' +
-      '`PREREGISTRATION-MULTI-STEP.md` priced and barred and then had no instrument for). A value that ' +
+      '`PREREGISTRATION-MULTI-STEP.md` priced and barred and then had no instrument for) and ' +
+      '`superseded` (the cognitive system against itself with the inline superseded rendering off, ' +
+      'which is the only pair whose treatment changes the bytes **inside** a turn rather than which ' +
+      'turns are carried). A value that ' +
       'named none of them would publish a delta between two systems the dispatch never described.',
   );
 }
 
 /**
- * The six treatment fields a pairing can split, as a pairing reads them.
+ * The treatment fields a pairing can split, as a pairing reads them.
  *
  * Structural rather than imported: the arm's own `ArmTreatment` is this type with two fields narrowed
  * (`resolution` to its union and `ask` to its own), so it is assignable here and the two cannot disagree
- * about the six names. Declaring them in the harness instead would put the question "which keys can a
+ * about the names. Declaring them in the harness instead would put the question "which keys can a
  * pairing move" in the file that builds instances rather than in the file that names pairings.
  *
- * The count in that first line was **four** until `reader` was added, and it had been wrong since `units`
- * landed one key earlier: five fields, a sentence that said four, and nothing in the repository that could
- * notice. That is the same failure the `readArmPairing` message documents in its own prose count, arriving
- * in the docstring beside it -- so the number is stated once, at the head of the type, and every key below
- * is listed rather than counted.
+ * That paragraph used to carry a count -- "the count in that first line was four until `reader` was
+ * added" -- which is the same failure the `readArmPairing` message documents in its own prose count,
+ * arriving in the docstring beside it. Both are gone now. A type lists its fields; a sentence that numbers
+ * them is a second statement of the list with no reader that can disagree with it, and this file produced
+ * two stale numbers that way.
  */
 export type PairingTreatment = {
   readonly carry: boolean;
@@ -172,6 +194,21 @@ export type PairingTreatment = {
    * is two controls, and the delta would be exactly zero with the artifact naming a stage on both lines.
    */
   readonly reader: boolean;
+  /**
+   * The inline superseded rendering the **feature** side is asked for, in the arm's own spelling.
+   *
+   * A `string` for the reason `units` is one: `cortex-memory` owns the union (`'off' | 'mark' |
+   * 'collapse'`) and this package may not import it, so the arm's parser (`readSuperseded`) is what
+   * validates the value against the product's list. `'off'` is the control and is also the shipped
+   * default, which is why `run-ablation.ts` writes it rather than narrowing to `undefined`: the treatment
+   * record has to say what the control side **is**, not merely that it was not asked for.
+   *
+   * The refusal below exists because a `superseded` pair with `'off'` on both sides renders every prompt
+   * byte-identically, and `I6`'s four-question threshold would then read zero for a comparison that never
+   * administered a rendering -- after which the register's only scored product mechanism would be retired
+   * on a dispatch error.
+   */
+  readonly superseded: string;
 };
 
 /**
@@ -273,6 +310,21 @@ export function pairingViolation(pairing: ArmPairing, treatment: PairingTreatmen
         'feature side must be the side that looks twice: set CORTEX_MEMORY_READER_SEARCH=1. Without it both ' +
         'sides are the first pass, the delta is zero by construction, and the artifact would publish a null ' +
         '-- and §4.1 of the registration closes the axis on that null at its price.'
+      );
+    case 'superseded':
+      if (treatment.superseded !== 'off') return null;
+      // The `reader` rung's shape: the control side is the **default**, so a dispatcher who names the
+      // pairing and leaves `CORTEX_MEMORY_SUPERSEDED` at `off` gets two controls and a delta of exactly
+      // zero. `I6`'s criterion (`PREREGISTRATION-CORTEX-MEMORY-ARM.md` §18) is a **paired** movement of at
+      // least four questions across the `KU` stale twins; a zero produced by a dispatch that administered
+      // nothing would be read as that criterion failing, and the register would retire the one product
+      // mechanism it ever scored.
+      return (
+        'CORTEX_MEMORY_AB=superseded pairs the cognitive system against itself with the inline superseded ' +
+        'rendering off, so the feature side must be the side that renders it: set CORTEX_MEMORY_SUPERSEDED ' +
+        'to `mark` or `collapse`. Without it both sides render every turn byte-identically, the delta is ' +
+        'zero by construction, and the artifact would publish a null -- and §18 would retire `I6` on that ' +
+        'null at four times its price.'
       );
     case 'reference':
       // The registered pair compares two systems, so there is no one key to require: `buildBaseline` and

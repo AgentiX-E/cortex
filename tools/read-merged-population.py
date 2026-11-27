@@ -56,7 +56,7 @@ from math import comb
 # The pairings `arm-pairing.ts` can build. One constant, held to that union by
 # `test_the_pairing_vocabulary_is_the_arms_vocabulary`, because a closed set copied into a reader is a
 # closed set that will fall out of step -- measured, not hypothesised: see this file's header.
-PAIRINGS = ('reference', 'carry', 'clock', 'resolution', 'ask', 'units', 'reader')
+PAIRINGS = ('reference', 'carry', 'clock', 'resolution', 'ask', 'units', 'reader', 'superseded')
 
 # Which `featureConfig` field says the arm built this pairing, for the pairings that put ONE FLAG of the
 # same system between their sides.
@@ -79,6 +79,11 @@ PAIR_FLAGS = {
     # flag says the control was the same system with the stage off, in the same job -- and it is what makes
     # the product's bill readable as one side's work (`censusSourcesOf` answers the feature instances).
     'reader': 'readerPair',
+    # §18's `I6`. The same shape as `reader`'s, one axis over and with a named control: `supersededRendering`
+    # is on every artifact (`off` on all of them so far), so only this flag says the delta compares one
+    # rendering rather than two systems -- and without it an `I6` reading would be filed as a measurement of
+    # the registered pair, which is the error `PAIR_FLAGS` exists to make impossible.
+    'superseded': 'supersededPair',
 }
 
 # Derived rather than restated: a second tuple of the same names would be a second place to forget.
