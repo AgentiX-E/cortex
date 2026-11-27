@@ -406,3 +406,62 @@ Unchanged in substance, and strengthened in basis:
    buckets, 0 fallbacks), which is the durable outcome of this iteration.
 4. **No defect was found in the cache scope or the ordering path.** Both were
    investigated on suspicion, and both were cleared with controls.
+
+## 9. A parser defect that could have made this verdict lie for a reasoning model
+
+### 9.1 The reachability, and why it matters to this verdict specifically
+
+`parseListwiseScores` in `cortex-ai/src/rerank/llm-reranker.ts` turned one model
+reply into the positional score vector that B1 compares. Its first version cut the
+reply from the first `[` to the last `]` and parsed that slice. That is a vector
+only when the reply carries exactly one array.
+
+A reasoning model restates the requested shape while it deliberates and then emits
+its scores:
+
+```
+Example: [0.5, 0.5]. Final scores: [0.9, 0.1]
+```
+
+The slice spans both arrays and the prose between them, `JSON.parse` fails, and
+the whole bucket is dropped. The only visible signal is `fallbackCount += 1`. The
+rerank A/B then reads a short score array as "reranking produced no reorder" —
+the same output as a reranker that ran and did nothing. That is the exact
+confusion §8.6 warns about, one level deeper: not a wrong sign in a probe, but a
+reply that never parsed being reported as a parsed result that agreed with the
+baseline.
+
+Section 8.7 recorded `0 fallbacks / 300 buckets` in production. That number was
+honest for the non-reasoning reader it was measured with; the defect would have
+made it dishonest the day the same pipeline ran a reasoning model. The verdict
+"reranking stays off" is unchanged — but its evidence is now valid for both
+model classes, which is what the strong/weak-model contract requires.
+
+### 9.2 The fix, consistent with the other three parsers
+
+The reply is now scanned for every bracket-balanced top-level array. Depth
+counting keeps an inner `]` from closing the outer array. The last parseable array
+wins, because reasoning precedes the conclusion; an echoed example earlier in the
+reply is superseded. The two object-member guards (a `{` before the array, a `}`
+after it) are preserved and applied around the *chosen* array, so a keyed payload
+`{"scores": [...]}` is still refused — it carries no positional guarantee. A
+score array holds only numbers, so no string-escape state is tracked: adding it
+would create branches no legal reply could take.
+
+This is the fourth and last instance of the same first-to-last defect. A full
+source scan confirms the other LLM-facing parsers (`agent/parse.ts`, `json.ts`,
+`aggregation/spec.ts`) were already converted, and the remaining `JSON.parse`
+calls read locally-produced caches rather than model replies. The root cause is
+now closed across the codebase, not patched at one call site.
+
+### 9.3 Acceptance
+
+Written test-first: the new cases were observed failing before the change. Four
+cases were added — an echoed example before a conclusion (last array wins), an
+unparseable earlier array that is skipped, a nested array that is rejected rather
+than scoring a sub-vector, and a stray closing bracket at depth zero. All 28 tests
+in `llm-reranker.test.ts` pass; `llm-reranker.ts` is **100% on all four coverage
+dimensions** and the per-file gate reports 206 files gated, 0 ratcheted. No
+benchmark was dispatched and no API money was spent: this is a correctness repair
+inside the coverage boundary, and for a single-array reply the scan returns the
+same vector the slice did.

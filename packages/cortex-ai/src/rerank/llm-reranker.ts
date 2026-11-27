@@ -72,58 +72,97 @@ export function buildListwiseRerankPrompt(
 }
 
 /**
+ * Every bracket-balanced top-level array in `text`, in order, with its bounds.
+ *
+ * A first-`[` to last-`]` slice is only an array when the reply carries exactly one.
+ * A reasoning model restates the requested shape while it thinks and then emits
+ * its decision; the slice then spans both arrays and the prose between them and
+ * parses as nothing. Counting depth finds each array separately. A score array
+ * holds numbers, so a `]` cannot occur inside a string value and there is no
+ * string state to track here (unlike the object scanners in `json.ts`). The
+ * bounds are returned so the object-member guards below can inspect the exact
+ * text around the chosen array rather than the whole reply.
+ */
+function arraySlices(text: string): { text: string; start: number; end: number }[] {
+  const slices: { text: string; start: number; end: number }[] = [];
+  let depth = 0;
+  let start = -1;
+  for (let i = 0; i < text.length; i += 1) {
+    const ch = text[i]!;
+    if (ch === '[') {
+      if (depth === 0) start = i;
+      depth += 1;
+    } else if (ch === ']' && depth > 0) {
+      depth -= 1;
+      if (depth === 0) {
+        slices.push({ text: text.slice(start, i + 1), start, end: i });
+        start = -1;
+      }
+    }
+  }
+  return slices;
+}
+
+/**
  * Extract a numeric array of exactly `expected` entries from a model reply.
  *
  * The tolerant part is *locating* the array: models wrap JSON in prose or a code
- * fence often enough that rejecting those would waste calls for no benefit. The
+ * fence often enough that rejecting those would waste calls for no benefit, and
+ * a reasoning model may echo an example array before its conclusion. The
  * intolerant part is *accepting* it: length and finiteness are enforced exactly,
  * because a padded or truncated score vector cannot be told apart from a real
  * ranking and would silently reorder the candidates.
  *
  * An object-wrapped array (`{"scores": [...]}`) is rejected even though it
- * contains a well-formed array of the right length. Slicing from `[` to `]` would
- * happily accept it, but a keyed payload carries no positional guarantee — the
- * model has grouped the scores under a name of its own choosing rather than
- * answering with the ordered vector the prompt specified, so the mapping from
- * array position to candidate is no longer something this adapter can rely on.
+ * contains a well-formed array of the right length. A keyed payload carries no
+ * positional guarantee — the model grouped the scores under a name of its own
+ * choosing rather than answering with the ordered vector the prompt specified,
+ * so the array-position-to-candidate mapping is no longer reliable.
  */
 export function parseListwiseScores(reply: string, expected: number): number[] | null {
   if (expected === 0) {
     return [];
   }
-  const start = reply.indexOf('[');
-  const end = reply.lastIndexOf(']');
-  if (start === -1 || end <= start) {
-    return null;
-  }
-  // Text before the opening bracket may only be decoration (prose, a fence, a
-  // label). A `{` in that prefix means the array is a value inside an object, and
-  // its positional meaning is not the one the prompt asked for.
-  if (reply.slice(0, start).includes('{')) {
-    return null;
-  }
-  // Same argument for the closing side: trailing `}` after `]` means the array
-  // was an object member, and the object may not have ended where the array did.
-  if (reply.slice(end + 1).includes('}')) {
-    return null;
-  }
-  let parsed: unknown;
-  try {
-    parsed = JSON.parse(reply.slice(start, end + 1));
-  } catch {
-    return null;
-  }
-  if (!Array.isArray(parsed) || parsed.length !== expected) {
-    return null;
-  }
-  const scores: number[] = [];
-  for (const entry of parsed) {
-    if (typeof entry !== 'number' || !Number.isFinite(entry)) {
-      return null;
+  const candidates = arraySlices(reply);
+  // Last parseable array wins: reasoning precedes the conclusion, so an echoed
+  // example earlier in the reply is superseded by the vector the model settled on.
+  for (let i = candidates.length - 1; i >= 0; i -= 1) {
+    const candidate = candidates[i]!;
+    // Text before the opening bracket may only be decoration. A `{` in that
+    // prefix means this array is a value inside an object, whose positional
+    // meaning is not the one the prompt asked for.
+    if (reply.slice(0, candidate.start).includes('{')) {
+      continue;
     }
-    scores.push(entry);
+    // Same argument for the closing side: a trailing `}` means the array was an
+    // object member, and the object may not have ended where the array did.
+    if (reply.slice(candidate.end + 1).includes('}')) {
+      continue;
+    }
+    let parsed: unknown;
+    try {
+      parsed = JSON.parse(candidate.text);
+    } catch {
+      // An array that does not parse is an aside; keep looking backwards.
+      continue;
+    }
+    if (!Array.isArray(parsed) || parsed.length !== expected) {
+      continue;
+    }
+    const scores: number[] = [];
+    let finite = true;
+    for (const entry of parsed) {
+      if (typeof entry !== 'number' || !Number.isFinite(entry)) {
+        finite = false;
+        break;
+      }
+      scores.push(entry);
+    }
+    if (finite) {
+      return scores;
+    }
   }
-  return scores;
+  return null;
 }
 
 export class LLMReranker {

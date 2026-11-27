@@ -151,6 +151,34 @@ describe('parseListwiseScores', () => {
     expect(parseListwiseScores('[0.9 0.1]', 2)).toBeNull();
     expect(parseListwiseScores("[0.9, 'x']", 2)).toBeNull();
   });
+
+  it('takes the last balanced array when a reasoning reply echoes an example first', () => {
+    // A reasoning model restates the requested shape while thinking, then emits its
+    // decision. A first-'[' to last-']' slice spans both arrays and the prose between
+    // them, so JSON.parse fails, the whole bucket is dropped, and the A/B reads it only
+    // as a rerank fallback -- "reranking does not help" when reranking never ran.
+    expect(parseListwiseScores('Example: [0.5, 0.5]. Final scores: [0.9, 0.1]', 2)).toEqual([
+      0.9, 0.1,
+    ]);
+  });
+
+  it('skips an unparseable earlier array and reads a later valid one', () => {
+    // An echoed draft with a trailing comma is an aside; the conclusion after it is
+    // the vector whose positions map to the candidates.
+    expect(parseListwiseScores('Draft [0.9, 0.1, ] then [0.2, 0.8]', 2)).toEqual([0.2, 0.8]);
+  });
+
+  it('rejects nested arrays rather than reading an inner vector as a score', () => {
+    // Bracket-depth tracking keeps an inner `]` from closing the outer array; the
+    // entries then fail the number check rather than silently scoring a sub-vector.
+    expect(parseListwiseScores('[[0.9, 0.1], [0.2, 0.8]]', 2)).toBeNull();
+  });
+
+  it('ignores a stray closing bracket at depth zero', () => {
+    // A `]` with no matching `[` cannot take the depth negative; the valid array
+    // before it is still read.
+    expect(parseListwiseScores('[0.9, 0.1]]', 2)).toEqual([0.9, 0.1]);
+  });
 });
 
 describe('LLMReranker', () => {
