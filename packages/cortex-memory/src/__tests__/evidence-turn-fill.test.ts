@@ -111,9 +111,25 @@ function system(options: Partial<CortexMemoryOptions>): CortexMemory {
   });
 }
 
-async function carried(options: Partial<CortexMemoryOptions>, context = corpus()): Promise<string[]> {
+async function carried(
+  options: Partial<CortexMemoryOptions>,
+  context = corpus(),
+): Promise<string[]> {
   const memory = system(options);
   await memory.answer('How many?', context);
+  return (memory.lastRetrievedContext() ?? []).map((text) => text.split('-')[0]!.trim());
+}
+
+/** A system with no relevance signal at all, which is the configuration the unsignalled path owns. */
+async function carriedWithoutSignal(units: 'turn' | 'turn-fill'): Promise<string[]> {
+  const memory = new CortexMemory({
+    now: NOW,
+    gate: OPEN_GATE,
+    llm: recordingLlm([]),
+    maxPromptChars: 10_000,
+    relevanceUnits: units,
+  });
+  await memory.answer('How many?', corpus());
   return (memory.lastRetrievedContext() ?? []).map((text) => text.split('-')[0]!.trim());
 }
 
@@ -191,9 +207,12 @@ describe('the turn budget can fill the room it was given', () => {
   it('is inert when no relevance signal was supplied', async () => {
     // Same guard as the other units, for the same reason: with no `relevanceFor` there is no order
     // to fill, and the unsignalled path clips the arrival-ordered text character for character.
-    const noSignal = { relevanceFor: undefined };
-    const filled = await carried({ ...noSignal, relevanceUnits: 'turn-fill' });
-    const plain = await carried({ ...noSignal, relevanceUnits: 'turn' });
+    //
+    // The option is **omitted** rather than set to `undefined`, and `exactOptionalPropertyTypes` is
+    // why: `relevanceFor: undefined` is not a configured absence in this codebase, it is a type
+    // error, and a test that spelled it that way would be testing a state the constructor refuses.
+    const filled = await carriedWithoutSignal('turn-fill');
+    const plain = await carriedWithoutSignal('turn');
 
     expect(filled).toEqual(plain);
   });
@@ -220,7 +239,9 @@ describe('the turn budget can fill the room it was given', () => {
     // separator and index are counted, and both rules have to agree about that.
     const context = [turn('tall', 600), turn('fat', 900), turn('small1', 400), turn('small3', 250)];
     for (let room = 900; room <= 2_400; room += 20) {
-      const prefixed = new Set(await carried({ maxPromptChars: room, relevanceUnits: 'turn' }, context));
+      const prefixed = new Set(
+        await carried({ maxPromptChars: room, relevanceUnits: 'turn' }, context),
+      );
       const filled = await carried({ maxPromptChars: room, relevanceUnits: 'turn-fill' }, context);
       for (const tag of prefixed) expect(filled, `room ${room}`).toContain(tag);
     }
@@ -259,7 +280,7 @@ describe('the turn budget can fill the room it was given', () => {
       now: NOW,
       gate: OPEN_GATE,
       llm: recordingLlm(seen),
-      relevanceFor: (q, text) => (text.startsWith('small') ? 1 : 0),
+      relevanceFor: (_question, text) => (text.startsWith('small') ? 1 : 0),
       maxPromptChars: 4_000,
       relevanceUnits: 'turn-fill',
     });

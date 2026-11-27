@@ -1014,12 +1014,7 @@ export type PromptOptions = {
  * ambiguous.
  */
 export type RelevanceUnits =
-  | 'turn'
-  | 'turn-fill'
-  | 'session'
-  | 'session-fill'
-  | 'anchor-window'
-  | 'session-text';
+  'turn' | 'turn-fill' | 'session' | 'session-fill' | 'anchor-window' | 'session-text';
 
 /**
  * Whether a turn the per-turn cap cut says so.
