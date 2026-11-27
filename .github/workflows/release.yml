@@ -1,0 +1,191 @@
+# The publish path, and the four things it refuses before npm sees a tarball.
+#
+# ## Why this workflow exists
+#
+# Five packages at `0.1.0` had been buildable, tested and documented for months with **no publish path of
+# any kind**: no workflow, no `publishConfig`, no `engines`, no `repository`, no keywords. Every claim the
+# delivery log makes about "a customer can install this" was, until this file, a claim that the tarball
+# *would* be correct if somebody assembled it by hand -- and the first hand assembly would have hit four
+# refusals in a row, in an order that costs the most money first:
+#
+#   1. `@agentix-e/*` is scoped, and npm's default for a scoped first publish is `restricted`. Without
+#      `publishConfig.access` the command fails, or -- worse -- succeeds into a paid private scope, and
+#      the "success" is the expensive outcome because nothing reports it.
+#   2. `workspace:*` is expanded by `pnpm publish` and **shipped literally** by `npm publish`. The install
+#      then fails at resolve time for the consumer, not for the publisher, which is the worst place for a
+#      packaging error to surface. This file therefore publishes with pnpm and says so.
+#   3. There is no node floor. A consumer on Node 18 installs successfully into a tree whose own lockfile
+#      was resolved by a tool the runtime cannot execute; the failure appears as a syntax error in a
+#      dependency, in their code.
+#   4. Nothing is searchable, because no package carries a keyword.
+#
+# Three of those four are invisible to every test in this repository, which is why the first step here is
+# `pnpm guard:publish-metadata` rather than `npm publish`: the gate reads the same fields npm reads, and it
+# fails in this job instead of in a consumer's install.
+#
+# ## Why `dry_run` defaults to true
+#
+# A publish is the one irreversible action in this repository. `dry_run: true` runs the whole assembly --
+# install, build, the metadata gate, the version agreement, and `pnpm -r publish --dry-run` -- and touches
+# nothing. That means the path is exercised on every dispatch rather than on the first real release, which
+# is the only way to find a packaging defect before it is permanent: npm does not allow a published version
+# to be reused, so a bad `0.1.0` cannot be repaired, only superseded.
+#
+# The token is required **only** on the real path, and its absence there is a refusal with the sentence
+# that names the secret. A workflow that fails for a missing credential without saying which one costs a
+# round trip; one that silently skips costs a release that never happened.
+name: Release
+
+on:
+  workflow_dispatch:
+    inputs:
+      dry_run:
+        description: 'Assemble and verify without publishing. true is the default because a publish cannot be undone and this path should be exercised before it is real'
+        required: false
+        default: 'true'
+        type: string
+      version:
+        description: 'The version being released. Every packages/*/package.json must already declare exactly this, and the check refuses when they do not -- a release that publishes one number while the tree says another is a tag nobody can reproduce'
+        required: false
+        default: '0.1.0'
+        type: string
+      provenance:
+        description: 'Attach a signed provenance statement (requires id-token: write, which this workflow grants). on is the default for a real publish because it is the only claim a consumer can verify without trusting the registry account'
+        required: false
+        default: 'on'
+        type: string
+
+permissions:
+  contents: read
+  # `--provenance` mints a Sigstore attestation through the job's OIDC identity, and that is the whole
+  # point of it: the statement says "this tarball was built from this commit by this workflow", which is a
+  # fact no registry account can forge. Without this permission the flag fails the publish rather than
+  # silently dropping the attestation.
+  id-token: write
+
+# One release at a time. Two concurrent publishes of the same version race on npm's own uniqueness check,
+# and the loser's error looks like a network failure.
+concurrency:
+  group: release-${{ github.event.inputs.version || 'unset' }}
+  cancel-in-progress: false
+
+jobs:
+  publish:
+    name: Assemble and publish
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 9.15.0
+
+      - name: Setup Node.js
+        # `registry-url` writes the `.npmrc` that `NODE_AUTH_TOKEN` feeds. It is set here rather than in a
+        # step of its own because a hand-written `.npmrc` is a second copy of one line, and the copy is what
+        # gets out of step with the registry the packages actually go to.
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+          registry-url: https://registry.npmjs.org
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      # The tarball contains `dist` and nothing else, so the build is not optional here even though every
+      # earlier step in the pipeline builds. A release that shipped an empty `dist` would install cleanly
+      # and fail on first import.
+      - name: Build
+        run: pnpm build
+
+      # The four fields from the header, plus the seven other consumer-visible facts the gate reads. This
+      # runs before the version check because a metadata defect is a property of the tree and a version
+      # mismatch is a property of the dispatch: the first is always this commit's fault, the second may be
+      # a stale input.
+      - name: Publish metadata gate
+        run: pnpm guard:publish-metadata
+
+      - name: The tree agrees with the version being released
+        env:
+          RELEASE_VERSION: ${{ github.event.inputs.version }}
+        run: |
+          set -o pipefail
+          node --input-type=module -e '
+            import { readdirSync, readFileSync } from "node:fs";
+            const wanted = process.env.RELEASE_VERSION;
+            const dirs = readdirSync("packages", { withFileTypes: true })
+              .filter((one) => one.isDirectory())
+              .map((one) => one.name)
+              .sort();
+            const rows = dirs.map((name) => ({
+              name,
+              version: JSON.parse(readFileSync(`packages/${name}/package.json`, "utf8")).version,
+            }));
+            const wrong = rows.filter((row) => row.version !== wanted);
+            for (const row of rows) console.log(`${row.version === wanted ? "ok  " : "RED "} ${row.name} ${row.version}`);
+            if (wrong.length > 0) {
+              console.error(
+                `\nrelease: the dispatch says ${wanted} and ${wrong.length} package(s) disagree. ` +
+                  "A published version can never be reused, so this refusal is the cheapest one in the file.",
+              );
+              process.exit(1);
+            }
+            console.log(`\nrelease: all ${rows.length} package(s) declare ${wanted}`);
+          '
+
+      # The dry run resolves the workspace protocol, walks the topological order and assembles every tarball
+      # without contacting the registry. It is the step that would have caught `workspace:*` reaching npm.
+      - name: Publish (dry run)
+        if: ${{ github.event.inputs.dry_run != 'false' }}
+        run: |
+          set -o pipefail
+          pnpm -r publish --dry-run --no-git-checks --access public | tee publish-dry-run.log
+          echo
+          echo 'Dry run only. Nothing was published; no credential was used.'
+
+      # The token is read on the real path only, so the dry run works in a fork and in this repository
+      # before the secret exists. `NODE_AUTH_TOKEN` is the name `setup-node`'s `.npmrc` interpolates.
+      - name: Refuse to publish without a token
+        if: ${{ github.event.inputs.dry_run == 'false' }}
+        env:
+          NPM_TOKEN: ${{ secrets.NPM_TOKEN }}
+        run: |
+          set -o pipefail
+          if [ -z "${NPM_TOKEN}" ]; then
+            echo "::error title=No NPM_TOKEN::A real publish needs a repository secret named NPM_TOKEN with publish rights on @agentix-e. This run asked for dry_run=false and the credential is absent, so it stops here rather than reporting a release that did not happen." >&2
+            exit 1
+          fi
+
+      - name: Publish
+        if: ${{ github.event.inputs.dry_run == 'false' }}
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+          # Declared in `env:` and read as a variable, never interpolated into the shell source: the runner
+          # substitutes an expression BEFORE bash parses the block, so a quote or a `;` in the value would
+          # change the program rather than a variable. `tools/check-shell-interpolation.py` caught exactly
+          # this line on the first run of this workflow -- the gate `OPS-SHELL-INTERPOLATION.md` describes,
+          # doing its job on the file that documents why its subject matters.
+          PROVENANCE: ${{ github.event.inputs.provenance }}
+        run: |
+          set -o pipefail
+          # `--provenance` only on the real path: a dry run mints nothing, and asking for an attestation it
+          # will not use is a flag whose absence would go unnoticed if it ever broke.
+          PROVENANCE_FLAG=""
+          if [ "${PROVENANCE}" = "on" ]; then PROVENANCE_FLAG="--provenance"; fi
+          pnpm -r publish --access public --no-git-checks ${PROVENANCE_FLAG} | tee publish.log
+
+      # Both transcripts, always. A failed publish is the one log a reader needs and the one the job
+      # summary cannot reconstruct from exit codes.
+      - name: Upload publish transcripts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: release-transcripts
+          path: |
+            publish.log
+            publish-dry-run.log
+          if-no-files-found: ignore

@@ -4,6 +4,11 @@
   "description": "cortex-memory \u2014 composes cortex-core's value gates into a runnable, conformance-passing MemorySystem",
   "license": "MIT",
   "author": "Lambertyan",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/AgentiX-E/cortex.git",
+    "directory": "packages/cortex-memory"
+  },
   "type": "module",
   "main": "./dist/index.js",
   "types": "./dist/index.d.ts",
@@ -16,6 +21,12 @@
   "files": [
     "dist"
   ],
+  "publishConfig": {
+    "access": "public"
+  },
+  "engines": {
+    "node": ">=22.0.0"
+  },
   "scripts": {
     "build": "rm -rf dist tsconfig.build.tsbuildinfo && tsc -p tsconfig.build.json",
     "test": "vitest run --coverage",

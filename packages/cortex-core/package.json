@@ -4,6 +4,11 @@
   "description": "cortex-core — value-driven cognitive memory contracts and pure algorithms (zero I/O, Node + browser)",
   "license": "MIT",
   "author": "Lambertyan",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/AgentiX-E/cortex.git",
+    "directory": "packages/cortex-core"
+  },
   "type": "module",
   "main": "./dist/index.js",
   "types": "./dist/index.d.ts",
@@ -16,6 +21,12 @@
   "files": [
     "dist"
   ],
+  "publishConfig": {
+    "access": "public"
+  },
+  "engines": {
+    "node": ">=22.0.0"
+  },
   "scripts": {
     "build": "rm -rf dist tsconfig.build.tsbuildinfo && tsc -p tsconfig.build.json",
     "test": "vitest run --coverage",

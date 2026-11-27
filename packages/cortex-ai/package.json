@@ -4,6 +4,11 @@
   "description": "cortex-ai \u2014 provider-agnostic model adapters (remote OpenAI-compatible, local transformers.js, browser built-in) and `./agent`, the retrieval loop the reader drives",
   "license": "MIT",
   "author": "Lambertyan",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/AgentiX-E/cortex.git",
+    "directory": "packages/cortex-ai"
+  },
   "type": "module",
   "main": "./dist/index.js",
   "types": "./dist/index.d.ts",
@@ -28,6 +33,12 @@
   "files": [
     "dist"
   ],
+  "publishConfig": {
+    "access": "public"
+  },
+  "engines": {
+    "node": ">=22.0.0"
+  },
   "scripts": {
     "build": "rm -rf dist tsconfig.build.tsbuildinfo && tsc -p tsconfig.build.json",
     "test": "vitest run --coverage",

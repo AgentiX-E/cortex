@@ -4,6 +4,11 @@
   "description": "cortex-storage \u2014 storage backends for Cortex, one subpath per backend: SQLite and PostgreSQL in Node, OPFS and IndexedDB in the browser",
   "license": "MIT",
   "author": "Lambertyan",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/AgentiX-E/cortex.git",
+    "directory": "packages/cortex-storage"
+  },
   "type": "module",
   "main": "./dist/index.js",
   "types": "./dist/index.d.ts",
@@ -36,6 +41,12 @@
   "files": [
     "dist"
   ],
+  "publishConfig": {
+    "access": "public"
+  },
+  "engines": {
+    "node": ">=22.0.0"
+  },
   "scripts": {
     "build": "rm -rf dist tsconfig.build.tsbuildinfo && tsc -p tsconfig.build.json",
     "test": "vitest run --coverage",
