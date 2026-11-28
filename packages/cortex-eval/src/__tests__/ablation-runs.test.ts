@@ -134,4 +134,21 @@ describe('ablation run count', () => {
     expect(many.retryFires.treatmentFires).toBe(single.retryFires.treatmentFires);
     expect(many.retryFires.controlFires).toBe(0);
   });
+
+  /**
+   * A run count is a repetition count, and a non-integer one must not silently become "one run".
+   *
+   * `RUNS=abc` used to reach `runAblation` as `NaN`. The old `runs < 1` guard let it through
+   * (`NaN < 1` is false), `for (let i = 1; i < runs; i++)` ran zero extra passes (`1 < NaN` is
+   * false), and the report published a single-pass accuracy whose `runs` field serialised to
+   * `null`. A config that says eight runs and a measurement that ran one is the same class of
+   * silent distortion as an empty sample: the artifact cannot be read to learn what was measured.
+   */
+  it('rejects a non-integer or non-finite run count instead of silently running one pass', async () => {
+    for (const bad of [Number.NaN, Number.POSITIVE_INFINITY, 1.5, 0, -1]) {
+      await expect(
+        runAbstentionRetryAblation(mrInstances, embedding, countingLlm().llm, { runs: bad }),
+      ).rejects.toThrow(/run/);
+    }
+  });
 });

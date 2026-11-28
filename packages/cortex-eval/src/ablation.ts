@@ -441,8 +441,13 @@ export async function runAblation(
     deadline === undefined ? undefined : Math.max(0, deadline - performance.now());
   const abstentionAware = options.abstentionAware ?? true;
   const scorer = options.scorer ?? exactMatchScorer;
-  if (runs < 1) {
-    throw new Error(`ablation requires at least 1 run, got ${runs}`);
+  // A run count is a repetition count: it must be a positive integer. `runs < 1` alone is not
+  // enough -- `NaN < 1` is false, so `RUNS=abc` used to slip through, run zero extra passes
+  // (`for (let i = 1; i < runs; i++)` is also false on NaN), and publish a single-pass accuracy
+  // whose `runs` field serialised to `null`. Infinity would try to loop forever. Requiring an
+  // integer here covers every caller, not just the env-var entry points.
+  if (!Number.isInteger(runs) || runs < 1) {
+    throw new Error(`ablation requires at least 1 whole run, got ${runs}`);
   }
 
   // The first evaluation captures per-question correctness so the paired McNemar
@@ -554,9 +559,19 @@ export async function runAblation(
   const perCapability = Object.fromEntries(
     ALL_CAPABILITIES.map((c) => [c, emptyPairedStats()]),
   ) as Record<Capability, PerCapabilityPairedStats>;
+  // The accuracy vectors score an unjudged answer `false` -- a stated pessimistic bound -- but a
+  // pair containing one is a discordance the INSTRUMENT created, not a reader disagreement. Both
+  // `metrics.ts` and the `AblationResult.unjudged` contract say such a pair must be excluded from
+  // McNemar's b/c counts; a judge timeout in one arm must not be able to turn a non-significant
+  // result significant. Keyed by question id (the identity the unjudged verdicts carry), and both
+  // arms' sets are consulted so a legitimate verdict in the other arm is not silently removed from
+  // the accuracy bucket below.
+  const baselineUnjudged = new Set(baseFirst.unjudged.map((u) => u.questionId));
+  const featureUnjudged = new Set(featFirst.unjudged.map((u) => u.questionId));
   for (let i = 0; i < baseFirst.correct.length; i++) {
     const baseCorrect = baseFirst.correct[i]!;
     const featCorrect = featFirst.correct[i]!;
+    const questionId = dataset.questions[i]!.id;
     const capability = dataset.questions[i]!.capability;
     const bucket = perCapability[capability]!;
     bucket.total++;
@@ -566,14 +581,19 @@ export async function runAblation(
     if (featCorrect) {
       bucket.featureCorrect++;
     }
+    // Accuracy is counted above for both sides; only the paired significance test excludes the
+    // instrument-created pair.
+    if (baselineUnjudged.has(questionId) || featureUnjudged.has(questionId)) {
+      continue;
+    }
     if (baseCorrect && !featCorrect) {
       baselineCorrectFeatureIncorrect++;
       bucket.baselineCorrectFeatureIncorrect++;
-      discordantRegression.push(dataset.questions[i]!.id);
+      discordantRegression.push(questionId);
     } else if (!baseCorrect && featCorrect) {
       baselineIncorrectFeatureCorrect++;
       bucket.baselineIncorrectFeatureCorrect++;
-      discordantGain.push(dataset.questions[i]!.id);
+      discordantGain.push(questionId);
     }
   }
 

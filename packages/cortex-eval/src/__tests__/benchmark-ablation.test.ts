@@ -452,3 +452,75 @@ describe('runAblation: the baseline side of the density reading', () => {
     expect(result.baselinePromptDigests).toEqual([null, null]);
   });
 });
+
+/**
+ * An unjudged answer is an instrument failure, not a reader disagreement.
+ *
+ * `metrics.ts` states the contract explicitly: a pair containing a question the judge failed to score is
+ * excluded from McNemar's discordant count, because a timeout is a flip the instrument created. The accuracy
+ * vector still scores it false (a stated pessimistic bound), but the SIGNIFICANCE test must not treat a
+ * transport/judge failure as evidence that one arm beat the other. The scorer below throws on the baseline's
+ * distinctive answer, so the baseline side records an unjudged verdict while the feature side scores true.
+ */
+describe('unjudged verdicts are excluded from the paired significance test', () => {
+  it('does not count a judge failure in one arm as a discordant gain', async () => {
+    const ds = makeDataset();
+    const answerFor: Record<string, string> = {
+      base: 'JUDGE_TIMEOUT_SENTINEL',
+      feat: 'blue',
+    };
+    const system = (name: string): MemorySystem => ({
+      name,
+      answer: async () => answerFor[name]!,
+    });
+    const scorer = (_q: Question, answer: string | null) => {
+      if (answer === 'JUDGE_TIMEOUT_SENTINEL') throw new Error('judge timeout');
+      return answer === 'blue';
+    };
+
+    const result = await runAblation(ds, system('base'), system('feat'), {
+      runs: 1,
+      scorer,
+    });
+
+    // The instrument failure is recorded, and only on the baseline side.
+    expect(result.unjudged!.baseline.map((u) => u.questionId)).toContain('ie');
+    expect(result.unjudged!.feature).toEqual([]);
+    // The accuracy vectors keep the pessimistic false, but the flip it would create is not a real gain:
+    // excluding unjudged pairs, both discordant counts are zero and McNemar says "no evidence".
+    expect(result.featureCorrect[0]).toBe(true);
+    expect(result.discordant.baselineIncorrectFeatureCorrect).toBe(0);
+    expect(result.discordantQuestions.baselineIncorrectFeatureCorrect).not.toContain('ie');
+    // And the consequence: with no genuine discordant pair the paired test cannot claim significance.
+    expect(result.mcnemarPValue).toBe(1);
+    expect(result.mcnemarSignificant).toBe(false);
+    // The per-capability bucket obeys the same contract, not just the overall count.
+    expect(result.perCapability.IE.baselineIncorrectFeatureCorrect).toBe(0);
+  });
+
+  it('excludes a judge failure in the feature arm from a would-be regression too', async () => {
+    // The mirror case: the feature side is the one the judge failed on, and the baseline answered
+    // correctly. It must not be booked as `baselineCorrectFeatureIncorrect`. Both arms' unjudged
+    // vectors are consulted, so this path exercises the feature-side set that the first case cannot.
+    const ds = makeDataset();
+    const answerFor: Record<string, string> = {
+      base: 'blue',
+      feat: 'JUDGE_TIMEOUT_SENTINEL',
+    };
+    const system = (name: string): MemorySystem => ({
+      name,
+      answer: async () => answerFor[name]!,
+    });
+    const scorer = (_q: Question, answer: string | null) => {
+      if (answer === 'JUDGE_TIMEOUT_SENTINEL') throw new Error('judge timeout');
+      return answer === 'blue';
+    };
+
+    const result = await runAblation(ds, system('base'), system('feat'), { runs: 1, scorer });
+
+    expect(result.unjudged!.feature.map((u) => u.questionId)).toContain('ie');
+    expect(result.unjudged!.baseline).toEqual([]);
+    expect(result.discordant.baselineCorrectFeatureIncorrect).toBe(0);
+    expect(result.discordantQuestions.baselineCorrectFeatureIncorrect).not.toContain('ie');
+  });
+});
