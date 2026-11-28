@@ -241,11 +241,22 @@ def _openai_compatible_call(
     last_error: Exception | None = None
     for attempt in range(3):
         try:
+            # Only transport errors are retryable: until a response is read, the proxy books a failure and no call,
+            # so another attempt costs nothing extra. Once the body is in hand the call is already billed, so a
+            # decode failure must be reported at once -- retrying it would charge the same logical call two more
+            # times and inflate `calls` on the leaderboard.
             with urllib.request.urlopen(request, timeout=float(os.environ.get("MEMCOG_LLM_TIMEOUT", "600"))) as response:
-                return json.loads(response.read().decode("utf-8"))
-        except (urllib.error.HTTPError, urllib.error.URLError, OSError, json.JSONDecodeError) as error:
+                body = response.read().decode("utf-8")
+        except (urllib.error.HTTPError, urllib.error.URLError, OSError) as error:
             last_error = error
             time.sleep(2 * (attempt + 1))
+            continue
+        try:
+            return json.loads(body)
+        except json.JSONDecodeError as error:
+            # The response arrived and was billed before decoding; the body is included so a gateway that answers
+            # with HTML is diagnosable rather than a bare "three attempts" with no hint of what came back.
+            raise RuntimeError(f"the model returned a non-JSON response that was already billed: {body[:200]!r}") from error
     raise RuntimeError(f"the model call failed after three attempts: {last_error}")
 
 

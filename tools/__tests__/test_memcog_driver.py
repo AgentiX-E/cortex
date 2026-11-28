@@ -440,3 +440,97 @@ def test_the_guard_explains_the_version_it_needs():
     assert completed.stdout == ""
     assert "Python 3.12" in completed.stderr
     assert "PEP 701" in completed.stderr
+
+
+# ---------------------------------------------------------------------------------------------------------------
+# A 200 response has already been charged by the proxy before the driver decodes it (the proxy records the call on
+# any <400 status, even when the body is not JSON and usage comes back as zero). A decode failure on such a body is
+# therefore a *billed* failure: re-sending it charges the same logical call a second and third time and inflates
+# `calls` on the leaderboard. Only transport failures -- where the proxy records a failure and no call -- may be
+# retried. These two cases must take different branches.
+
+
+class _MalformedUpstream(BaseHTTPRequestHandler):
+    """A 200 whose body is not JSON: the proxy bills it, and the driver cannot decode it."""
+
+    protocol_version = "HTTP/1.1"
+
+    def log_message(self, fmt, *args):  # noqa: A003
+        return
+
+    def do_POST(self):  # noqa: N802
+        length = int(self.headers.get("Content-Length") or 0)
+        self.rfile.read(length)
+        body = b"<html>upstream returned a web page, not JSON</html>"
+        self.send_response(200)
+        self.send_header("Content-Type", "text/html")
+        self.send_header("Content-Length", str(len(body)))
+        self.end_headers()
+        self.wfile.write(body)
+
+
+class _CountingFailUpstream(BaseHTTPRequestHandler):
+    """A 503 whose hits are counted: the driver sees HTTPError, the proxy would book a failure, no call is billed."""
+
+    protocol_version = "HTTP/1.1"
+    hits: list[int] = []
+
+    def log_message(self, fmt, *args):  # noqa: A003
+        return
+
+    def do_POST(self):  # noqa: N802
+        type(self).hits.append(1)
+        length = int(self.headers.get("Content-Length") or 0)
+        self.rfile.read(length)
+        self.send_error(503, "unavailable")
+
+
+class TestABilledResponseIsNeverRetried:
+    """The retry decision must turn on whether the call was billed, not on the exception type alone."""
+
+    @staticmethod
+    def _driver_without_backoff(monkeypatch):
+        driver = _load_driver_module()
+        # Timing is not under test; keep the red case fast (before the fix it sleeps 2+4+6s across three tries).
+        monkeypatch.setattr(driver.time, "sleep", lambda _seconds: None)
+        return driver
+
+    def test_a_malformed_billed_200_is_reported_once_not_retried(self, monkeypatch):
+        """A non-JSON 200 was billed once; decoding it again must not add two more calls to the bill."""
+        module = load_proxy()
+        module.ACCOUNTANT.reset()
+        upstream = ThreadingHTTPServer(("127.0.0.1", 0), _MalformedUpstream)
+        threading.Thread(target=upstream.serve_forever, daemon=True).start()
+        os.environ["UPSTREAM_BASE_URL"] = f"http://127.0.0.1:{upstream.server_address[1]}"
+        os.environ["UPSTREAM_API_KEY"] = "test-key"
+        os.environ["SUT_LLM_PROXY_QUIET"] = "1"
+        proxy = ThreadingHTTPServer(("127.0.0.1", 0), module.Handler)
+        threading.Thread(target=proxy.serve_forever, daemon=True).start()
+        try:
+            driver = self._driver_without_backoff(monkeypatch)
+            monkeypatch.setenv("SUT_LLM_BASE_URL", f"http://127.0.0.1:{proxy.server_address[1]}/v1")
+            with pytest.raises(RuntimeError, match="already billed"):
+                driver._openai_compatible_call([{"role": "user", "content": "hello"}])
+
+            # One logical call was sent and billed once; a retry would show up as three calls here.
+            assert module.ACCOUNTANT.snapshot()["calls"] == 1, module.ACCOUNTANT.snapshot()
+        finally:
+            proxy.shutdown()
+            upstream.shutdown()
+            proxy.server_close()
+            upstream.server_close()
+
+    def test_an_unbilled_transport_failure_is_still_retried(self, monkeypatch):
+        """A 503 books no call, so the three transport attempts must still reach the server."""
+        _CountingFailUpstream.hits = []
+        driver = self._driver_without_backoff(monkeypatch)
+        server = ThreadingHTTPServer(("127.0.0.1", 0), _CountingFailUpstream)
+        threading.Thread(target=server.serve_forever, daemon=True).start()
+        try:
+            monkeypatch.setenv("SUT_LLM_BASE_URL", f"http://127.0.0.1:{server.server_address[1]}/v1")
+            with pytest.raises(RuntimeError, match="after three attempts"):
+                driver._openai_compatible_call([{"role": "user", "content": "hello"}])
+            assert len(_CountingFailUpstream.hits) == 3, "a transport failure that bills no call must be retried"
+        finally:
+            server.shutdown()
+            server.server_close()
