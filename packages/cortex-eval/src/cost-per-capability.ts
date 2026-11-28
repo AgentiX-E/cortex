@@ -246,8 +246,14 @@ export function costPerCapability(
     throw new Error(`cost-per-capability: ${COST_REFUSALS.nullPrompt}`);
   }
 
-  const runs = report.ablation?.runs ?? report.runs ?? 1;
   const mask = ablation?.featureCorrectByRun;
+  // The mask is the authoritative record of how many repetitions were graded: the sole producer
+  // writes one string per repetition unconditionally whenever runs > 1, but writes the top-level
+  // `runs` only when a caller configured one. Prefer the measurement; the declaration is a fallback
+  // for artifacts whose per-run detail was never captured. Defaulting to 1 while a four-row mask is
+  // present divided the whole four-run ledger by one run's correct answers, charging four times the
+  // honest per-correct cost (and the same factor on tokens per question-run).
+  const runs = mask !== undefined ? mask.length : (report.ablation?.runs ?? report.runs ?? 1);
   const flat = ablation?.featureCorrect;
   if (mask === undefined && flat === undefined) {
     throw new Error(`cost-per-capability: ${COST_REFUSALS.noCorrectness}`);
@@ -387,10 +393,18 @@ export function costPerCapability(
       : ([...withRatios].sort(
           (a, b) => (b.costPerCorrect as number) - (a.costPerCorrect as number),
         )[0]?.capability ?? null);
+  // Only rows that actually carry a per-correct figure can be ranked. Casting a null straight to
+  // number made `null - null === 0`, so the stable sort left the first (alphabetically earliest)
+  // capability at the top and printed it as the most expensive even when not one row was priced.
+  const pricedOnPrompts = withRatios.filter(
+    (row): row is typeof row & { promptTokensPerCorrect: number } =>
+      row.promptTokensPerCorrect !== null,
+  );
   const mostExpensivePerCorrectOnPrompts =
-    [...withRatios].sort(
-      (a, b) => (b.promptTokensPerCorrect as number) - (a.promptTokensPerCorrect as number),
-    )[0]?.capability ?? '';
+    pricedOnPrompts.length === 0
+      ? ''
+      : ([...pricedOnPrompts].sort((a, b) => b.promptTokensPerCorrect - a.promptTokensPerCorrect)[0]
+          ?.capability ?? '');
 
   return {
     runs,

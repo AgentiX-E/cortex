@@ -579,6 +579,23 @@ class TestTheDenominatorMustMatchTheNumerator:
         assert efficiency['perCorrectAnswerPromptTokens'] == pytest.approx(13199.43)
         assert efficiency['accuracySource'] == 'artifact'
 
+    def test_a_real_writer_authored_reading_needs_no_state_field(self):
+        # `costEfficiencyFrom` -- the only writer -- emits `perCorrectAnswerPromptTokens`,
+        # `promptTokensPerQuestion`, `accuracy` and `accuracySource`. It never emits `state`.
+        # Requiring `state == 'measured'` rejects every artifact a real run wrote, so the tool
+        # recomputes and mislabels the source. A hand-made `state` in the fixture above hid this.
+        authored = {
+            'perCorrectAnswerPromptTokens': 13199.43,
+            'promptTokensPerQuestion': 12126.34,
+            'accuracy': 0.9195,
+            'accuracySource': 'all-runs',
+        }
+        efficiency = ledger_tool.ledger(
+            report_with_spread(first_repetition=0.914, average=0.9195, accuracy_source=authored)
+        )['efficiency']
+        assert efficiency['perCorrectAnswerPromptTokens'] == pytest.approx(13199.43)
+        assert efficiency['accuracySource'] == 'artifact'
+
     def test_an_authored_reading_of_the_wrong_shape_is_refused_rather_than_trusted(self):
         # `costEfficiency` is a field a future build could get wrong. A percentage, a boolean or a
         # missing ratio must not be adopted just because it is present.

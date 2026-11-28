@@ -129,6 +129,20 @@ class TestTheReading:
         rendered = run(str(write(tmp_path, artifact(), "again.json"))).stdout
         assert "3.5 chars/token" in rendered
 
+    def test_an_uncomputable_share_renders_as_unavailable_not_zero(self, tmp_path: pathlib.Path) -> None:
+        # `readSide` already returns null for a share whose denominator is zero -- the JSON says
+        # "not computed". The renderer multiplied that null by 100, and `null * 100 === 0`, so the
+        # human-readable line claimed a measured 0.0% cache hit and 0.0% undelivered. Absence must
+        # read as absence in both outputs.
+        broken = artifact()
+        broken["usageBySide"]["feature"]["promptTokens"] = 0
+        broken["usageBySide"]["feature"]["completionTokens"] = 0
+        rendered = run(str(write(tmp_path, broken, "zero.json"))).stdout
+        assert "NaN" not in rendered
+        assert "cache n/a" in rendered, rendered
+        assert "(n/a)" in rendered, rendered
+        assert "cache 0.0%" not in rendered, rendered
+
 
 class TestTheRefusals:
     def test_refuses_an_artifact_with_no_feature_side(self, tmp_path: pathlib.Path) -> None:

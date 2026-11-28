@@ -198,6 +198,15 @@ function census(artifact) {
   };
 }
 
+/**
+ * A share as a percentage, or `n/a` when it was never computed.
+ *
+ * `null * 100 === 0`, so multiplying a share the reader refused to compute rendered as a measured
+ * 0.0% -- the value a run that genuinely cached nothing would print. The JSON already carries null
+ * for that state; the human line must say the same thing rather than invent a number.
+ */
+const pct = (share) => (share === null || !Number.isFinite(share) ? 'n/a' : `${(share * 100).toFixed(1)}%`);
+
 /** The lines a human reads, which must stand alone without the JSON. */
 function render(reading) {
   if (!reading.ok) return [`reader cost: NOT COMPUTABLE -- ${reading.reason}`];
@@ -208,7 +217,7 @@ function render(reading) {
       `${f.promptTokens} prompt / ${f.completionTokens} completion tokens`,
   );
   lines.push(
-    `  per call: ${f.promptTokensPerCall} prompt (cache ${(f.cacheHitShare * 100).toFixed(1)}%), ` +
+    `  per call: ${f.promptTokensPerCall} prompt (cache ${pct(f.cacheHitShare)}), ` +
       `${f.completionTokensPerCall} completion`,
   );
   lines.push(
@@ -217,13 +226,13 @@ function render(reading) {
   );
   lines.push(
     `  undelivered: ${f.undeliveredTokensPerCall} of ${f.completionTokensPerCall} completion tokens/call ` +
-      `(${(f.undeliveredShare * 100).toFixed(1)}%), estimated at ${reading.charsPerToken} chars/token`,
+      `(${pct(f.undeliveredShare)}), estimated at ${reading.charsPerToken} chars/token`,
   );
   if (reading.baseline !== null) {
     const b = reading.baseline;
     lines.push(
       `baseline: ${b.calls} call(s) -- ${b.promptTokensPerCall} prompt ` +
-        `(cache ${(b.cacheHitShare * 100).toFixed(1)}%), ${b.completionTokensPerCall} completion per call`,
+        `(cache ${pct(b.cacheHitShare)}), ${b.completionTokensPerCall} completion per call`,
     );
   }
   return lines;

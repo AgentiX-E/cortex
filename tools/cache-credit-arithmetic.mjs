@@ -55,7 +55,11 @@ function promptsOf(report) {
   });
 }
 
-const mean = (values) => values.reduce((sum, value) => sum + value, 0) / values.length;
+// An empty population has no mean. `0 / 0` is `NaN`, which the Markdown printed as `NaN%` and
+// JSON.stringify silently turned into `null` -- an unwritten refusal masquerading as a value the
+// tool declined to state. Return null so both renderers say "not measured" on the same condition.
+const mean = (values) =>
+  values.length === 0 ? null : values.reduce((sum, value) => sum + value, 0) / values.length;
 const max = (values) => values.reduce((best, value) => Math.max(best, value), 0);
 
 function main() {
@@ -111,7 +115,10 @@ function main() {
     return 0;
   }
 
-  const percent = (value) => `${(value * 100).toFixed(2)}%`;
+  // A null expectation (the empty `content` population on a one-question report) is "not measured",
+  // not a 0% or a NaN%. Render it in words so the Markdown and the JSON say the same thing.
+  const percent = (value) =>
+    value === null || !Number.isFinite(value) ? 'n/a' : `${(value * 100).toFixed(2)}%`;
   const lines = [
     `prompts: ${reading.questionCount}  mean ${reading.meanPromptChars} chars  runs: ${reading.runs}`,
     '',

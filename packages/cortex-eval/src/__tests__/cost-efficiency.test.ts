@@ -259,6 +259,27 @@ describe('§13.308 the cost of one correct answer', () => {
     expect(priced.costEfficiency).toBeUndefined();
   });
 
+  it('prices from the measured mask when the declared count was never written', () => {
+    // `runAblationReport` writes the top-level `runs` only when a caller configured one, but the
+    // per-run mask is written unconditionally at runs > 1. A four-repetition run whose caller did
+    // not pass `runs` still knows its repetition count from the mask; refusing the price because
+    // the declaration is absent throws away a ratio both of whose inputs are present.
+    const unlabelled = arm({
+      firstRepetition: 0.914,
+      aggregate: { min: 0.914, avg: 0.9195, max: 0.932 },
+      runs: null,
+    });
+    const mask = Array.from({ length: 4 }, () => '1'.repeat(500));
+    const withMask: AblationReport = {
+      ...unlabelled,
+      ablation: { ...unlabelled.ablation, featureCorrectByRun: mask },
+    };
+    const priced = attachCostEfficiency(withMask);
+    expect(priced.costEfficiency).toBeDefined();
+    expect(priced.costEfficiency?.promptTokensPerQuestion).toBeCloseTo(24_252_638 / (500 * 4), 6);
+    expect(priced.costEfficiency?.accuracySource).toBe('all-runs');
+  });
+
   it('refuses when the question count is unknown', () => {
     const priced = arm({
       firstRepetition: 0.914,

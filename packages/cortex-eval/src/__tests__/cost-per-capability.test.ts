@@ -157,6 +157,33 @@ describe('costPerCapability — the join', () => {
     expect(reading.runs).toBe(1);
     expect(reading.rows.find((row) => row.capability === 'IE')?.correctPerRun).toBe(141);
   });
+
+  it('reads runs from the measured mask when the report omitted the declared count', () => {
+    // `runAblationReport` writes `runs` only when a caller configured one, but the mask is written
+    // unconditionally at runs > 1. A four-run artifact with no top-level count must still price one
+    // correct answer as a quarter of the four-run ledger, not as the whole ledger divided by one run.
+    const full = artifact();
+    const { runs: _declared, ablation: withRuns, ...withoutDeclared } = full;
+    const { runs: _ablationRuns, ...ablationWithoutRuns } = withRuns ?? {};
+    const noRuns: CostArtifactShape = {
+      ...withoutDeclared,
+      ablation: ablationWithoutRuns,
+    };
+    const reading = costPerCapability(noRuns);
+    const declared = costPerCapability(full);
+    expect(reading.runs).toBe(RUNS);
+    expect(reading.repetitionsMeasured).toBe(true);
+    // Same measured population, same numerator, same denominator: the omitted declaration cannot move it.
+    expect(reading.charsPerToken).toBeCloseTo(declared.charsPerToken, 9);
+    expect(reading.rows.find((row) => row.capability === 'MR')?.promptTokensPerCorrect).toBeCloseTo(
+      declared.rows.find((row) => row.capability === 'MR')?.promptTokensPerCorrect as number,
+      6,
+    );
+    expect(reading.rows.find((row) => row.capability === 'MR')?.costPerCorrect).toBeCloseTo(
+      declared.rows.find((row) => row.capability === 'MR')?.costPerCorrect as number,
+      6,
+    );
+  });
 });
 
 describe('costPerCapability — money', () => {
@@ -522,5 +549,33 @@ describe('costPerCapability — the thresholds themselves', () => {
     };
     const text = renderCostByCapability(costPerCapability(report));
     expect(text).toContain('none at or above 2x the cheapest');
+  });
+
+  it('names no most-expensive capability when every row is unpriced per correct', () => {
+    // All three questions get no hits, so every promptTokensPerCorrect is null. Sorting nulls cast
+    // to number compares 0 - 0 and the stable sort presents the first capability as the winner --
+    // a verdict about a cost nobody measured. With no priced row there is no most expensive one.
+    const report: CostArtifactShape = {
+      runs: 1,
+      usageBySide: {
+        feature: {
+          calls: 3,
+          unpricedCalls: 0,
+          promptTokens: 3_000,
+          completionTokens: 300,
+          cacheHitPromptTokens: 0,
+        },
+      },
+      questions: [{ capability: 'IE' }, { capability: 'MR' }, { capability: 'KU' }],
+      ablation: {
+        runs: 1,
+        featureCorrect: [false, false, false],
+        featurePromptTexts: ['x'.repeat(1_000), 'y'.repeat(1_000), 'z'.repeat(1_000)],
+      },
+    };
+    const reading = costPerCapability(report);
+    expect(reading.rows.every((row) => row.promptTokensPerCorrect === null)).toBe(true);
+    expect(reading.mostExpensivePerCorrect).toBeNull();
+    expect(reading.mostExpensivePerCorrectOnPrompts).toBe('');
   });
 });

@@ -3293,8 +3293,14 @@ export function attachCostEfficiency(report: AblationReport): AblationReport {
   const feature = report.usageBySide?.feature;
   if (feature === undefined || report.usageBySide === undefined) return report;
   // `runs` absent is not one repetition. A four-repetition artifact that lost the field would be
-  // priced at a quarter of its spend, so the count is required exactly as `questionCount` is.
-  if (report.runs === undefined) return report;
+  // priced at a quarter of its spend, so the count is required exactly as `questionCount` is --
+  // but the declaration is not the only place the count lives. The sole producer writes one
+  // correctness string per repetition unconditionally whenever runs > 1, while it writes the
+  // top-level `runs` only when a caller configured one. Prefer that measurement; fall back to the
+  // declaration for artifacts whose per-run detail was never captured. Refuse only when neither
+  // source can say, so an unknown count still reads as "not measured" rather than as one pass.
+  const runs = report.ablation.featureCorrectByRun?.length ?? report.runs;
+  if (runs === undefined) return report;
   // A split that does not close is not a split. `residualUsage` refuses when the two sides claim
   // more than the run reported, which means the tallies did not come from one ledger -- and the
   // renderer already declines to print a per-arm column in that case. This reading is computed
@@ -3314,7 +3320,7 @@ export function attachCostEfficiency(report: AblationReport): AblationReport {
   const efficiency = costEfficiencyFrom({
     promptTokens: feature.promptTokens,
     questionCount: report.questionCount,
-    runs: report.runs,
+    runs,
     accuracy,
     accuracySource: aggregate === undefined ? 'first-repetition' : 'all-runs',
   });

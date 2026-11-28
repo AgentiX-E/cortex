@@ -261,8 +261,11 @@ def _authored_efficiency(report: dict) -> dict | None:
     authored = report.get('costEfficiency')
     if not isinstance(authored, dict):
         return None
-    if authored.get('state') != 'measured':
-        return None
+    # `costEfficiencyFrom` -- the only writer -- emits the ratio, its numerator, the accuracy and
+    # its source. It never emits a `state` field. Requiring `state == 'measured'` rejected every
+    # artifact a real run wrote and let a hand-made fixture keep the guard looking alive. The shape
+    # checks below are the real gate: a ratio that is a positive finite number and an accuracy in
+    # (0, 1] is a usable reading, whatever bookkeeping fields do or do not accompany it.
     ratio = authored.get('perCorrectAnswerPromptTokens')
     accuracy = authored.get('accuracy')
     if isinstance(ratio, bool) or not isinstance(ratio, (int, float)) or ratio <= 0:
