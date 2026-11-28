@@ -342,9 +342,15 @@ class Handler(BaseHTTPRequestHandler):
                     decoded = json.loads(payload.decode("utf-8"))
                 except (UnicodeDecodeError, json.JSONDecodeError):
                     continue
-                # Every frame may carry a `usage` key; only the final one carries numbers. Assigning rather than
-                # adding is what keeps a streamed response from being counted once per frame.
-                prompt, completion, reasoning = read_usage(decoded)
+                # Every frame may carry a `usage` key, but only one carries numbers. Assigning rather than
+                # adding keeps a streamed response from being counted once per frame. The guard is load-bearing:
+                # a gateway may emit a zero-usage placeholder *after* the real frame, and assigning that would
+                # erase the bill and report a competitor as free. Keep the last frame that actually carried
+                # usage, not the last frame that had the key. A stream that never carries numbers stays at zero,
+                # which is a visible "no usage reported", not a silently guessed one.
+                frame_prompt, frame_completion, frame_reasoning = read_usage(decoded)
+                if frame_prompt or frame_completion or frame_reasoning:
+                    prompt, completion, reasoning = frame_prompt, frame_completion, frame_reasoning
         finally:
             upstream_response.close()
             self.close_connection = True

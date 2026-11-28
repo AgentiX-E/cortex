@@ -197,6 +197,34 @@ def test_stream_is_forwarded_and_settled_from_the_final_frame(stack):
     assert stats["completion_tokens"] == 9
 
 
+def test_a_trailing_zero_usage_frame_does_not_erase_the_bill(stack):
+    """Some gateways emit a zero-usage frame after the one that carries accounting.
+
+    `_relay_stream` assigns `usage` on every frame, so a zero placeholder *after* the real
+    frame overwrites 40/9 with 0/0 and the competitor's bill silently reads as free. The meter
+    must keep the last frame that actually carried usage, not the last frame that had the key.
+    """
+    base, module, _ = stack
+    original = Upstream.stream_body
+    Upstream.stream = True
+    Upstream.stream_body = (
+        b'data: {"choices":[{"delta":{"content":"hi"}}]}\n\n'
+        b'data: {"choices":[],"usage":{"prompt_tokens":40,"completion_tokens":9,"total_tokens":49}}\n\n'
+        b'data: {"choices":[],"usage":{"prompt_tokens":0,"completion_tokens":0,"total_tokens":0}}\n\n'
+        b'data: [DONE]\n\n'
+    )
+    try:
+        status, body = post(base, {"model": "deepseek-chat", "messages": [], "stream": True})
+        assert status == 200
+        assert body == Upstream.stream_body  # still byte-for-byte, including the zero frame
+        stats = module.ACCOUNTANT.snapshot()
+        assert stats["calls"] == 1
+        assert stats["prompt_tokens"] == 40
+        assert stats["completion_tokens"] == 9
+    finally:
+        Upstream.stream_body = original
+
+
 def test_upstream_error_is_passed_through_and_counted(stack):
     """A 429 is a fact about the run. Turning it into a 200 with an empty body would hide it."""
     base, module, _ = stack

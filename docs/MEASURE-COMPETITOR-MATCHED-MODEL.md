@@ -965,3 +965,54 @@ Three things the next dispatch should carry, in the order the evidence supports 
    −214 and +295 characters, identical turn counts and identical routes) cannot be the window: `buildSessionPrompt`
    is reached only from `answerSessions`. The next run should say what they are before B2 is read again, because
    a reach criterion that fails for an unexplained reason is not a criterion.
+
+## 13. A zero-usage trailing frame could erase a competitor's whole bill
+
+### 13.1 The defect, reproduced
+
+The metered proxy (`tools/competitor-sut/sut_llm_proxy.py`) is the source of every token number in §7. It forwards
+a competitor's request to the shared endpoint byte-for-byte and reads `usage` out of the response. For a streamed
+completion (`Mastra`'s `agent.generate` uses one) it relays the SSE frames and settles the counters at the end:
+
+```
+frame 1: {"choices":[{"delta":...}]}                                  -> no usage
+frame 2: {"choices":[],"usage":{"prompt_tokens":40,"completion_tokens":9}}  -> 40/9
+frame 3: {"choices":[],"usage":{"prompt_tokens":0,"completion_tokens":0}}   -> 0/0
+frame 4: [DONE]
+```
+
+The first version assigned `prompt, completion, reasoning = read_usage(decoded)` on **every** frame carrying the
+`usage` key. Frame 3 — a zero-usage placeholder that some gateways emit after the real one — overwrote the 40/9
+from frame 2 with 0/0. A minimum reproduction through `read_usage` and the relay loop returned `(0, 0, 0)` where
+`(40, 9, 0)` was measured. The bill for that question became free, silently.
+
+This is worse than the file's stated floor of "a stream that ends without usage is counted as no usage — visible,
+not silently zero". Here usage *was* reported and accounting discarded it. Because the only consumer is the cost
+table, nothing downstream would have shown a wrong number: a competitor would just appear cheaper than it was, and
+"match the model, compare the cost" would have produced a confident, wrong ranking.
+
+### 13.2 The fix, and the boundary it keeps
+
+The relay now tracks the last frame whose usage is **non-zero** and ignores zero placeholders:
+
+```python
+frame_prompt, frame_completion, frame_reasoning = read_usage(decoded)
+if frame_prompt or frame_completion or frame_reasoning:
+    prompt, completion, reasoning = frame_prompt, frame_completion, frame_reasoning
+```
+
+This keeps three properties at once: a stream is still counted once (the variables are assigned, not summed), a
+stream that never carries usage still records zero (the "no usage reported" fact is unchanged), and an echoed zero
+placeholder no longer erases a real reading. Bytes are still relayed unmodified — the guard reads frames, it does
+not rewrite them. Non-streamed and `/embeddings` paths are untouched; their `total_tokens` handling in
+`read_usage` stays as measured.
+
+### 13.3 Acceptance
+
+Written test-first: a new case inserted a zero-usage frame after the real one and asserted the bill stayed 40/9;
+observed failing at `assert 0 == 40` before the change and passing after. The byte-for-byte relay assertion still
+passes, so the fix did not alter what the system under test reads. All 11 tests in
+`test_sut_llm_proxy.py` pass and the full `pnpm test:tools` suite is green. No benchmark was re-run and no API money
+was spent: the §7 numbers were taken under non-streamed calls or a correctly-shaped stream, and this repair closes
+a silent-zero path rather than re-measuring any published figure. It matters for the **next** matched-model run,
+including the reasoning-model contract, where a streamed, echoed, or gateway-reframed reply is now metered honestly.
