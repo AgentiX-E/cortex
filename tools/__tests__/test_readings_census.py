@@ -152,6 +152,9 @@ def run(repo: Path, *flags: str) -> subprocess.CompletedProcess[str]:
 
 def test_a_green_record_passes_and_counts_what_it_saw(tmp_path: Path) -> None:
     repo = make_repo(tmp_path)
+    # A green record is one whose second artefact exists: generate the document first, the way
+    # `pnpm readings:write` + `pnpm readings:check` are used together in the real pipeline.
+    assert run(repo, '--write').returncode == 0
     result = run(repo, '--check')
     assert result.returncode == 0, result.stdout
     assert '2 committed readings' in result.stdout
@@ -402,6 +405,22 @@ def test_a_document_that_no_longer_matches_the_record_is_refused(tmp_path: Path)
     result = run(repo, '--check')
     assert result.returncode == 1, result.stdout
     assert 'is not what the record generates' in result.stdout
+    assert 'pnpm readings:write' in result.stdout
+
+
+def test_a_missing_generated_document_is_refused(tmp_path: Path) -> None:
+    # The document is the second artefact from one record. Deleting it is the same defect as a
+    # stale one -- a claim with nothing comparing it to the record -- but `existsSync &&` let the
+    # check skip the comparison entirely and print ok. A gate that passes when its output file is
+    # gone is a gate that can be deleted by accident and never noticed.
+    repo = make_repo(tmp_path)
+    assert run(repo, '--write').returncode == 0
+    assert run(repo, '--check').returncode == 0
+    (repo / 'docs' / 'COMMITTED-READINGS.md').unlink()
+
+    result = run(repo, '--check')
+    assert result.returncode == 1, result.stdout
+    assert 'docs/COMMITTED-READINGS.md' in result.stdout
     assert 'pnpm readings:write' in result.stdout
 
 

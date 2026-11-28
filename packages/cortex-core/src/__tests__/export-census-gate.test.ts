@@ -333,6 +333,44 @@ describe('the census gate enforces the baseline', () => {
     }
   });
 
+  it(
+    'keeps --check enforced when --json is also present, without corrupting the JSON',
+    { timeout: 30_000 },
+    () => {
+      // THE REGRESSION TEST for the flag bypass. `--json` returned before the baseline comparison,
+      // so `--check --json` exited 0 on a tree `--check` alone refused. A reader who wants a
+      // machine-readable gate report must not have to choose between the report and the gate.
+      const tree = makeCensusTree();
+      const victim = resolve(tree, 'packages/fixture/src/a.ts');
+      const original = readFileSync(victim, 'utf8');
+      const marker = 'jsonCheckBypassProbe';
+      try {
+        writeFileSync(
+          victim,
+          `${original}\nexport function ${marker}(): number {\n  return 0;\n}\n`,
+        );
+        // Positive control: the tree fails under --check alone, so a pass with --json cannot be
+        // blamed on the injection missing.
+        expect(runCensus(['--check'], tree).status).toBe(1);
+
+        const both = spawnSync('node', [SCRIPT, '--check', '--json'], {
+          cwd: tree,
+          encoding: 'utf8',
+          env: { ...process.env, EXPORT_CENSUS_ROOT: tree },
+        });
+        expect(both.status, '--json suppressed the gate').toBe(1);
+        // The machine-readable payload stays on stdout and stays parseable; the human verdict is on
+        // stderr, so a consumer still gets its report and the exit code still says why it failed.
+        const payload = JSON.parse(both.stdout) as { orphans: string[] };
+        expect(payload.orphans.some((line) => line.includes(marker))).toBe(true);
+        expect(`${both.stdout}${both.stderr}`).toContain(marker);
+      } finally {
+        writeFileSync(victim, original);
+        expect(readFileSync(victim, 'utf8')).toBe(original);
+      }
+    },
+  );
+
   it('ignores an orphan that is already recorded in the baseline', { timeout: 30_000 }, () => {
     // The gate must not fail on the backlog it was seeded with, or it would be
     // red on the commit that introduced it and turned off immediately.

@@ -144,6 +144,35 @@ function orphanKey(line) {
   return match === null ? line : `${match[1]}: ${match[2]}`;
 }
 
+/**
+ * The orphans not covered by the recorded baseline -- the only set `--check` refuses.
+ *
+ * Kept separate from rendering so both output modes enforce the identical verdict. A check whose
+ * result depended on `--json` would let a caller silence the gate by asking for machine-readable
+ * output, which is exactly what the flag combination used to do.
+ */
+function freshOrphans(orphans) {
+  const baseline = JSON.parse(readFileSync(BASELINE_PATH, 'utf8'));
+  const known = new Set(baseline.knownOrphans.map(orphanKey));
+  return orphans.filter((line) => !known.has(orphanKey(line)));
+}
+
+/** Render the gate verdict through `write`, returning the exit status. */
+function writeVerdict(fresh, write) {
+  if (fresh.length === 0) {
+    write('\nno new orphans beyond the recorded baseline\n');
+    return 0;
+  }
+  write(`\n${fresh.length} NEW orphan(s) not in the baseline:\n`);
+  for (const line of fresh) write(`  ${line}\n`);
+  write(
+    '\nA new orphan is an export nothing calls. Either wire it to a caller, ' +
+      'delete it, or add it to tools/export-census-baseline.json with a reason ' +
+      'and a roadmap reference.\n',
+  );
+  return 1;
+}
+
 function main() {
   const argv = process.argv.slice(2);
   const check = argv.includes('--check');
@@ -161,6 +190,12 @@ function main() {
     process.stdout.write(
       `${JSON.stringify({ report, orphans, referencedLocally, unreferenced }, null, 2)}\n`,
     );
+    // `--json` selects a format, not a policy. When `--check` is also present the gate still runs;
+    // its verdict goes to stderr so stdout stays parseable for the machine consumers that asked for
+    // JSON. Returning here unconditionally used to let the flag silence the gate.
+    if (check) {
+      return writeVerdict(freshOrphans(orphans), (line) => process.stderr.write(line));
+    }
     return 0;
   }
 
@@ -210,23 +245,7 @@ function main() {
     return 0;
   }
 
-  const baseline = JSON.parse(readFileSync(BASELINE_PATH, 'utf8'));
-  const known = new Set(baseline.knownOrphans.map(orphanKey));
-  const fresh = orphans.filter((line) => !known.has(orphanKey(line)));
-
-  if (fresh.length === 0) {
-    process.stdout.write('\nno new orphans beyond the recorded baseline\n');
-    return 0;
-  }
-
-  process.stdout.write(`\n${fresh.length} NEW orphan(s) not in the baseline:\n`);
-  for (const line of fresh) process.stdout.write(`  ${line}\n`);
-  process.stdout.write(
-    '\nA new orphan is an export nothing calls. Either wire it to a caller, ' +
-      'delete it, or add it to tools/export-census-baseline.json with a reason ' +
-      'and a roadmap reference.\n',
-  );
-  return 1;
+  return writeVerdict(freshOrphans(orphans), (line) => process.stdout.write(line));
 }
 
 // The exit code is set, not forced, and the difference is not cosmetic.

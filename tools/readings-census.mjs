@@ -444,7 +444,13 @@ function main() {
     // whole file is about, one level up. Comparing here rather than in a second tool keeps the two
     // in one place.
     const document = path.join(root, DOCUMENT);
-    if (existsSync(document) && readFileSync(document, 'utf8') !== markdown(entries)) {
+    // Two artefacts come from one record: the committed document and this check. If the document is
+    // absent there is nothing to compare, and the old `existsSync &&` guard reported `ok` over that
+    // silence -- a gate that passes when its own output has been deleted. Absence is the same defect
+    // as a stale document (a claim nothing re-derives), so both are refused with the same remedy.
+    if (!existsSync(document)) {
+      problems.push(`${DOCUMENT} is missing: run pnpm readings:write`);
+    } else if (readFileSync(document, 'utf8') !== markdown(entries)) {
       problems.push(`${DOCUMENT} is not what the record generates: run pnpm readings:write`);
     }
     for (const problem of problems) console.log(`FAIL  ${problem}`);
