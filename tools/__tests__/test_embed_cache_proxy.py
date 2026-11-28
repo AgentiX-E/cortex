@@ -170,7 +170,7 @@ class TestCriterionOneTheKeyIsTheWholeRequest:
     def test_the_key_is_a_sha256_of_the_composed_identity(self):
         # Pinned so a rewrite that silently changes the composition is visible rather than merely incompatible with
         # an existing store.
-        expected = hashlib.sha256("embedding-3\x00hello".encode("utf-8")).hexdigest()
+        expected = hashlib.sha256("embedding-3\x00\x00hello".encode("utf-8")).hexdigest()
         assert proxy_module.cache_key("embedding-3", "hello") == expected
 
 
@@ -485,3 +485,56 @@ class TestTheDriverCanBeAskedForTheCache:
         assert notes["embedder"]["provider"] == "openai"
         assert "cache" not in notes["embedder"]
         assert "embedCache" not in manifest
+
+
+class TestCriterionSixTheDimensionIsPartOfTheVectorIdentity:
+    """A variable-dimension model gives different vectors to the same text at different widths.
+
+    `embedding-3` is variable-dimension by this proxy's own account (see the transparency class above): omitting
+    `dimensions` is a 400 or a reply at the vendor's default width. A key made only of model and text therefore
+    hands a 1024-wide vector to a 256-wide request -- the same silent wrong-width failure a model mix-up would
+    cause, and one the vector store reports as a failed ingest rather than as the cache collision it is. The cache
+    is shared across dispatches, so two experiments configured with different widths against one file collide.
+
+    The key composition is `model \0 dimensions \0 text`: the first two fields are controlled tokens with no NUL,
+    and the free-form text is last, so no text can forge the boundary and collide with a different dimension.
+    """
+
+    def test_a_changed_dimension_is_a_different_key(self):
+        key = proxy_module.cache_key
+        assert key("embedding-3", "hello", 1024) != key("embedding-3", "hello", 256)
+
+    def test_the_dimension_cannot_be_forged_by_the_text(self):
+        # With text last and the dimension ahead of it, ("m", "a", 1) cannot collide with an undimensioned
+        # ("m", "a\x001"). This is the same split-ambiguity guard as the two-argument form, extended to three.
+        key = proxy_module.cache_key
+        assert key("m", "a", 1) != key("m", "a\x001")
+
+    def test_the_composition_is_pinned(self):
+        # A rewrite that silently changes how the three fields are joined is visible here rather than merely
+        # incompatible with an existing store.
+        expected = hashlib.sha256("embedding-3\x00\x00hello".encode("utf-8")).hexdigest()
+        assert proxy_module.cache_key("embedding-3", "hello") == expected
+
+    def test_a_different_dimension_does_not_reuse_the_vector(self, tmp_path):
+        running = _Running(tmp_path)
+        try:
+            _post(f"{running.url}/embeddings", {"model": "embedding-3", "input": ["same"], "dimensions": 1024})
+            _post(f"{running.url}/embeddings", {"model": "embedding-3", "input": ["same"], "dimensions": 256})
+            # Two distinct widths must mean two upstream calls, not one vector served twice at the wrong width.
+            assert len(running.upstream.requests) == 2
+            assert running.proxy.stats()["embedderCalls"] == 2
+            assert running.proxy.stats()["cacheHits"] == 0
+        finally:
+            running.stop()
+
+    def test_the_same_dimension_still_hits_the_cache(self, tmp_path):
+        # The control: adding dimensions must not disable caching for identical requests.
+        running = _Running(tmp_path)
+        try:
+            _post(f"{running.url}/embeddings", {"model": "embedding-3", "input": ["same"], "dimensions": 1024})
+            _post(f"{running.url}/embeddings", {"model": "embedding-3", "input": ["same"], "dimensions": 1024})
+            assert len(running.upstream.requests) == 1
+            assert running.proxy.stats()["cacheHits"] == 1
+        finally:
+            running.stop()

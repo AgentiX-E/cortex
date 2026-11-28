@@ -58,14 +58,21 @@ CREATE TABLE IF NOT EXISTS embeddings (
 """
 
 
-def cache_key(model: str, text: str) -> str:
-    """The identity of one vector: which model, over exactly which text.
+def cache_key(model: str, text: str, dimensions: int | None = None) -> str:
+    """The identity of one vector: which model, at which width, over exactly which text.
 
     No normalisation, no truncation, no lower-casing. A cache that "helpfully" normalises would return a vector the
     endpoint never produced, and the whole argument above rests on the vector being the one the system would have
     got.
+
+    The dimension belongs in the identity because `embedding-3` is a variable-dimension model: the same text at
+    1024 and at 256 widths yields two different vectors, and a key made of model and text alone would hand the
+    first to a request asking for the second -- the vector store then reports a failed ingest whose cause is a
+    cache collision it cannot name. The free-form text is the **last** field and the controlled fields precede it,
+    so no text containing a NUL can forge the boundary and collide with a different model or width.
     """
-    return hashlib.sha256(f"{model}\x00{text}".encode("utf-8")).hexdigest()
+    width = "" if dimensions is None else str(dimensions)
+    return hashlib.sha256(f"{model}\x00{width}\x00{text}".encode("utf-8")).hexdigest()
 
 
 class VectorCache:
@@ -84,10 +91,10 @@ class VectorCache:
         self.hits = 0
         self.misses = 0
 
-    def get(self, model: str, text: str) -> list[float] | None:
+    def get(self, model: str, text: str, dimensions: int | None = None) -> list[float] | None:
         with self._lock:
             row = self._connection.execute(
-                "SELECT vector FROM embeddings WHERE key = ?", (cache_key(model, text),)
+                "SELECT vector FROM embeddings WHERE key = ?", (cache_key(model, text, dimensions),)
             ).fetchone()
             if row is None:
                 self.misses += 1
@@ -95,11 +102,11 @@ class VectorCache:
             self.hits += 1
             return json.loads(row[0])
 
-    def put(self, model: str, text: str, vector: list[float]) -> None:
+    def put(self, model: str, text: str, vector: list[float], dimensions: int | None = None) -> None:
         with self._lock:
             self._connection.execute(
                 "INSERT OR REPLACE INTO embeddings (key, model, dimensions, vector) VALUES (?, ?, ?, ?)",
-                (cache_key(model, text), model, len(vector), json.dumps(vector)),
+                (cache_key(model, text, dimensions), model, len(vector), json.dumps(vector)),
             )
             self._connection.commit()
 
@@ -142,8 +149,17 @@ class _Handler(BaseHTTPRequestHandler):
         # A string or a list, as OpenAI's endpoint accepts and as a batching client sends.
         texts = [raw] if isinstance(raw, str) else list(raw or [])
         model = payload.get("model") or self.model_default
+        # Variable-dimension models answer a different vector for the same text at a different width. The width
+        # is part of the cache identity, so it must be pulled from the request the same way `model` is. Coerce to
+        # an int when the client sent one as text: "1024" and 1024 are the same width at the endpoint and must not
+        # become two cache entries that each claim the other's vector is a miss.
+        raw_dimensions = payload.get("dimensions")
+        try:
+            dimensions = int(raw_dimensions) if raw_dimensions is not None else None
+        except (TypeError, ValueError):
+            dimensions = None
 
-        vectors: list[list[float] | None] = [self.cache.get(model, str(text)) for text in texts]
+        vectors: list[list[float] | None] = [self.cache.get(model, str(text), dimensions) for text in texts]
         missing = [index for index, vector in enumerate(vectors) if vector is None]
         if missing:
             # One upstream call for the whole miss set, so the request count falls with the hit rate rather than
@@ -166,7 +182,7 @@ class _Handler(BaseHTTPRequestHandler):
             for position, index in enumerate(missing):
                 vector = response["data"][position]["embedding"]
                 vectors[index] = vector
-                self.cache.put(model, str(texts[index]), vector)
+                self.cache.put(model, str(texts[index]), vector, dimensions)
 
         body = json.dumps(
             {
