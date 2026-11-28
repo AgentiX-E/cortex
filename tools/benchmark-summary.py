@@ -95,18 +95,33 @@ def ablation_table(data: dict) -> list[str]:
     if fires:
         control = fires.get("controlFires")
         treatment = fires.get("treatmentFires")
-        questions = fires.get("questions") or 0
-        rate = 0 if not questions else treatment / questions
+        questions = fires.get("questions")
+        # A report can be valid JSON yet carry `null` where the live run carried a number -- the same
+        # persisted-NaN round-trip `pct` already handles for pValue. Dividing that null (or a string) by
+        # `questions` raised TypeError and failed the whole step, breaking the "never fails the run it
+        # exists to protect" contract at the very moment the numbers were malformed. Guard each field as a
+        # real number first: a missing count renders as `n/a`, never as a fabricated 0 or an exception.
+        counts_are_numbers = all(
+            isinstance(v, (int, float)) and not isinstance(v, bool)
+            for v in (control, treatment, questions)
+        )
+        if counts_are_numbers and questions:
+            rate: object = treatment / questions
+        else:
+            rate = None
         note = ""
-        if control:
-            note = " -- INVALID EXPERIMENT: control fired"
-        elif treatment == 0:
-            note = " -- INERT: never fired"
-        elif treatment <= 2:
-            note = " -- INERT: under-powered"
+        if counts_are_numbers:
+            if control:
+                note = " -- INVALID EXPERIMENT: control fired"
+            elif treatment == 0:
+                note = " -- INERT: never fired"
+            elif treatment is not None and treatment <= 2:
+                note = " -- INERT: under-powered"
+        else:
+            note = " -- UNREADABLE: retry-fire counts are not numbers"
         lines.append(
-            f"| retry fires | control {control}, treatment {treatment} "
-            f"of {questions} ({pct(rate)}){note} |"
+            f"| retry fires | control {num(control)}, treatment {num(treatment)} "
+            f"of {num(questions)} ({pct(rate)}){note} |"
         )
     return lines
 

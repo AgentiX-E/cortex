@@ -275,4 +275,19 @@ describe('the summary never fails the run it exists to protect', () => {
     expect(out).toContain('### `benchmark-mr-ablation-report`');
     expect(out).toContain('### `benchmark-tr-ablation-report`');
   });
+
+  // A report can be valid JSON yet carry a null where the live run carried a number (the same persisted-NaN
+  // round-trip the file's header documents for pValue). The retry-fires block divided that null by `questions`,
+  // so a single malformed field crashed the whole summary -- failing exactly the run this second sink exists to
+  // protect. The renderer must degrade to a labelled value, never raise.
+  it('renders a null retry-fire count as a labelled value instead of dividing by it', () => {
+    write('benchmark-mr-ablation-report.json', {
+      ablation: { baselineAggregate: { avg: 0.7 }, featureAggregate: { avg: 0.85 }, delta: 0.15 },
+      retryFires: { controlFires: null, treatmentFires: null, questions: 60 },
+    });
+    // execFileSync throws on a non-zero exit; reaching the assertions is already half the contract.
+    const out = run(dir);
+    expect(out).toContain('retry fires');
+    expect(out).toContain('n/a');
+  });
 });
