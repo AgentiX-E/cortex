@@ -654,3 +654,85 @@ def test_a_named_reference_prices_every_other_row_against_it(tmp_path: Path) -> 
     assert missing.returncode == 0, missing.stderr
     assert "nobody is not a row with an accuracy" in missing.stderr
     assert "to draw with" not in missing.stdout
+
+
+# ---------------------------------------------------------------------------------------------------------------
+# The manifest must describe the configuration that was actually built.
+#
+# A competitor arm whose manifest says `deepseek-reasoner` while mem0ai received no `model` at all is not a
+# matched-model comparison: the client fell back to its own default (`deepseek-chat`) and the proxy's `by_model`
+# recorded a different model than the report claimed. Two defects had this shape: the LLM model was written only
+# into `notes`, never into `config["llm"]["config"]`, and the embedder read environment names the workflow never
+# sets (`ZHIPU_EMBEDDING_MODEL`/`EMBEDDING_DIMENSIONS` against the workflow's `ZHIPU_EMBED_MODEL`/
+# `ZHIPU_EMBED_DIMENSIONS`). Both were silent because a `Memory` stand-in ignores the config entirely.
+
+
+class TestManifestNamesTheConfigThatWasBuilt:
+    @staticmethod
+    def _clean_llm_env(monkeypatch: pytest.MonkeyPatch) -> None:
+        for name in (
+            "MEM0_LLM", "MEM0_LLM_MODEL", "SUT_LLM_MODEL", "MEM0_LLM_BASE_URL",
+            "MEM0_LLM_API_KEY", "DEEPSEEK_API_BASE", "DEEPSEEK_API_KEY",
+        ):
+            monkeypatch.delenv(name, raising=False)
+
+    def test_the_declared_llm_model_is_injected_into_the_client_config(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        """The model in the manifest must be the one mem0ai is told to call.
+
+        With no `model` in `config["llm"]["config"]`, `DeepSeekLLM` substitutes its own `deepseek-chat` default,
+        so a `deepseek-reasoner` run was priced and scored as a different model than the one it named.
+        """
+        driver = load_mem0_driver(monkeypatch)
+        self._clean_llm_env(monkeypatch)
+        monkeypatch.setenv("MEM0_LLM", "deepseek")
+        monkeypatch.setenv("MEM0_INFER", "1")
+        monkeypatch.setenv("SUT_LLM_MODEL", "deepseek-reasoner")
+        monkeypatch.setenv("MEM0_EMBEDDER", "openai")
+        monkeypatch.setenv("MEM0_EMBEDDING_DIMS", "1024")
+        monkeypatch.setenv("ZHIPU_API_KEY", "not-a-real-key")
+
+        config, notes = driver.build_config()
+
+        assert notes["llm"]["model"] == "deepseek-reasoner"
+        assert config["llm"]["config"]["model"] == notes["llm"]["model"], config["llm"]["config"]
+
+    def test_the_llm_base_url_is_injected_for_any_provider(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        """A loopback proxy must be injected whatever the provider, not only when it is named `deepseek`.
+
+        Otherwise an `openai` arm keeps its vendor endpoint while the manifest claims it went through the proxy,
+        and every question is a 401 reported as a refusal about Mem0.
+        """
+        driver = load_mem0_driver(monkeypatch)
+        self._clean_llm_env(monkeypatch)
+        monkeypatch.setenv("MEM0_LLM", "openai")
+        monkeypatch.setenv("MEM0_INFER", "1")
+        monkeypatch.setenv("MEM0_LLM_BASE_URL", "http://127.0.0.1:8399/v1")
+        monkeypatch.setenv("MEM0_EMBEDDER", "openai")
+        monkeypatch.setenv("MEM0_EMBEDDING_DIMS", "1024")
+        monkeypatch.setenv("ZHIPU_API_KEY", "not-a-real-key")
+
+        config, notes = driver.build_config()
+
+        assert notes["llm"]["base_url"] == "http://127.0.0.1:8399/v1"
+        assert config["llm"]["config"]["openai_base_url"] == notes["llm"]["base_url"], config["llm"]["config"]
+
+    def test_the_embedder_reads_the_names_the_workflow_sets(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        """The workflow's `ZHIPU_EMBED_*` names must drive the build, not just be declared beside it."""
+        driver = load_mem0_driver(monkeypatch)
+        for name in (
+            "MEM0_EMBEDDER", "MEM0_EMBEDDER_MODEL", "MEM0_EMBEDDING_DIMS",
+            "ZHIPU_EMBEDDING_MODEL", "EMBEDDING_DIMENSIONS", "ZHIPU_API_KEY", "OPENAI_API_KEY",
+        ):
+            monkeypatch.delenv(name, raising=False)
+        monkeypatch.setenv("MEM0_EMBEDDER", "openai")
+        monkeypatch.setenv("ZHIPU_EMBED_MODEL", "custom-embed-v9")
+        monkeypatch.setenv("ZHIPU_EMBED_DIMENSIONS", "777")
+        monkeypatch.setenv("ZHIPU_API_KEY", "not-a-real-key")
+
+        config, notes = driver.build_config()
+
+        assert notes["embedder"]["model"] == "custom-embed-v9"
+        assert notes["embedder"]["dims"] == 777
+        assert config["embedder"]["config"]["model"] == "custom-embed-v9"
+        assert config["embedder"]["config"]["embedding_dims"] == 777
+        assert config["vector_store"]["config"]["embedding_model_dims"] == 777

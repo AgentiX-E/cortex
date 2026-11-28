@@ -133,19 +133,29 @@ def build_config() -> tuple[dict[str, Any], dict[str, Any]]:
         or os.environ.get("MEM0_LLM_API_KEY")
         or ("proxied" if is_local_proxy(llm_base) else ("unused-infer-off" if not infer else ""))
     )
+    # The model is resolved ONCE and written both to the client config and to the manifest from that one value.
+    # Writing it only to `llm_notes` used to leave `config["llm"]["config"]` without a `model` key, and mem0ai's
+    # factories then substituted their own default (`DeepSeekLLM` picks `deepseek-chat` when none is given). The
+    # manifest named one model while the proxy's `by_model` charged another -- a matched-model run that was not
+    # matched, and the mismatch was invisible because the report read the manifest, not the config.
+    llm_model = os.environ.get("MEM0_LLM_MODEL") or os.environ.get("SUT_LLM_MODEL") or "deepseek-chat"
+    llm_config: dict[str, Any] = {"api_key": llm_key, "model": llm_model}
+    # The proxy, when there is one, is injected under the key the selected provider actually reads. `DeepSeekLLM`
+    # reads `deepseek_base_url`; the OpenAI-compatible LLM reads `openai_base_url`. Injecting only for `deepseek`
+    # left an `openai` arm pointing at the vendor endpoint while its manifest claimed it went through the proxy,
+    # so every question was a 401 reported as a refusal about Mem0. The field is chosen from the provider rather
+    # than hard-coded to one of them, and the credential rule above already resolved `llm_base` from one source.
+    if llm_base:
+        base_key = "deepseek_base_url" if llm_provider == "deepseek" else "openai_base_url"
+        llm_config[base_key] = llm_base
     config: dict[str, Any] = {
-        "llm": {"provider": llm_provider, "config": {"api_key": llm_key}},
+        "llm": {"provider": llm_provider, "config": llm_config},
         "embedder": {"provider": embedder_provider, "config": {}},
         "vector_store": {"provider": store, "config": {"collection_name": "longmemeval"}},
     }
-    # The proxy, when there is one. `deepseek_base_url` is read by `DeepSeekLLM` in mem0ai 2.x; the environment
-    # variable is its own fallback, and both are set from the same source so a run cannot point one of them at the
-    # real endpoint and the other at the proxy. `llm_base` was resolved above, where the credential rule needed it.
-    if llm_base and llm_provider == "deepseek":
-        config["llm"]["config"]["deepseek_base_url"] = llm_base
     llm_notes: dict[str, Any] = {
         "provider": llm_provider,
-        "model": os.environ.get("MEM0_LLM_MODEL") or os.environ.get("SUT_LLM_MODEL") or "deepseek-chat",
+        "model": llm_model,
         "base_url": llm_base or "provider default",
         "used": bool(infer),
     }
@@ -193,12 +203,27 @@ def build_config() -> tuple[dict[str, Any], dict[str, Any]]:
         # Explicit rather than read from ambient `OPENAI_*`: the whole point of this driver is that the report can
         # say which embedding space the vectors came from, and Mem0's default fallback would silently use
         # `text-embedding-3-small` at 1536 dimensions against whatever endpoint happened to be exported.
-        dimensions = int(os.environ.get("MEM0_EMBEDDING_DIMS", os.environ.get("EMBEDDING_DIMENSIONS", "1024")))
+        # Names the workflow actually sets win. `competitor-retrieval.yml` exports `ZHIPU_EMBED_MODEL` and
+        # `ZHIPU_EMBED_DIMENSIONS`; reading only the older `ZHIPU_EMBEDDING_MODEL`/`EMBEDDING_DIMENSIONS` names
+        # meant a workflow input naming a different embedder or width was silently ignored, and Mem0 embedded into
+        # a space the reader was not reading. The older names remain as fallbacks for dispatches that still set
+        # them, and the driver-specific `MEM0_*` names take precedence over both.
+        dimensions = int(
+            os.environ.get("MEM0_EMBEDDING_DIMS")
+            or os.environ.get("ZHIPU_EMBED_DIMENSIONS")
+            or os.environ.get("EMBEDDING_DIMENSIONS")
+            or "1024"
+        )
         base_url = os.environ.get("MEM0_EMBEDDER_BASE_URL") or os.environ.get("ZHIPU_BASE_URL") or (
             "https://open.bigmodel.cn/api/paas/v4"
         )
         api_key = os.environ.get("ZHIPU_API_KEY") or os.environ.get("OPENAI_API_KEY") or ""
-        model = os.environ.get("MEM0_EMBEDDER_MODEL") or os.environ.get("ZHIPU_EMBEDDING_MODEL") or "embedding-3"
+        model = (
+            os.environ.get("MEM0_EMBEDDER_MODEL")
+            or os.environ.get("ZHIPU_EMBED_MODEL")
+            or os.environ.get("ZHIPU_EMBEDDING_MODEL")
+            or "embedding-3"
+        )
         embedder_notes.update({"model": model, "dims": dimensions, "base_url": base_url})
         if embedder_provider == "openai-cached":
             # A content-addressed cache between Mem0 and the endpoint, because the haystack reuses sessions across
