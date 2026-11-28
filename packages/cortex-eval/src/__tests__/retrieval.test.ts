@@ -480,14 +480,24 @@ describe('retrieveTopK', () => {
     expect(hits).toEqual([]);
   });
 
-  it('reports each hit original context index', async () => {
+  it('reports each hit rank as its index, in score order', async () => {
     clearEmbeddingCache();
+    // Distinguishable vectors make the ranking specific: q aligns with c, is orthogonal to b, and
+    // opposes a. With all-zero vectors every score tied and `index.sort() === [0,1,2]` held for any
+    // implementation, so the old test could not tell a correct ranking from a reversed one.
+    const vectors: Record<string, Float64Array> = {
+      q: new Float64Array([1, 0, 0, 0]),
+      a: new Float64Array([-1, 0, 0, 0]),
+      b: new Float64Array([0, 1, 0, 0]),
+      c: new Float64Array([1, 0, 0, 0]),
+    };
     const embedding: EmbeddingModel = {
       dimension: () => 4,
-      embed: async (texts) => texts.map(() => new Float64Array(4)),
+      embed: async (texts) => texts.map((t) => vectors[t]!),
     };
     const hits = await retrieveTopK(embedding, 'q', ['a', 'b', 'c'], 3);
-    expect(hits.map((h) => h.index).sort()).toEqual([0, 1, 2]);
+    expect(hits.map((h) => h.index)).toEqual([0, 1, 2]);
+    expect(hits.map((h) => h.text)).toEqual(['c', 'b', 'a']);
   });
 });
 

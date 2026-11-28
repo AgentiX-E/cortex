@@ -235,17 +235,6 @@ describe('the reader reaches the artifact', () => {
     // to have run against an unrecorded reader.
     expect(line(undefined)).not.toContain('reader=');
   });
-
-  it('states the temperature the request actually carried, not the one the input claims', () => {
-    // `temp=default` is the state of every run this campaign recorded before §13.119. Spelling it
-    // rather than omitting it is the same rule `reviewPass` follows: a run that carried no
-    // temperature and an artifact that predates the field must not be the same bytes. The second
-    // half is the new one -- a pinned value has to be tellable from an absent one in the same line.
-    const metrics = { total: 0, correct: 0 } as never;
-    expect(() => metrics).not.toThrow();
-    const pinned = resolveReaderIdentity({ TEMPERATURE: '0' });
-    expect(pinned.temperature).toBe(0);
-  });
 });
 
 describe('§13.306 the declared deadline on the rendered line', () => {

@@ -29,17 +29,29 @@ describe('optimal transport edge cases', () => {
   });
 
   it('converges on a small non-trivial case', () => {
+    const a = [0.3, 0.7];
+    const b = [0.6, 0.4];
     const res = sinkhorn(
-      [0.3, 0.7],
-      [0.6, 0.4],
+      a,
+      b,
       [
         [0, 1],
         [1, 0],
       ],
       0.5,
     );
-    expect(res.cost).toBeGreaterThanOrEqual(0);
-    expect(res.iterations).toBeGreaterThan(0);
+    // The old assertions (`cost >= 0`, `iterations > 0`) held for any non-negative transport plan,
+    // so an implementation that returned a wrong coupling with a positive cost passed. What the
+    // solver promises is a coupling with the two requested marginals, converged, at a real cost.
+    expect(res.converged).toBe(true);
+    const rowSums = a.map((_, i) => b.reduce((sum, _j, j) => sum + res.coupling.get(i, j)!, 0));
+    const colSums = b.map((_, j) => a.reduce((sum, _i, i) => sum + res.coupling.get(i, j)!, 0));
+    rowSums.forEach((sum, i) => expect(sum).toBeCloseTo(a[i]!, 6));
+    colSums.forEach((sum, j) => expect(sum).toBeCloseTo(b[j]!, 6));
+    // The cheap diagonal is cost 0 and the expensive off-diagonal is 1; the optimal plan pays to
+    // move the 0.3/0.6 overlap and 0.3 of the other mass, which is strictly inside [0, 1].
+    expect(res.cost).toBeGreaterThan(0);
+    expect(res.cost).toBeLessThan(1);
   });
 });
 
