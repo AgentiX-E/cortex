@@ -118,6 +118,27 @@ def test_a_run_that_did_not_read_its_own_digest_is_refused(tmp_path: Path) -> No
     assert 'did not read back the digest it wrote' in result.stdout
 
 
+def test_a_committed_reading_that_did_not_read_its_own_digest_is_refused(tmp_path: Path) -> None:
+    """The success line claims 'both digest-matched', so BOTH sides must be checked.
+
+    The check already verifies the committed side's failed count and tier; the digest was the one
+    criterion applied only to the fresh side. A committed artefact whose round trip never held would
+    still exit 0, while the verdict claimed it matched.
+    """
+
+    def unread(data: dict) -> None:
+        data['summary']['digestMatches'] = False
+
+    committed = reading(tmp_path, 'committed-unread.json', unread)
+    # Fresh side is the untouched committed reading: its digest does hold.
+    firefox = json.loads(COMMITTED_FIREFOX.read_text())
+    fresh_path = tmp_path / 'fresh-ok.json'
+    fresh_path.write_text(json.dumps(firefox))
+    result = run('--committed', str(committed), '--fresh', str(fresh_path))
+    assert result.returncode == 1, result.stdout
+    assert 'committed reading did not read back the digest it wrote' in result.stdout
+
+
 def test_a_missing_argument_is_reported_rather_than_crashing() -> None:
     result = run('--committed', str(COMMITTED))
     assert result.returncode == 1, result.stdout

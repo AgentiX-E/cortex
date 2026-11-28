@@ -169,6 +169,13 @@ function disagreements(committed, fresh) {
   if (fresh.summary?.failed !== 0) {
     problems.push(`this run records ${fresh.summary?.failed} failed checks`);
   }
+  // Both sides, not just the fresh one: the verdict below claims "both digest-matched", and a committed
+  // artefact is exactly the file that can stop describing the tree while still printing 24/24. The
+  // committed side's failed count and tier are already checked above; the digest was the one criterion
+  // applied only to fresh, so a committed reading whose round trip never held was waved through.
+  if (digestHeld(committed) !== true) {
+    problems.push('the committed reading did not read back the digest it wrote');
+  }
   if (digestHeld(fresh) !== true) {
     problems.push('this run did not read back the digest it wrote');
   }
