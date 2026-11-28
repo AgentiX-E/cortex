@@ -85,11 +85,29 @@ def ablation_table(data: dict) -> list[str]:
     # the absence means, rather than silently printing nothing.
     coverage = data.get("cohortCoverage")
     if coverage:
-        present = len(coverage.get("present", []))
-        missing = coverage.get("missing", [])
-        total = present + len(missing)
-        state = "complete" if not missing else f"INCOMPLETE, missing {', '.join(missing)}"
-        lines.append(f"| cohort | {present}/{total} ({state}) |")
+        # A persisted `null` is a real state, not an empty list: `len(None)` raised
+        # TypeError and failed the whole step, breaking "never fails the step". Render
+        # each missing count as `n/a` rather than fabricating a zero denominator, and
+        # only compute a fraction when both sides are genuinely lists.
+        present_value = coverage.get("present", [])
+        missing_value = coverage.get("missing", [])
+        present_list = present_value if isinstance(present_value, list) else None
+        missing_list = missing_value if isinstance(missing_value, list) else None
+        if present_list is not None and missing_list is not None:
+            present = len(present_list)
+            total = present + len(missing_list)
+            state = (
+                "complete"
+                if not missing_list
+                else f"INCOMPLETE, missing {', '.join(str(item) for item in missing_list)}"
+            )
+            lines.append(f"| cohort | {present}/{total} ({state}) |")
+        else:
+            # At least one side was `null`/malformed. Say what is unreadable instead of
+            # inventing counts; a fabricated `0/0` would read as a complete empty cohort.
+            p = str(len(present_list)) if present_list is not None else "n/a"
+            m = str(len(missing_list)) if missing_list is not None else "n/a"
+            lines.append(f"| cohort | present {p}, missing {m} (n/a = not recoverable) |")
 
     fires = data.get("retryFires")
     if fires:

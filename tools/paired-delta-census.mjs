@@ -484,7 +484,17 @@ function main(argv) {
       continue;
     }
     if (argument === '--capability') {
-      capability = argv[(index += 1)];
+      const value = argv[index + 1];
+      // A flag with no NAME, or one immediately followed by another flag, must be refused.
+      // Assigning the raw next token made a trailing `--capability` read as `undefined`, which
+      // `index` treats as "every capability" -- a scoped read silently became a whole-population
+      // read with exit 0. Swallowing the next flag as the NAME was no better.
+      if (value === undefined || value.startsWith('--')) {
+        process.stderr.write('refused: --capability requires a NAME\n');
+        return 1;
+      }
+      capability = value;
+      index += 1;
       continue;
     }
     if (argument === '--control-side') {

@@ -694,7 +694,14 @@ function main(argv) {
   const failuresOnly = argv.includes('--failures-only');
   for (let i = 0; i < argv.length; i += 1) {
     if (argv[i] === '--capability') {
-      capability = argv[i + 1];
+      const value = argv[i + 1];
+      // A flag with no NAME, or one followed by another flag, must be refused rather than
+      // falling through to `censusOf(report, undefined)`, which silently reads every question.
+      if (value === undefined || value.startsWith('--')) {
+        console.error('refused: --capability requires a NAME');
+        return 1;
+      }
+      capability = value;
       i += 1;
     } else if (!argv[i].startsWith('--')) {
       path = argv[i];
