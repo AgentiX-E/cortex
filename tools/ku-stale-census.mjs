@@ -178,7 +178,15 @@ function main(argv) {
   const paths = [];
   for (let index = 0; index < argv.length; index += 1) {
     if (argv[index] === '--capability') {
-      capability = argv[index + 1];
+      const value = argv[index + 1];
+      // A flag with no NAME, or one followed by another flag, must be refused. Swallowing the
+      // next flag as the NAME produced an empty capability census that exited 0 and read like a
+      // legitimate zero-result; a trailing flag fell back to KU silently.
+      if (value === undefined || value.startsWith('--')) {
+        console.error(`refused: --capability requires a NAME, got ${value}`);
+        process.exit(2);
+      }
+      capability = value;
       index += 1;
     } else {
       paths.push(argv[index]);

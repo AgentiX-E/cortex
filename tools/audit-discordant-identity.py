@@ -215,8 +215,13 @@ def main(argv: list[str]) -> int:
         )
 
         coverage = data.get("cohortCoverage", {})
-        if "6456829e_abs" in coverage.get("present", []):
-            target_runs.append((label, f"{len(coverage.get('present', []))}/7"))
+        # A persisted `null` is a real state (an absent count), not an empty list. Testing
+        # membership in `None` raised TypeError and failed the whole audit. Only treat the
+        # target run as present when `present` is genuinely a list; otherwise the artifact
+        # simply contributes no target row, which the summary already reports as unverifiable.
+        present = coverage.get("present", []) if isinstance(coverage, dict) else []
+        if isinstance(present, list) and "6456829e_abs" in present:
+            target_runs.append((label, f"{len(present)}/7"))
 
     print()
     print(f"Block verification: {verified_runs}/{len(reports)} artifacts verified.")

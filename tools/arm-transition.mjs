@@ -682,8 +682,26 @@ function main(argv) {
   }
   const before = JSON.parse(readFileSync(beforePath, 'utf8'));
   const after = JSON.parse(readFileSync(afterPath, 'utf8'));
-  const capability = flag(argv, '--capability');
-  const reading = transitionOf(before, after, capability === undefined ? {} : { capability });
+  const capabilitySeen = argv.includes('--capability');
+  const capabilityArgument = flag(argv, '--capability');
+  // A flag with no NAME, or one followed by another flag, must be refused. `flag` returns
+  // `undefined` both when absent and when trailing with no value, so check presence: a trailing
+  // `--capability` silently reproduced the MR default and `--capability --json` swallowed the
+  // flag as the NAME, both producing a reading with exit 0.
+  if (
+    capabilitySeen &&
+    (capabilityArgument === undefined ||
+      capabilityArgument.startsWith('--') ||
+      capabilityArgument === '')
+  ) {
+    process.stderr.write(`--capability requires a NAME, got ${capabilityArgument}\n`);
+    return 2;
+  }
+  const reading = transitionOf(
+    before,
+    after,
+    capabilityArgument === undefined ? {} : { capability: capabilityArgument },
+  );
   if (argv.includes('--json')) {
     process.stdout.write(`${JSON.stringify(reading, null, 2)}\n`);
   } else {

@@ -59,7 +59,22 @@ if (controlPath === undefined || armPath === undefined) {
   process.exit(2);
 }
 
-const capability = flag('--capability');
+const capabilitySeen = argv.includes('--capability');
+const capabilityArgument = flag('--capability');
+// A flag with no NAME, or one immediately followed by another flag, must be refused. `flag` returns
+// `undefined` both when the flag is absent and when it trails with no value, so check presence too:
+// a trailing `--capability` used to read as "every capability" and exit 0, and a following flag was
+// swallowed as the NAME.
+if (
+  capabilitySeen &&
+  (capabilityArgument === undefined ||
+    capabilityArgument.startsWith('--') ||
+    capabilityArgument === '')
+) {
+  process.stderr.write(`--capability requires a NAME, got ${capabilityArgument}\n${usage}\n`);
+  process.exit(2);
+}
+const capability = capabilityArgument;
 const side = flag('--side') ?? 'feature';
 if (side !== 'feature' && side !== 'baseline') {
   process.stderr.write(`--side must be feature or baseline, got ${side}\n${usage}\n`);

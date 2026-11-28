@@ -279,3 +279,14 @@ def test_the_registered_prediction_is_recorded_with_its_refinement() -> None:
     # because the test suite protects the byte-reproducibility of every archived prompt.
     assert "turnCutMarker" in result["newDefect"]
     assert "default 'none'" in result["newDefect"]
+
+
+def test_a_capability_flag_without_a_name_is_a_usage_error(tmp_path: Path) -> None:
+    """A missing capability NAME must not widen the paired read to every capability."""
+    path = artifact(tmp_path, (["10"], ["11"]), ["MR"])
+    trailing = run("--artifact", str(path), "--capability")
+    assert trailing.returncode == 2, "a missing capability NAME must not exit green"
+    assert "capability" in trailing.stderr.lower(), trailing.stderr
+    swallowed = run("--artifact", str(path), "--capability", "--list")
+    assert swallowed.returncode == 2, "another flag must not be swallowed as the capability NAME"
+    assert "capability" in swallowed.stderr.lower(), swallowed.stderr

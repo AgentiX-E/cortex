@@ -411,9 +411,24 @@ function renderWindows(cases, marker, windows, capability) {
 function main(argv) {
   const args = argv;
   const path = flag(args, '--artifact');
-  const capability = flag(args, '--capability');
+  const capabilitySeen = args.includes('--capability');
+  const capabilityArgument = flag(args, '--capability');
   const out = flag(args, '--out');
   const windowFlag = flag(args, '--window');
+  // A flag with no NAME, or one followed by another flag, must be refused. `flag` returns
+  // `undefined` both when the flag is absent and when it trails with no value, so check presence:
+  // a trailing `--capability` widened the paired read to every capability, and `--capability
+  // --list` swallowed `--list` as the NAME.
+  if (
+    capabilitySeen &&
+    (capabilityArgument === undefined ||
+      capabilityArgument.startsWith('--') ||
+      capabilityArgument === '')
+  ) {
+    process.stderr.write(`--capability requires a NAME, got ${capabilityArgument}\n`);
+    return 2;
+  }
+  const capability = capabilityArgument;
   if (path === undefined) {
     process.stderr.write(
       'usage: paired-flip.mjs --artifact <report.json> [--capability MR] [--window N] [--census] [--list] [--out <file>]\n',

@@ -340,3 +340,14 @@ def test_the_baseline_side_can_be_read_instead(tmp_path: Path) -> None:
     result = run("--control", str(control), "--arm", str(arm), "--side", "baseline")
     assert result.returncode == 2
     assert "no ablation.baselineCorrectByRun" in result.stderr
+
+
+def test_a_capability_flag_without_a_name_is_a_usage_error(tmp_path: Path) -> None:
+    """A trailing `--capability` must not silently widen the read to every capability."""
+    control, arm = pair(tmp_path)
+    trailing = run("--control", str(control), "--arm", str(arm), "--capability")
+    assert trailing.returncode == 2, "a missing capability NAME must not exit green"
+    assert "capability" in trailing.stderr.lower(), trailing.stderr
+    assert "refus" in trailing.stderr.lower() or "usage" in trailing.stderr.lower(), trailing.stderr
+    swallowed = run("--control", str(control), "--arm", str(arm), "--capability", "--json")
+    assert swallowed.returncode == 2, "another flag must not be swallowed as the capability NAME"
