@@ -51,6 +51,7 @@ import {
   buildAblationSkipRecord,
   serializeAblationSkips,
   sampleInstances,
+  readWholeNumberLimit,
   toCapability,
   turnText,
   attributeRecallGap,
@@ -180,7 +181,7 @@ async function main(): Promise<void> {
 
   // A small LIMIT keeps first-run smoke tests cheap and fast; omit for the full set.
   // Stratified sampling keeps every capability (including abstention) represented.
-  const limit = Number(process.env['LIMIT'] ?? 0);
+  const limit = readWholeNumberLimit(process.env['LIMIT'], 'LIMIT', 0);
   const sampled = sampleInstances(instances as never, limit);
 
   const { embedding, provenance: embeddingProvenance } = createEmbeddingWithProvenanceFromEnv(
@@ -331,7 +332,11 @@ async function main(): Promise<void> {
   // embeds ~115k turns for QA retrieval; running the diagnostics over the whole
   // dataset would double that upfront cost and exhaust the embedding quota
   // before the actual benchmark starts. DIAGNOSTICS_LIMIT=0 disables the cap.
-  const diagnosticsLimit = Number(process.env['DIAGNOSTICS_LIMIT'] ?? 100);
+  const diagnosticsLimit = readWholeNumberLimit(
+    process.env['DIAGNOSTICS_LIMIT'],
+    'DIAGNOSTICS_LIMIT',
+    100,
+  );
   const diagnosticsSample =
     diagnosticsLimit > 0 && diagnosticsLimit < sampled.length
       ? sampleInstances(sampled as never, diagnosticsLimit)

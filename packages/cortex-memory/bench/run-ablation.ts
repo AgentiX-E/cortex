@@ -116,6 +116,7 @@ import {
   createAblationPool,
   runCortexMemoryArm,
   sampleInstances,
+  readWholeNumberLimit,
   toMemoryArmConfig,
   toRerankRecord,
   // §13.274's restore counterfactual. The four calls are the whole of the intervention on this
@@ -516,7 +517,7 @@ async function main(): Promise<void> {
   if (!Array.isArray(parsed)) {
     throw new Error(`LONGMEMEVAL_PATH must contain a JSON array, got ${typeof parsed}`);
   }
-  const limit = Number(process.env['LIMIT'] ?? 0);
+  const limit = readWholeNumberLimit(process.env['LIMIT'], 'LIMIT', 0);
   const sampled = sampleInstances(parsed as never, limit);
   const fullDataset = loadLongMemEval(sampled as never);
   // §13.345. The population selector, applied after the sample and before everything that reads the

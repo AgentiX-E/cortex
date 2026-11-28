@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { cohortCoverage, sampleInstances } from '../datasets/sampling.js';
+import { cohortCoverage, sampleInstances, readWholeNumberLimit } from '../datasets/sampling.js';
 import type { LongMemEvalInstance } from '../datasets/longmemeval-loader.js';
 
 function inst(id: string, type: string): LongMemEvalInstance {
@@ -111,5 +111,40 @@ describe('cohortCoverage', () => {
 
     expect(cohortCoverage(small, cohort).present).toEqual(covering);
     expect(cohortCoverage(large, cohort).ratio).toBe(1);
+  });
+});
+
+// -----------------------------------------------------------------------------------------------------------
+// A limit is a count of questions, and a mistyped one must not silently become "zero questions".
+//
+// `LIMIT=abc` used to flow through `Number(...)` into `sampleInstances` as `NaN`: the `<=0` and
+// `>=len` guards both fail on NaN, `while (len < NaN)` is false from the start, and the sampler
+// returns `[]`. The benchmark then scored an empty population and published a number. A limit is
+// parsed strictly here (blank is unset -> the fallback; only a run of digits is a value), and the
+// sampler itself refuses a non-finite limit so no future caller can reintroduce the empty sample.
+describe('readWholeNumberLimit', () => {
+  it('treats an unset or blank variable as the fallback, and 0 as a value', () => {
+    expect(readWholeNumberLimit(undefined, 'LIMIT', 0)).toBe(0);
+    expect(readWholeNumberLimit('   ', 'LIMIT', 100)).toBe(100);
+    expect(readWholeNumberLimit('0', 'LIMIT', 100)).toBe(0);
+  });
+
+  it('accepts a run of digits', () => {
+    expect(readWholeNumberLimit('60', 'LIMIT', 0)).toBe(60);
+    expect(readWholeNumberLimit(' 500 ', 'LIMIT', 0)).toBe(500);
+  });
+
+  it('rejects a non-numeric, negative, or fractional value with the name in the message', () => {
+    for (const bad of ['abc', '-1', '1.5', '1e3', 'NaN', 'Infinity']) {
+      expect(() => readWholeNumberLimit(bad, 'LIMIT', 0)).toThrow(/LIMIT/);
+    }
+  });
+});
+
+describe('sampleInstances refuses a non-finite limit', () => {
+  it('throws rather than returning an empty sample on NaN or Infinity', () => {
+    const list = [inst('a', 'single-session-user'), inst('b', 'knowledge-update')];
+    expect(() => sampleInstances(list, Number.NaN)).toThrow(/limit/);
+    expect(() => sampleInstances(list, Number.POSITIVE_INFINITY)).toThrow(/limit/);
   });
 });

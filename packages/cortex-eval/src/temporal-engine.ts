@@ -170,9 +170,23 @@ export function normalizeDate(raw: string): string {
   return match ? `${match[1]}/${match[2]}/${match[3]}` : '';
 }
 
-/** True when a string is exactly a `YYYY/MM/DD` date. */
+/**
+ * True when a string is exactly a `YYYY/MM/DD` date that exists on the calendar.
+ *
+ * A shape match is not a date: `2023/02/30` and `2023/02/29` match the regex but roll over when
+ * `Date.UTC` parses them, and `turn-clock.ts` already rejects them with `day > daysInMonth`. This
+ * gate reads LLM-extracted event dates, so without the calendar check a phantom 30 February
+ * survives into `elapsedValue` and scores a NEGATIVE "days ago" on a TR question. The two date
+ * gates must agree, so the bounds here mirror turn-clock's: a year below 1 is not a date this
+ * corpus can hold, and `Date.UTC` silently rolls `2023/00/10` into the previous year.
+ */
 export function isValidDate(date: string): boolean {
-  return /^\d{4}\/\d{2}\/\d{2}$/.test(date);
+  const match = /^(\d{4})\/(\d{2})\/(\d{2})$/.exec(date);
+  if (match === null) return false;
+  const year = Number(match[1]);
+  const month = Number(match[2]);
+  const day = Number(match[3]);
+  return year >= 1 && month >= 1 && month <= 12 && day >= 1 && day <= daysInMonth(year, month);
 }
 
 /** Small number words the LLM may use when reporting a relative date. */

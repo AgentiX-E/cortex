@@ -233,7 +233,12 @@ export {
   type LongMemEvalTurn,
   type LongMemEvalInstance,
 } from './datasets/longmemeval-loader.js';
-export { sampleInstances, cohortCoverage, type CohortCoverage } from './datasets/sampling.js';
+export {
+  sampleInstances,
+  readWholeNumberLimit,
+  cohortCoverage,
+  type CohortCoverage,
+} from './datasets/sampling.js';
 export { fingerprintBytes } from './dataset-fingerprint.js';
 export {
   computeRetrievalDiagnostics,

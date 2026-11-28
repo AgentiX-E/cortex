@@ -1374,3 +1374,39 @@ describe('computeTemporalAnswer — relative questions that name a second event'
     }
   });
 });
+
+// -----------------------------------------------------------------------------------------------------------
+// Calendar validity: a regex-matched date is not necessarily a date.
+//
+// `turn-clock.ts` rejects `2023/02/30` with `day > daysInMonth`, but this engine's `isValidDate`
+// used the shape regex alone. An LLM-extracted event date flows through `resolveTemporalDate` ->
+// `isValidDate`, so a phantom 30 February survived the gate and fed `elapsedValue`, producing a
+// NEGATIVE "days ago" in a TR score. The two date gates must agree.
+describe('calendar-invalid dates are not dates', () => {
+  it('rejects a day beyond the month length, including the leap-year boundary', () => {
+    expect(isValidDate('2023/02/30')).toBe(false);
+    expect(isValidDate('2023/02/29')).toBe(false); // 2023 is not a leap year
+    expect(isValidDate('2024/02/29')).toBe(true); // 2024 is
+    expect(isValidDate('2023/04/31')).toBe(false);
+    expect(isValidDate('2023/13/01')).toBe(false);
+    expect(isValidDate('2023/00/10')).toBe(false);
+    expect(isValidDate('2023/01/00')).toBe(false);
+  });
+
+  it('drops a phantom event date instead of scoring a negative elapsed count', () => {
+    const bad = computeTemporalAnswer('How many days ago did X happen?', 'relative', '2023/03/01', [
+      { name: 'X', date: '2023/02/30' },
+    ]);
+    // With the invalid event rejected, no event survives -> no answer, instead of '-1'.
+    expect(bad).toBeNull();
+
+    // A real day one month earlier still scores as one day, guarding the valid path.
+    const good = computeTemporalAnswer(
+      'How many days ago did X happen?',
+      'relative',
+      '2023/03/01',
+      [{ name: 'X', date: '2023/02/28' }],
+    );
+    expect(good).toBe('1');
+  });
+});

@@ -7,11 +7,43 @@
  */
 import { toCapability, type LongMemEvalInstance } from './longmemeval-loader.js';
 
+/**
+ * Parse a whole-number limit from an environment variable.
+ *
+ * A limit is a count of questions. `Number(raw)` turns a typo like `LIMIT=abc` into `NaN`, and a
+ * NaN limit used to slip past `sampleInstances`' range guards and return an EMPTY sample -- a
+ * benchmark over zero questions that still published an accuracy. Blank is unset and returns the
+ * fallback; a value must be a run of digits, so negatives, fractions and exponent forms are
+ * refused with the variable named in the message. This mirrors `reader-transport.ts`'s
+ * `readMilliseconds`, so an env-var count is read one way across the evaluator.
+ */
+export function readWholeNumberLimit(
+  raw: string | undefined,
+  name: string,
+  fallback: number,
+): number {
+  if (raw === undefined || raw.trim() === '') return fallback;
+  const text = raw.trim();
+  if (!/^\d+$/.test(text)) {
+    throw new Error(
+      `${name}=${JSON.stringify(text)} is not a whole number. Give a run of digits, or leave ` +
+        'the variable unset to keep the default.',
+    );
+  }
+  return Number(text);
+}
+
 /** Sample up to `limit` instances, round-robining across capability buckets. */
 export function sampleInstances(
   instances: readonly LongMemEvalInstance[],
   limit: number,
 ): LongMemEvalInstance[] {
+  // A non-finite limit (`NaN`, `Infinity`) defeats both range guards below: every comparison
+  // with NaN is false and `while (len < NaN)` is false immediately, silently returning `[]`.
+  // Refuse it at the boundary so no caller can publish an empty-sample score by accident.
+  if (!Number.isFinite(limit)) {
+    throw new Error(`sampleInstances limit must be finite, got ${limit}`);
+  }
   if (limit <= 0 || limit >= instances.length) {
     return [...instances];
   }
