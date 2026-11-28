@@ -157,10 +157,12 @@ function objectSlices(body: string): string[] {
  * discard a valid plan.
  */
 function readObject(raw: string): Record<string, unknown> | null {
-  const fenced = /```(?:json)?\s*([\s\S]*?)```/.exec(raw);
-  const body = fenced?.[1] ?? raw;
+  // Scan the whole reply, not just the first fence. A reasoning reader can fence the schema example
+  // and then state its settled plan outside it; the last-parseable-object contract covers both, and
+  // stopping at the fence would return the example the reader already superseded. Fences carry no
+  // braces, so a full scan is safe, and unparseable prose asides are skipped below.
   let last: Record<string, unknown> | null = null;
-  for (const slice of objectSlices(body)) {
+  for (const slice of objectSlices(raw)) {
     try {
       const parsed: unknown = JSON.parse(slice);
       if (typeof parsed === 'object' && parsed !== null && !Array.isArray(parsed)) {

@@ -170,6 +170,20 @@ describe('PlatformLanguageModelAdapter', () => {
     expect(destroyed()).toBe(1);
   });
 
+  it('rebuilds the session when a call asks for a different maxTokens', async () => {
+    // The module contract promises token limits are fixed per session and the key is the resolved
+    // options. A caller asking for a smaller cap must get a new session honouring it, not the old
+    // session silently keeping its budget -- a second-look decision cut short by its token cap is a
+    // real, billed failure (run 45974552492), and this adapter ignored the per-call cap entirely.
+    const { platform: fake, calls, destroyed } = platform();
+    const adapter = new PlatformLanguageModelAdapter({ platform: fake });
+    await adapter.complete('one');
+    await adapter.complete('two', { maxTokens: 8 });
+    expect(calls).toHaveLength(2);
+    expect(calls[1]?.maxOutputTokens).toBe(8);
+    expect(destroyed()).toBe(1);
+  });
+
   it('refuses a downloadable model instead of starting a multi-gigabyte download', async () => {
     const { platform: fake, calls } = platform('downloadable');
     const adapter = new PlatformLanguageModelAdapter({ platform: fake });

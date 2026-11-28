@@ -96,6 +96,15 @@ describe('parseJson', () => {
     });
   });
 
+  it('reads the final object when a fenced example precedes an unfenced answer', () => {
+    // A reasoning reply can fence a worked example, then state its settled answer in prose outside
+    // the fence. The last-parseable-object contract applies to the whole reply; stopping at the
+    // first fence would return the example the model had already superseded.
+    expect(parseJson('```json\n{"facts":["example"]}\n```\nAnswer: {"facts":["real"]}')).toEqual({
+      facts: ['real'],
+    });
+  });
+
   it('keeps braces inside strings and skips an object that does not parse', () => {
     expect(parseJson('junk } {"text":"a } b"}')).toEqual({ text: 'a } b' });
     expect(parseJson('{"bad":} {"good":1}')).toEqual({ good: 1 });

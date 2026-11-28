@@ -66,10 +66,11 @@ function jsonObjects(text: string): string[] {
 
 /** Extract the structured object from a possibly-fenced LLM response. */
 export function parseJson<T>(raw: string): T {
-  const trimmed = raw.trim();
-  const fenced = trimmed.match(/```(?:json)?\s*([\s\S]*?)```/);
-  const candidate = fenced ? fenced[1]! : trimmed;
-  const objects = jsonObjects(candidate);
+  // Scan the whole reply, not just the first fenced block. A reasoning model can fence a worked
+  // example and then state its settled answer in prose outside the fence; the last-parseable-object
+  // rule below has to see both, or it returns the example the model already superseded. Fences carry
+  // no braces, so a full scan is safe, and the parse loop skips prose and unparseable asides.
+  const objects = jsonObjects(raw.trim());
   if (objects.length === 0) {
     throw new Error(`LLM did not return a JSON object: ${raw.slice(0, 200)}`);
   }

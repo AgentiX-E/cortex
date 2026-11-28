@@ -204,7 +204,10 @@ export class PlatformLanguageModelAdapter implements LLM {
     }
 
     const temperature = opts.temperature ?? this.#options.temperature;
-    const maxOutputTokens = this.#options.maxOutputTokens;
+    // The platform fixes the token cap when a session is created, so a caller asking for a different
+    // cap must get a new session. Reading only the construction-time value would silently ignore the
+    // per-call cap that `CompleteOptions` promises and that the second-look reader relies on.
+    const maxOutputTokens = opts.maxTokens ?? this.#options.maxOutputTokens;
     const key = JSON.stringify([
       temperature,
       this.#options.topK,

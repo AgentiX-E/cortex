@@ -87,6 +87,21 @@ describe('a plan that parses', () => {
     ).toBe('spec');
   });
 
+  it('reads the final plan when a fenced example precedes an unfenced plan', () => {
+    // A reasoning reply can fence the schema example and then state its settled plan outside the
+    // fence. The last-parseable-object contract is over the whole reply; stopping at the first fence
+    // would read the example the model had already superseded.
+    const plan =
+      '{"scope":[0,9],"predicates":[{"field":"text","op":"contains","value":"a"}],"operation":"count"}';
+    const echo = '{"field":"date","op":"on-or-after","value":"YYYY/MM/DD"}';
+    const parsed = parseEventSpec(
+      `\`\`\`json\n${echo}\n\`\`\`\nHere is my plan: ${plan}`,
+      STEPS,
+      SESSIONS,
+    );
+    expect(parsed).toMatchObject({ kind: 'spec', spec: { operation: 'count' } });
+  });
+
   it('lowercases a speaker and a unit, because the ledger stores them lowercased', () => {
     const parsed = parse({
       scope: [0, 9],
